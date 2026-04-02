@@ -53,3 +53,19 @@ jspm_packages/
 
 # Aider AI Chat
 .aider*
+
+# IDP
+idp/public/frontend
+idp/www/idp.html
+build
+yarn.lock
+package-lock.json
+docs/TEST*.md
+docs/ENHANCEMENT_ROADMAP*.md
+docs/ERPNEXT_REPORTS.md
+
+# Claude
+.ruff_cache/
+.claude/
+CLAUDE.md
+plan.md
