@@ -1,3 +1,6 @@
+# Copyright (c) 2026, Sanjay Kumar and contributors
+# For license information, please see license.txt
+
 """App-wide constants for the IDP module.
 
 Defines supported MIME types, target DocTypes, OCR languages,
@@ -38,10 +41,12 @@ EXTENSION_TO_MIME: dict[str, str] = {
 # Supported target DocTypes for extraction
 # ---------------------------------------------------------------------------
 SUPPORTED_DOCTYPES: list[str] = [
+	"Opportunity",
 	"Sales Invoice",
 	"Purchase Invoice",
 	"Quotation",
 	"Sales Order",
+	"Supplier Quotation",
 	"Purchase Order",
 	"Delivery Note",
 	"Purchase Receipt",

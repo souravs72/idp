@@ -1,3 +1,6 @@
+# Copyright (c) 2026, Sanjay Kumar and contributors
+# For license information, please see license.txt
+
 """Structured logging for the IDP module.
 
 Wraps :func:`frappe.logger` to provide named loggers under the ``idp``

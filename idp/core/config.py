@@ -1,3 +1,6 @@
+# Copyright (c) 2026, Sanjay Kumar and contributors
+# For license information, please see license.txt
+
 """Centralised settings reader for the IDP module.
 
 Reads configuration from the *IDP Settings* Single DocType (created in

@@ -1,3 +1,6 @@
+# Copyright (c) 2026, Sanjay Kumar and contributors
+# For license information, please see license.txt
+
 app_name = "idp"
 app_title = "Intelligent Document Processing"
 app_publisher = "Sanjay Kumar"

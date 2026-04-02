@@ -1,3 +1,6 @@
+# Copyright (c) 2026, Sanjay Kumar and contributors
+# For license information, please see license.txt
+
 # IDP Core — Foundation package for Intelligent Document Processing
 #
 # Provides: config, constants, exceptions, logger
