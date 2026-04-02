@@ -9,6 +9,10 @@ readme = "README.md"
 dynamic = ["version"]
 dependencies = [
     # "frappe~=16.0.0" # Installed and managed by bench.
+    "pypdf>=4.0",
+    "openpyxl>=3.1",
+    "python-docx>=1.1",
+    "Pillow",
 ]
 
 [build-system]

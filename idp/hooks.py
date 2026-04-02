@@ -8,18 +8,17 @@ app_license = "mit"
 # Apps
 # ------------------
 
-# required_apps = []
+required_apps = ["frappe", "erpnext"]
 
 # Each item in the list will be shown as an app in the apps page
-# add_to_apps_screen = [
-# 	{
-# 		"name": "idp",
-# 		"logo": "/assets/idp/logo.png",
-# 		"title": "Intelligent Document Processing",
-# 		"route": "/idp",
-# 		"has_permission": "idp.api.permission.has_app_permission"
-# 	}
-# ]
+add_to_apps_screen = [
+	{
+		"name": "idp",
+		"logo": "/assets/idp/logo.png",
+		"title": "Intelligent Document Processing",
+		"route": "/idp",
+	}
+]
 
 # Includes in <head>
 # ------------------
@@ -72,6 +71,13 @@ app_license = "mit"
 
 # automatically load and sync documents of this doctype from downstream apps
 # importable_doctypes = [doctype_1]
+
+# Website Route Rules
+# --------------------
+# Route all /idp/* paths to the Vue SPA entry point
+website_route_rules = [
+	{"from_route": "/idp/<path:app_path>", "to_route": "idp"},
+]
 
 # Jinja
 # ----------
