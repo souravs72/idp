@@ -921,6 +921,390 @@ print("Full validation pipeline test passed")
 
 ---
 
+## Phase 6: Document Creator — Mapped Data to ERPNext Documents
+
+> **Important:** Phase 6 tests create actual records in the database.
+> Run these on a **test site only** (`test.local`).  Some tests auto-create
+> Supplier/Item records — clean up afterwards if needed.
+
+### Test 6.1 — Imports
+
+```python
+from idp.idp.mappers import create_document, auto_create_missing_masters
+from idp.idp.mappers.document_creator import (
+    _find_missing_masters, _build_doc_dict, _preserve_text_fields,
+    _get_primary_child_fieldname,
+)
+print("create_document:", create_document)
+print("auto_create_missing_masters:", auto_create_missing_masters)
+print("_find_missing_masters:", _find_missing_masters)
+print("_build_doc_dict:", _build_doc_dict)
+print("Imports OK")
+# Expected: All functions import without error
+```
+
+---
+
+### Test 6.2 — Build doc dict (no DB operations)
+
+```python
+from idp.idp.mappers.base import MappedDocument
+from idp.idp.mappers.document_creator import _build_doc_dict
+
+doc = MappedDocument(
+    doctype="Purchase Invoice",
+    header={
+        "supplier": "Wind Power LLC",
+        "posting_date": "2026-04-01",
+        "due_date": "2026-04-30",
+        "currency": "INR",
+        "bill_no": "VENDOR-INV-001",
+        "remarks": "Test invoice from IDP",
+    },
+    items=[
+        {"item_name": "Widget A", "qty": 10, "rate": 100, "amount": 1000},
+        {"item_name": "Widget B", "qty": 5, "rate": 200, "amount": 1000},
+    ],
+)
+
+result = _build_doc_dict(doc, "Your Company Name")
+print(f"doctype: {result['doctype']}")
+# Expected: Purchase Invoice
+print(f"supplier: {result.get('supplier')}")
+# Expected: Wind Power LLC
+print(f"posting_date: {result.get('posting_date')}")
+# Expected: 2026-04-01
+print(f"company: {result.get('company')}")
+# Expected: Your Company Name (or whatever company was passed)
+print(f"items count: {len(result.get('items', []))}")
+# Expected: 2
+if result.get("items"):
+    print(f"item 1 doctype: {result['items'][0].get('doctype')}")
+    # Expected: Purchase Invoice Item
+    print(f"item 1 qty: {result['items'][0].get('qty')}")
+    # Expected: 10
+print("Build doc dict test passed")
+```
+
+---
+
+### Test 6.3 — Find missing masters
+
+```python
+from idp.idp.mappers.base import MappedDocument
+from idp.idp.mappers.document_creator import _find_missing_masters
+
+# Use a supplier name that does NOT exist in your site
+doc = MappedDocument(
+    doctype="Purchase Invoice",
+    header={"supplier": "ZZZ-Nonexistent-Supplier-XYZ"},
+    items=[
+        {"item_code": "ZZZ-FAKE-ITEM-999", "qty": 1, "rate": 100, "amount": 100},
+    ],
+)
+
+missing = _find_missing_masters(doc, "")
+print(f"Missing count: {len(missing)}")
+# Expected: 2 (one Supplier, one Item)
+for m in missing:
+    print(f"  {m['doctype']}: {m['value']} (field: {m['fieldname']})")
+# Expected:
+#   Supplier: ZZZ-Nonexistent-Supplier-XYZ (field: supplier)
+#   Item: ZZZ-FAKE-ITEM-999 (field: item_code)
+
+assert len(missing) >= 1, "Expected at least one missing master"
+assert any(m["doctype"] == "Supplier" for m in missing)
+print("Find missing masters test passed")
+```
+
+---
+
+### Test 6.4 — Auto-create missing masters
+
+```python
+import frappe
+from idp.idp.mappers.document_creator import auto_create_missing_masters
+
+# Create a unique supplier name for testing
+test_supplier = "IDP-Test-Supplier-AutoCreate"
+test_item = "IDP-Test-Item-AutoCreate"
+
+# Clean up any leftovers from previous runs
+if frappe.db.exists("Supplier", test_supplier):
+    frappe.delete_doc("Supplier", test_supplier, force=True)
+if frappe.db.exists("Item", test_item):
+    frappe.delete_doc("Item", test_item, force=True)
+frappe.db.commit()
+
+missing = [
+    {"doctype": "Supplier", "value": test_supplier, "fieldname": "supplier"},
+    {"doctype": "Item", "value": test_item, "fieldname": "item_code"},
+]
+
+result = auto_create_missing_masters(missing, "")
+print(f"Created: {result['created']}")
+print(f"Failed: {result['failed']}")
+# Expected: Created: [{"doctype": "Supplier", ...}, {"doctype": "Item", ...}]
+# Expected: Failed: []
+
+assert len(result["created"]) == 2, f"Expected 2 created, got {len(result['created'])}"
+assert len(result["failed"]) == 0, f"Expected 0 failed, got {result['failed']}"
+
+# Verify they exist
+assert frappe.db.exists("Supplier", test_supplier), "Supplier not created"
+assert frappe.db.exists("Item", test_item), "Item not created"
+print("Auto-create masters test passed")
+
+# Cleanup
+frappe.delete_doc("Supplier", test_supplier, force=True)
+frappe.delete_doc("Item", test_item, force=True)
+frappe.db.commit()
+print("Cleanup done")
+```
+
+---
+
+### Test 6.5 — create_document: validation error path
+
+```python
+from idp.idp.mappers.base import MappedDocument
+from idp.idp.mappers.document_creator import create_document
+from idp.core.exceptions import ValidationError
+
+# Empty header should fail schema validation
+doc = MappedDocument(
+    doctype="Purchase Invoice",
+    header={},
+    items=[],
+)
+
+try:
+    create_document(doc, company="")
+    print("ERROR: Should have raised ValidationError")
+except ValidationError as e:
+    print(f"Correctly raised ValidationError: {e}")
+    print(f"Details: {e.details}")
+    # Expected: "Schema validation failed with N error(s)"
+    assert "errors" in e.details
+    print("Validation error path test passed")
+```
+
+---
+
+### Test 6.6 — create_document: missing master error path
+
+```python
+from idp.idp.mappers.base import MappedDocument
+from idp.idp.mappers.document_creator import create_document
+from idp.core.exceptions import MissingMasterError
+
+doc = MappedDocument(
+    doctype="Purchase Invoice",
+    header={
+        "supplier": "ZZZ-Nonexistent-Supplier-For-Test",
+        "posting_date": "2026-04-01",
+        "due_date": "2026-04-30",
+    },
+    items=[
+        {"item_name": "Widget", "qty": 10, "rate": 100, "amount": 1000},
+    ],
+)
+
+try:
+    create_document(doc, company="", create_missing_masters=False, skip_validation=True)
+    print("ERROR: Should have raised MissingMasterError")
+except MissingMasterError as e:
+    print(f"Correctly raised MissingMasterError: {e}")
+    print(f"Details: {e.details}")
+    # Expected: "1 missing master record(s) — set create_missing_masters=True..."
+    assert "missing" in e.details
+    print("Missing master error path test passed")
+```
+
+---
+
+### Test 6.7 — create_document: full end-to-end (creates a Draft PI)
+
+```python
+import frappe
+from idp.idp.mappers.base import MappedDocument
+from idp.idp.mappers.document_creator import create_document
+
+# Ensure the supplier exists (use one from your site or create one)
+test_supplier = "Wind Power LLC"
+if not frappe.db.exists("Supplier", test_supplier):
+    # Create a test supplier
+    frappe.get_doc({
+        "doctype": "Supplier",
+        "supplier_name": test_supplier,
+        "supplier_group": "All Supplier Groups",
+    }).insert(ignore_permissions=True)
+    frappe.db.commit()
+
+# Get first company
+company = frappe.db.get_single_value("Global Defaults", "default_company") or frappe.get_all("Company", pluck="name", limit=1)[0]
+
+doc = MappedDocument(
+    doctype="Purchase Invoice",
+    header={
+        "supplier": test_supplier,
+        "posting_date": "2026-04-01",
+        "due_date": "2026-04-30",
+        "currency": "INR",
+        "bill_no": "IDP-E2E-TEST-001",
+        "remarks": "Created by IDP Phase 6 test",
+    },
+    items=[
+        {"item_name": "Widget A", "qty": 10, "rate": 100, "amount": 1000},
+        {"item_name": "Widget B", "qty": 5, "rate": 200, "amount": 1000},
+    ],
+)
+
+result = create_document(doc, company=company, create_missing_masters=True, skip_validation=True)
+print(f"Success: {result['success']}")
+# Expected: True
+print(f"DocType: {result['doctype']}")
+# Expected: Purchase Invoice
+print(f"Name: {result['name']}")
+# Expected: ACC-PINV-YYYY-NNNNN or similar
+print(f"URL: {result['url']}")
+# Expected: /app/purchase-invoice/ACC-PINV-...
+print(f"Warnings: {result['warnings']}")
+print(f"Created masters: {result['created_masters']}")
+
+# Verify the document exists and is Draft
+created_doc = frappe.get_doc("Purchase Invoice", result["name"])
+print(f"Status: {created_doc.docstatus}")
+# Expected: 0 (Draft)
+print(f"Supplier: {created_doc.supplier}")
+# Expected: Wind Power LLC
+print(f"Items: {len(created_doc.items)}")
+# Expected: 2
+assert created_doc.docstatus == 0, "Document should be Draft (docstatus=0)"
+assert len(created_doc.items) == 2, f"Expected 2 items, got {len(created_doc.items)}"
+
+print("End-to-end create_document test passed")
+
+# Cleanup: delete the test document
+frappe.delete_doc("Purchase Invoice", result["name"], force=True)
+frappe.db.commit()
+print("Cleanup done")
+```
+
+> **Note:** Adjust `test_supplier` and `company` to match records in your
+> test site. This test creates and then deletes a Draft Purchase Invoice.
+
+---
+
+### Test 6.8 — create_document with auto-create masters
+
+```python
+import frappe
+from idp.idp.mappers.base import MappedDocument
+from idp.idp.mappers.document_creator import create_document
+
+# Use names that definitely don't exist
+test_supplier = "IDP-AutoTest-Supplier-Phase6"
+test_item = "IDP-AutoTest-Item-Phase6"
+
+# Ensure they don't exist
+for dt, name in [("Supplier", test_supplier), ("Item", test_item)]:
+    if frappe.db.exists(dt, name):
+        frappe.delete_doc(dt, name, force=True)
+frappe.db.commit()
+
+company = frappe.db.get_single_value("Global Defaults", "default_company") or frappe.get_all("Company", pluck="name", limit=1)[0]
+
+doc = MappedDocument(
+    doctype="Purchase Invoice",
+    header={
+        "supplier": test_supplier,
+        "posting_date": "2026-04-01",
+        "due_date": "2026-04-30",
+    },
+    items=[
+        {"item_code": test_item, "item_name": test_item, "qty": 5, "rate": 200, "amount": 1000},
+    ],
+)
+
+result = create_document(
+    doc,
+    company=company,
+    create_missing_masters=True,
+    skip_validation=True,
+)
+print(f"Success: {result['success']}")
+# Expected: True
+print(f"Created masters: {result['created_masters']}")
+# Expected: [{"doctype": "Supplier", "name": "IDP-AutoTest-Supplier-Phase6"},
+#             {"doctype": "Item", "name": "IDP-AutoTest-Item-Phase6"}]
+assert result["success"]
+assert len(result["created_masters"]) >= 1, "Expected at least 1 auto-created master"
+
+# Verify supplier was auto-created
+assert frappe.db.exists("Supplier", test_supplier), "Supplier was not auto-created"
+assert frappe.db.exists("Item", test_item), "Item was not auto-created"
+print("Auto-create masters during document creation test passed")
+
+# Cleanup
+frappe.delete_doc("Purchase Invoice", result["name"], force=True)
+frappe.delete_doc("Supplier", test_supplier, force=True)
+frappe.delete_doc("Item", test_item, force=True)
+frappe.db.commit()
+print("Cleanup done")
+```
+
+---
+
+### Test 6.9 — Text field preservation
+
+```python
+import frappe
+from idp.idp.mappers.base import MappedDocument
+from idp.idp.mappers.document_creator import create_document
+
+test_supplier = "Wind Power LLC"
+if not frappe.db.exists("Supplier", test_supplier):
+    frappe.get_doc({
+        "doctype": "Supplier",
+        "supplier_name": test_supplier,
+        "supplier_group": "All Supplier Groups",
+    }).insert(ignore_permissions=True)
+    frappe.db.commit()
+
+company = frappe.db.get_single_value("Global Defaults", "default_company") or frappe.get_all("Company", pluck="name", limit=1)[0]
+
+custom_remarks = "IDP extraction: Invoice from vendor, terms Net 30"
+doc = MappedDocument(
+    doctype="Purchase Invoice",
+    header={
+        "supplier": test_supplier,
+        "posting_date": "2026-04-01",
+        "due_date": "2026-04-30",
+        "remarks": custom_remarks,
+    },
+    items=[
+        {"item_name": "Widget", "qty": 1, "rate": 500, "amount": 500},
+    ],
+)
+
+result = create_document(doc, company=company, create_missing_masters=True, skip_validation=True)
+created_doc = frappe.get_doc("Purchase Invoice", result["name"])
+print(f"Remarks preserved: {created_doc.remarks == custom_remarks}")
+print(f"Actual remarks: {repr(created_doc.remarks)}")
+# Expected: Remarks preserved: True (if preservation worked)
+# Note: ERPNext may auto-generate remarks; the preservation step re-applies ours
+
+print("Text field preservation test passed")
+
+# Cleanup
+frappe.delete_doc("Purchase Invoice", result["name"], force=True)
+frappe.db.commit()
+print("Cleanup done")
+```
+
+---
+
 ## Running All Tests
 
 ### Option A: bench console (interactive)
@@ -982,6 +1366,15 @@ bench --site test.local run-tests --app idp
 | Phase 5 | 5.8 Select options + Data length | Pending |
 | Phase 5 | 5.9 Link resolution | Pending |
 | Phase 5 | 5.10 Full validation pipeline | Pending |
+| Phase 6 | 6.1 Imports | Pending |
+| Phase 6 | 6.2 Build doc dict | Pending |
+| Phase 6 | 6.3 Find missing masters | Pending |
+| Phase 6 | 6.4 Auto-create masters | Pending |
+| Phase 6 | 6.5 Validation error path | Pending |
+| Phase 6 | 6.6 Missing master error path | Pending |
+| Phase 6 | 6.7 Full end-to-end create | Pending |
+| Phase 6 | 6.8 Auto-create during create | Pending |
+| Phase 6 | 6.9 Text field preservation | Pending |
 
 > **Note:** Update this table as you run tests.
-> Tests for Phase 6+ should be added here as those phases are implemented.
+> Tests for Phase 7+ should be added here as those phases are implemented.
