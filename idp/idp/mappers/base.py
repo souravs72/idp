@@ -46,21 +46,22 @@ def get_doctype_schema(doctype: str) -> dict:
 
 	Returns a dict with the parent fields and any child-table schemas::
 
-		{
-			"doctype": "Purchase Invoice",
-			"fields": [
-				{"fieldname": "supplier", "fieldtype": "Link",
-				 "options": "Supplier", "label": "Supplier", "reqd": 1},
-				...
-			],
-			"child_tables": {
-				"items": {
-					"doctype": "Purchase Invoice Item",
-					"parentfield": "items",
-					"fields": [ ... ]
-				}
-			}
-		}
+	        {
+	            "doctype": "Purchase Invoice",
+	            "fields": [
+	                {
+	                    "fieldname": "supplier",
+	                    "fieldtype": "Link",
+	                    "options": "Supplier",
+	                    "label": "Supplier",
+	                    "reqd": 1,
+	                },
+	                ...,
+	            ],
+	            "child_tables": {
+	                "items": {"doctype": "Purchase Invoice Item", "parentfield": "items", "fields": [...]}
+	            },
+	        }
 	"""
 	meta = frappe.get_meta(doctype)
 
@@ -102,10 +103,7 @@ def get_extractable_fields(doctype: str) -> list[dict]:
 	Text, Small Text, Long Text, Check.
 	"""
 	schema = get_doctype_schema(doctype)
-	return [
-		f for f in schema["fields"]
-		if f["fieldtype"] in EXTRACTABLE_FIELD_TYPES
-	]
+	return [f for f in schema["fields"] if f["fieldtype"] in EXTRACTABLE_FIELD_TYPES]
 
 
 # ---------------------------------------------------------------------------
@@ -124,11 +122,13 @@ def _get_child_fields(child_doctype: str) -> list[dict]:
 	fields: list[dict] = []
 	for df in meta.fields:
 		if df.fieldtype in EXTRACTABLE_FIELD_TYPES:
-			fields.append({
-				"fieldname": df.fieldname,
-				"fieldtype": df.fieldtype,
-				"label": df.label or df.fieldname,
-				"reqd": df.reqd or 0,
-				"options": df.options or "",
-			})
+			fields.append(
+				{
+					"fieldname": df.fieldname,
+					"fieldtype": df.fieldtype,
+					"label": df.label or df.fieldname,
+					"reqd": df.reqd or 0,
+					"options": df.options or "",
+				}
+			)
 	return fields

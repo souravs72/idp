@@ -217,11 +217,13 @@ def extract_text(file_path: str, lang: str = "en") -> list[dict]:
 			continue
 		for line in page:
 			bbox, (text, confidence) = line
-			blocks.append({
-				"text": text,
-				"confidence": float(confidence),
-				"bbox": bbox,
-			})
+			blocks.append(
+				{
+					"text": text,
+					"confidence": float(confidence),
+					"bbox": bbox,
+				}
+			)
 
 	return blocks
 
@@ -331,9 +333,7 @@ def extract_layout(file_path: str, lang: str = "en") -> LayoutAnalysis:
 		content = ""
 		res = region.get("res")
 		if isinstance(res, list):
-			content = " ".join(
-				entry.get("text", "") for entry in res if isinstance(entry, dict)
-			)
+			content = " ".join(entry.get("text", "") for entry in res if isinstance(entry, dict))
 		elif isinstance(res, dict):
 			content = res.get("text", "")
 
@@ -420,9 +420,7 @@ def process_pdf(
 			raise
 		except Exception as exc:
 			logger.warning(f"OCR failed on page {page_num} of '{file_path}': {exc}")
-			results.append(
-				OCRResult(page_number=page_num, language=lang)
-			)
+			results.append(OCRResult(page_number=page_num, language=lang))
 		finally:
 			# Clean up temp files
 			_safe_remove(page_img_path)

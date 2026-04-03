@@ -119,6 +119,30 @@ class FieldMapper:
 			"total_credit": ["total credit", "credit total"],
 			"remark": ["remarks", "narration", "description", "memo"],
 		},
+		"Opportunity": {
+			"party_name": ["customer", "lead", "party", "prospect", "company name", "client"],
+			"opportunity_from": ["opportunity from", "lead source", "party type"],
+			"transaction_date": ["date", "opportunity date", "dated"],
+			"expected_closing": ["closing date", "expected closing", "expected date"],
+			"opportunity_amount": ["amount", "opportunity amount", "value", "deal value", "deal size"],
+			"opportunity_type": ["type", "opportunity type"],
+			"sales_stage": ["stage", "sales stage", "pipeline stage"],
+			"probability": ["probability", "chance", "likelihood"],
+			"currency": ["currency"],
+			"utm_source": ["source", "lead source", "campaign source"],
+			"contact_person": ["contact", "contact person", "poc"],
+			"contact_email": ["email", "contact email", "email address"],
+			"contact_mobile": ["mobile", "phone", "contact mobile", "contact phone"],
+		},
+		"Supplier Quotation": {
+			"supplier": ["supplier", "vendor", "seller", "from", "quoted by"],
+			"transaction_date": ["date", "quotation date", "quote date", "dated"],
+			"valid_till": ["valid till", "validity", "expiry date", "valid until"],
+			"quotation_number": ["quotation no", "quote no", "reference", "ref no", "sq no"],
+			"net_total": ["subtotal", "sub total", "net total", "net amount"],
+			"grand_total": ["grand total", "total", "total amount"],
+			"currency": ["currency"],
+		},
 	}
 
 	# ------------------------------------------------------------------
@@ -160,12 +184,29 @@ class FieldMapper:
 
 	# Month name lookup for date parsing
 	_MONTHS: ClassVar[dict[str, int]] = {
-		"jan": 1, "january": 1, "feb": 2, "february": 2,
-		"mar": 3, "march": 3, "apr": 4, "april": 4,
-		"may": 5, "jun": 6, "june": 6,
-		"jul": 7, "july": 7, "aug": 8, "august": 8,
-		"sep": 9, "september": 9, "oct": 10, "october": 10,
-		"nov": 11, "november": 11, "dec": 12, "december": 12,
+		"jan": 1,
+		"january": 1,
+		"feb": 2,
+		"february": 2,
+		"mar": 3,
+		"march": 3,
+		"apr": 4,
+		"april": 4,
+		"may": 5,
+		"jun": 6,
+		"june": 6,
+		"jul": 7,
+		"july": 7,
+		"aug": 8,
+		"august": 8,
+		"sep": 9,
+		"september": 9,
+		"oct": 10,
+		"october": 10,
+		"nov": 11,
+		"november": 11,
+		"dec": 12,
+		"december": 12,
 	}
 
 	# ==================================================================
@@ -536,9 +577,7 @@ class FieldMapper:
 				}
 				result.header[fieldname] = resolved
 			elif not resolved:
-				result.warnings.append(
-					f'{link_doctype} "{raw_value}" not found (field: {fieldname})'
-				)
+				result.warnings.append(f'{link_doctype} "{raw_value}" not found (field: {fieldname})')
 
 	def _resolve_link(
 		self,

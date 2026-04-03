@@ -84,6 +84,7 @@ def get_confidence_threshold() -> float:
 # Private helpers
 # ---------------------------------------------------------------------------
 
+
 def _default_settings() -> dict:
 	"""Safe defaults used before the IDP Settings DocType is created."""
 	return {

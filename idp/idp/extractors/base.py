@@ -169,9 +169,7 @@ def extract_content(file_url: str, lang: str = "en") -> ExtractionResult:
 
 	for extractor in _get_extractors():
 		if extractor.supports_mime_type(mime_type):
-			logger.info(
-				f"Dispatching {mime_type} to {extractor.__class__.__name__} | file={file_url}"
-			)
+			logger.info(f"Dispatching {mime_type} to {extractor.__class__.__name__} | file={file_url}")
 			return extractor.extract(abs_path, lang=lang, mime_type=mime_type, file_url=file_url)
 
 	raise UnsupportedFormatError(

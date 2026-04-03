@@ -76,8 +76,7 @@ def log_ocr_result(
 	"""
 	logger = get_logger("idp.ocr")
 	msg = (
-		f"OCR complete | file={file_url} | pages={pages} "
-		f"| confidence={avg_confidence:.2f} | lang={language}"
+		f"OCR complete | file={file_url} | pages={pages} | confidence={avg_confidence:.2f} | lang={language}"
 	)
 	extra = {
 		"file_url": file_url,

@@ -241,7 +241,9 @@ class ExcelExtractor(BaseExtractor):
 			tables=all_tables or None,
 			metadata={
 				"file_name": os.path.basename(file_path),
-				"mime_type": kwargs.get("mime_type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+				"mime_type": kwargs.get(
+					"mime_type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+				),
 				"sheet_count": len(wb.sheetnames) if hasattr(wb, "sheetnames") else 0,
 			},
 		)
