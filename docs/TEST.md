@@ -1684,6 +1684,418 @@ print("Summary generation test passed")
 
 ---
 
+## Phase 8: HTTP API Endpoints
+
+> **Important:** Phase 8 tests call `@frappe.whitelist()` API functions
+> directly from `bench console`. Some tests create/delete records — run
+> on a **test site only** (`test.local`).
+
+### Test 8.1 — API module imports
+
+```python
+from idp.api.upload import upload_document
+from idp.api.extract import extract_document
+from idp.api.create import create_erp_document, get_missing_masters
+from idp.api.compare import compare_document, find_matching_record
+from idp.api.settings import get_settings
+
+print("upload_document:", upload_document)
+print("extract_document:", extract_document)
+print("create_erp_document:", create_erp_document)
+print("get_missing_masters:", get_missing_masters)
+print("compare_document:", compare_document)
+print("find_matching_record:", find_matching_record)
+print("get_settings:", get_settings)
+print("All API imports OK")
+# Expected: All functions import without error
+```
+
+---
+
+### Test 8.2 — get_settings returns expected structure
+
+```python
+from idp.api.settings import get_settings
+
+result = get_settings()
+print(f"enabled: {result['enabled']}")
+# Expected: True (default)
+
+print(f"supported_formats: {result['supported_formats']}")
+# Expected: list of extensions like ['.csv', '.doc', '.jpeg', ...]
+
+print(f"supported_doctypes: {result['supported_doctypes']}")
+# Expected: list of 11 DocTypes
+
+print(f"ocr_languages: {result['ocr_languages']}")
+# Expected: {'en': 'English', 'ch': 'Chinese', ...}
+
+print(f"max_file_size_mb: {result['max_file_size_mb']}")
+# Expected: 25
+
+print(f"default_target_doctype: {result['default_target_doctype']}")
+# Expected: Purchase Invoice
+
+print(f"features: {result['features']}")
+# Expected: dict with keys: ocr, table_extraction, comparison, etc.
+
+assert "supported_formats" in result
+assert "supported_doctypes" in result
+assert "features" in result
+assert isinstance(result["features"], dict)
+assert "ocr" in result["features"]
+print("get_settings test passed")
+```
+
+---
+
+### Test 8.3 — extract_document: input validation
+
+```python
+import frappe
+from idp.api.extract import extract_document
+
+# Missing file_url
+try:
+    extract_document(file_url="", target_doctype="Purchase Invoice")
+    print("ERROR: Should have thrown")
+except frappe.ValidationError:
+    print("Correctly rejected empty file_url")
+
+# Invalid DocType
+try:
+    extract_document(file_url="/private/files/test.pdf", target_doctype="Bogus DocType")
+    print("ERROR: Should have thrown")
+except frappe.ValidationError:
+    print("Correctly rejected invalid DocType")
+
+print("extract_document input validation test passed")
+```
+
+---
+
+### Test 8.4 — extract_document: error handling for missing file
+
+```python
+from idp.api.extract import extract_document
+
+# File that doesn't exist — should return success=False with error info
+result = extract_document(
+    file_url="/private/files/nonexistent-idp-test-file.pdf",
+    target_doctype="Purchase Invoice",
+)
+print(f"success: {result['success']}")
+# Expected: False
+print(f"error_type: {result.get('error_type')}")
+# Expected: ExtractionError
+print(f"error: {result.get('error')}")
+# Expected: "File not found on disk: ..."
+print(f"processing_time_ms: {result.get('processing_time_ms')}")
+
+assert result["success"] is False
+assert "error" in result
+print("extract_document error handling test passed")
+```
+
+---
+
+### Test 8.5 — create_erp_document: input validation
+
+```python
+import frappe
+from idp.api.create import create_erp_document
+
+# Invalid DocType
+try:
+    create_erp_document(
+        target_doctype="Bogus",
+        extracted_data='{"header": {}, "items": []}',
+    )
+    print("ERROR: Should have thrown")
+except frappe.ValidationError:
+    print("Correctly rejected invalid DocType")
+
+# Invalid JSON
+try:
+    create_erp_document(
+        target_doctype="Purchase Invoice",
+        extracted_data="not valid json {{{",
+    )
+    print("ERROR: Should have thrown")
+except frappe.ValidationError:
+    print("Correctly rejected invalid JSON")
+
+print("create_erp_document input validation test passed")
+```
+
+---
+
+### Test 8.6 — create_erp_document: missing master error path
+
+```python
+from idp.api.create import create_erp_document
+
+result = create_erp_document(
+    target_doctype="Purchase Invoice",
+    extracted_data={
+        "header": {
+            "supplier": "ZZZ-API-Test-Nonexistent-Supplier",
+            "posting_date": "2026-04-01",
+            "due_date": "2026-04-30",
+        },
+        "items": [{"item_name": "Widget", "qty": 10, "rate": 100, "amount": 1000}],
+    },
+    create_missing_masters=False,
+)
+print(f"success: {result['success']}")
+# Expected: False
+print(f"error_type: {result.get('error_type')}")
+# Expected: MissingMasterError
+print(f"details: {result.get('details')}")
+# Expected: {"missing": ["Supplier:ZZZ-API-Test-Nonexistent-Supplier"]}
+
+assert result["success"] is False
+assert result["error_type"] == "MissingMasterError"
+print("Missing master error path test passed")
+```
+
+---
+
+### Test 8.7 — create_erp_document: full end-to-end
+
+```python
+import frappe
+from idp.api.create import create_erp_document
+
+test_supplier = "Wind Power LLC"
+if not frappe.db.exists("Supplier", test_supplier):
+    frappe.get_doc({
+        "doctype": "Supplier",
+        "supplier_name": test_supplier,
+        "supplier_group": "All Supplier Groups",
+    }).insert(ignore_permissions=True)
+    frappe.db.commit()
+
+company = frappe.db.get_single_value("Global Defaults", "default_company") or frappe.get_all("Company", pluck="name", limit=1)[0]
+
+result = create_erp_document(
+    target_doctype="Purchase Invoice",
+    extracted_data={
+        "header": {
+            "supplier": test_supplier,
+            "posting_date": "2026-04-01",
+            "due_date": "2026-04-30",
+            "currency": "INR",
+            "bill_no": "IDP-API-TEST-001",
+        },
+        "items": [
+            {"item_name": "Widget A", "qty": 10, "rate": 100, "amount": 1000},
+            {"item_name": "Widget B", "qty": 5, "rate": 200, "amount": 1000},
+        ],
+    },
+    company=company,
+    create_missing_masters=True,
+)
+print(f"success: {result['success']}")
+# Expected: True
+print(f"doctype: {result.get('doctype')}")
+# Expected: Purchase Invoice
+print(f"name: {result.get('name')}")
+# Expected: ACC-PINV-... or similar
+print(f"url: {result.get('url')}")
+print(f"warnings: {result.get('warnings')}")
+print(f"created_masters: {result.get('created_masters')}")
+
+assert result["success"] is True
+assert result["doctype"] == "Purchase Invoice"
+
+# Cleanup
+frappe.delete_doc("Purchase Invoice", result["name"], force=True)
+frappe.db.commit()
+print("End-to-end create via API test passed")
+```
+
+---
+
+### Test 8.8 — get_missing_masters
+
+```python
+from idp.api.create import get_missing_masters
+
+result = get_missing_masters(
+    target_doctype="Purchase Invoice",
+    extracted_data={
+        "header": {"supplier": "ZZZ-Nonexistent-Supplier-API-Test"},
+        "items": [
+            {"item_code": "ZZZ-FAKE-ITEM-API-TEST", "qty": 1, "rate": 50, "amount": 50},
+        ],
+    },
+)
+print(f"missing count: {result['count']}")
+# Expected: >= 2 (Supplier + Item)
+print(f"missing: {result['missing']}")
+
+assert result["count"] >= 1
+assert any(m["doctype"] == "Supplier" for m in result["missing"])
+print("get_missing_masters test passed")
+```
+
+---
+
+### Test 8.9 — compare_document: input validation
+
+```python
+import frappe
+from idp.api.compare import compare_document
+
+# Missing file_url
+try:
+    compare_document(
+        file_url="",
+        compare_doctype="Purchase Invoice",
+        compare_docname="PI-001",
+    )
+    print("ERROR: Should have thrown")
+except frappe.ValidationError:
+    print("Correctly rejected empty file_url")
+
+# Missing docname
+try:
+    compare_document(
+        file_url="/private/files/test.pdf",
+        compare_doctype="Purchase Invoice",
+        compare_docname="",
+    )
+    print("ERROR: Should have thrown")
+except frappe.ValidationError:
+    print("Correctly rejected empty docname")
+
+# Invalid DocType
+try:
+    compare_document(
+        file_url="/private/files/test.pdf",
+        compare_doctype="Bogus",
+        compare_docname="PI-001",
+    )
+    print("ERROR: Should have thrown")
+except frappe.ValidationError:
+    print("Correctly rejected invalid DocType")
+
+print("compare_document input validation test passed")
+```
+
+---
+
+### Test 8.10 — find_matching_record: input validation and error handling
+
+```python
+import frappe
+from idp.api.compare import find_matching_record
+
+# Missing file_url
+try:
+    find_matching_record(file_url="", target_doctype="Purchase Order")
+    print("ERROR: Should have thrown")
+except frappe.ValidationError:
+    print("Correctly rejected empty file_url")
+
+# Invalid DocType
+try:
+    find_matching_record(file_url="/private/files/test.pdf", target_doctype="Bogus")
+    print("ERROR: Should have thrown")
+except frappe.ValidationError:
+    print("Correctly rejected invalid DocType")
+
+# Non-existent file — should return found=False gracefully
+result = find_matching_record(
+    file_url="/private/files/nonexistent-idp-match-test.pdf",
+    target_doctype="Purchase Order",
+)
+print(f"found: {result.get('found')}")
+# Expected: False
+print(f"error_type: {result.get('error_type')}")
+# Expected: ExtractionError (file not found)
+
+assert result["found"] is False
+print("find_matching_record error handling test passed")
+```
+
+---
+
+### Test 8.11 — JSON string parameter parsing
+
+```python
+import json
+from idp.api.create import _parse_json_param
+
+# Valid JSON string
+result = _parse_json_param('{"supplier": "Tara Tech"}', "test")
+print(f"Parsed: {result}")
+# Expected: {"supplier": "Tara Tech"}
+assert result == {"supplier": "Tara Tech"}
+
+# Already a dict — pass through
+result2 = _parse_json_param({"a": 1}, "test")
+print(f"Dict passthrough: {result2}")
+# Expected: {"a": 1}
+assert result2 == {"a": 1}
+
+# Already a list — pass through
+result3 = _parse_json_param([1, 2, 3], "test")
+print(f"List passthrough: {result3}")
+# Expected: [1, 2, 3]
+assert result3 == [1, 2, 3]
+
+print("JSON parameter parsing test passed")
+```
+
+---
+
+### Test 8.12 — Comparison serialization
+
+```python
+from idp.idp.comparison import ComparisonResult, FieldComparison, ItemComparison
+from idp.api.compare import _serialize_comparison
+
+result = ComparisonResult(
+    doctype="Purchase Invoice",
+    docname="PI-001",
+    matches=[
+        FieldComparison(field="supplier", label="Supplier", status="match",
+                       document_value="Tara", record_value="Tara"),
+    ],
+    discrepancies=[
+        FieldComparison(field="grand_total", label="Grand Total", status="mismatch",
+                       document_value=1000, record_value=990, difference="Document: 1000, Record: 990"),
+    ],
+    missing_in_document=["tax_category"],
+    missing_in_record=[],
+    items_comparison=[
+        ItemComparison(item_code="A", item_name="Widget A", status="match", field_comparisons=[]),
+    ],
+    summary="1/2 match",
+)
+
+serialized = _serialize_comparison(result)
+print(f"doctype: {serialized['doctype']}")
+# Expected: Purchase Invoice
+print(f"matches: {len(serialized['matches'])}")
+# Expected: 1
+print(f"discrepancies: {len(serialized['discrepancies'])}")
+# Expected: 1
+print(f"items_comparison: {len(serialized['items_comparison'])}")
+# Expected: 1
+print(f"summary: {serialized['summary']}")
+# Expected: 1/2 match
+
+assert serialized["matches"][0]["field"] == "supplier"
+assert serialized["discrepancies"][0]["field"] == "grand_total"
+assert serialized["items_comparison"][0]["item_code"] == "A"
+print("Comparison serialization test passed")
+```
+
+---
+
 ## Running All Tests
 
 ### Option A: bench console (interactive)
@@ -1764,6 +2176,18 @@ bench --site test.local run-tests --app idp
 | Phase 7 | 7.8 Match by supplier+date+total | Pending |
 | Phase 7 | 7.9 Item-level comparison | Pending |
 | Phase 7 | 7.10 Summary generation | Pending |
+| Phase 8 | 8.1 API module imports | Pending |
+| Phase 8 | 8.2 get_settings structure | Pending |
+| Phase 8 | 8.3 extract_document validation | Pending |
+| Phase 8 | 8.4 extract_document error handling | Pending |
+| Phase 8 | 8.5 create_erp_document validation | Pending |
+| Phase 8 | 8.6 create missing master error | Pending |
+| Phase 8 | 8.7 create end-to-end | Pending |
+| Phase 8 | 8.8 get_missing_masters | Pending |
+| Phase 8 | 8.9 compare_document validation | Pending |
+| Phase 8 | 8.10 find_matching_record validation | Pending |
+| Phase 8 | 8.11 JSON parameter parsing | Pending |
+| Phase 8 | 8.12 Comparison serialization | Pending |
 
 > **Note:** Update this table as you run tests.
-> Tests for Phase 8+ should be added here as those phases are implemented.
+> Tests for Phase 9+ should be added here as those phases are implemented.
