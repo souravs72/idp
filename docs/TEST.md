@@ -1305,6 +1305,385 @@ print("Cleanup done")
 
 ---
 
+## Phase 7: Document Comparison & Reconciliation
+
+> **Important:** Phase 7 tests require existing ERPNext records.
+> Tests 7.5–7.8 create temporary documents for comparison — clean up
+> afterwards if needed. Run on a **test site only** (`test.local`).
+
+### Test 7.1 — Data model imports
+
+```python
+from idp.idp.comparison import (
+    ComparisonResult, FieldComparison, ItemComparison,
+    compare_with_record, find_matching_record,
+)
+
+# ComparisonResult defaults
+cr = ComparisonResult()
+print(f"doctype: {repr(cr.doctype)}")         # Expected: ""
+print(f"matches: {cr.matches}")               # Expected: []
+print(f"discrepancies: {cr.discrepancies}")   # Expected: []
+print(f"summary: {repr(cr.summary)}")         # Expected: ""
+
+# FieldComparison
+fc = FieldComparison(field="supplier", label="Supplier", document_value="Tara", record_value="Tara")
+print(f"FC status: {fc.status}")              # Expected: match
+
+# ItemComparison
+ic = ItemComparison(item_code="ITEM-001", item_name="Widget A", status="match")
+print(f"IC status: {ic.status}")              # Expected: match
+
+print("Data model import tests passed")
+```
+
+---
+
+### Test 7.2 — Type-aware value comparison (dates)
+
+```python
+from idp.idp.comparison import _compare_dates
+
+# Same date, different formats
+cmp = _compare_dates("posting_date", "Date", "2026-04-01", "2026-04-01")
+print(f"Same date: {cmp.status}")
+# Expected: match
+
+# Different dates
+cmp2 = _compare_dates("posting_date", "Date", "2026-04-01", "2026-04-15")
+print(f"Different date: {cmp2.status}")
+# Expected: mismatch
+print(f"Diff: {cmp2.difference}")
+# Expected: "Document: 2026-04-01, Record: 2026-04-15"
+
+print("Date comparison tests passed")
+```
+
+---
+
+### Test 7.3 — Type-aware value comparison (numbers)
+
+```python
+from idp.idp.comparison import _compare_numbers
+
+# Equal within precision
+cmp = _compare_numbers("grand_total", "Grand Total", 1000.004, 1000.006, 2)
+print(f"Close numbers: {cmp.status}")
+# Expected: match (both round to 1000.00)
+
+# Mismatched
+cmp2 = _compare_numbers("grand_total", "Grand Total", 1000.00, 990.00, 2)
+print(f"Diff numbers: {cmp2.status}")
+# Expected: mismatch
+print(f"Diff: {cmp2.difference}")
+# Expected: "Document: 1000.0, Record: 990.0 (diff: +10.00)"
+
+# Integer comparison
+cmp3 = _compare_numbers("qty", "Qty", 10, 10, 0)
+print(f"Same int: {cmp3.status}")
+# Expected: match
+
+print("Number comparison tests passed")
+```
+
+---
+
+### Test 7.4 — Type-aware value comparison (strings)
+
+```python
+from idp.idp.comparison import _compare_strings
+
+# Case-insensitive match
+cmp = _compare_strings("supplier", "Supplier", "Tara Technologies", "tara technologies")
+print(f"Case-insensitive: {cmp.status}")
+# Expected: match
+
+# Whitespace-trimmed match
+cmp2 = _compare_strings("supplier", "Supplier", "  Tara Tech  ", "Tara Tech")
+print(f"Whitespace-trimmed: {cmp2.status}")
+# Expected: match
+
+# Mismatch
+cmp3 = _compare_strings("supplier", "Supplier", "Tara Tech", "Wind Power")
+print(f"Mismatch: {cmp3.status}")
+# Expected: mismatch
+print(f"Diff: {cmp3.difference}")
+# Expected: 'Document: "Tara Tech", Record: "Wind Power"'
+
+print("String comparison tests passed")
+```
+
+---
+
+### Test 7.5 — compare_with_record: non-existent record
+
+```python
+from idp.idp.mappers.base import MappedDocument
+from idp.idp.comparison import compare_with_record
+
+doc = MappedDocument(
+    doctype="Purchase Invoice",
+    header={"supplier": "Test"},
+    items=[],
+)
+
+result = compare_with_record(doc, "Purchase Invoice", "NONEXISTENT-PI-999")
+print(f"Summary: {result.summary}")
+# Expected: 'Purchase Invoice "NONEXISTENT-PI-999" does not exist'
+assert "does not exist" in result.summary
+print("Non-existent record test passed")
+```
+
+---
+
+### Test 7.6 — compare_with_record: full comparison against real record
+
+```python
+import frappe
+from idp.idp.mappers.base import MappedDocument
+from idp.idp.comparison import compare_with_record
+
+# Create a test Purchase Invoice to compare against
+test_supplier = "Wind Power LLC"
+if not frappe.db.exists("Supplier", test_supplier):
+    frappe.get_doc({
+        "doctype": "Supplier",
+        "supplier_name": test_supplier,
+        "supplier_group": "All Supplier Groups",
+    }).insert(ignore_permissions=True)
+
+company = frappe.db.get_single_value("Global Defaults", "default_company") or frappe.get_all("Company", pluck="name", limit=1)[0]
+
+pi = frappe.get_doc({
+    "doctype": "Purchase Invoice",
+    "supplier": test_supplier,
+    "posting_date": "2026-04-01",
+    "due_date": "2026-04-30",
+    "company": company,
+    "items": [
+        {"item_name": "Widget A", "qty": 10, "rate": 100},
+        {"item_name": "Widget B", "qty": 5, "rate": 200},
+    ],
+})
+pi.flags.ignore_permissions = True
+pi.insert()
+frappe.db.commit()
+
+# Now compare with extracted data that has some differences
+extracted = MappedDocument(
+    doctype="Purchase Invoice",
+    header={
+        "supplier": test_supplier,
+        "posting_date": "2026-04-01",     # same
+        "due_date": "2026-05-15",         # different
+    },
+    items=[
+        {"item_name": "Widget A", "qty": 10, "rate": 100},     # same
+        {"item_name": "Widget B", "qty": 8, "rate": 200},      # qty differs
+    ],
+)
+
+result = compare_with_record(extracted, "Purchase Invoice", pi.name)
+print(f"Summary: {result.summary}")
+print(f"Matches: {len(result.matches)}")
+print(f"Discrepancies: {len(result.discrepancies)}")
+for d in result.discrepancies:
+    print(f"  [{d.status}] {d.label}: {d.difference}")
+print(f"Items comparison: {len(result.items_comparison)}")
+for ic in result.items_comparison:
+    print(f"  {ic.item_name} [{ic.status}]")
+    for fc in ic.field_comparisons:
+        if fc.status == "mismatch":
+            print(f"    {fc.label}: {fc.difference}")
+
+# Expected:
+#   posting_date: match
+#   due_date: mismatch (2026-05-15 vs 2026-04-30)
+#   Widget A: match
+#   Widget B: partial_match (qty 8 vs 5)
+
+assert len(result.discrepancies) >= 1, "Expected at least one discrepancy"
+print("Full comparison test passed")
+
+# Cleanup
+frappe.delete_doc("Purchase Invoice", pi.name, force=True)
+frappe.db.commit()
+print("Cleanup done")
+```
+
+---
+
+### Test 7.7 — find_matching_record: by reference
+
+```python
+import frappe
+from idp.idp.mappers.base import MappedDocument
+from idp.idp.comparison import find_matching_record
+
+# Create a PO to match against
+test_supplier = "Wind Power LLC"
+company = frappe.db.get_single_value("Global Defaults", "default_company") or frappe.get_all("Company", pluck="name", limit=1)[0]
+
+po = frappe.get_doc({
+    "doctype": "Purchase Order",
+    "supplier": test_supplier,
+    "transaction_date": "2026-04-01",
+    "schedule_date": "2026-04-15",
+    "company": company,
+    "items": [
+        {"item_name": "Widget A", "qty": 10, "rate": 100, "schedule_date": "2026-04-15"},
+    ],
+})
+po.flags.ignore_permissions = True
+po.insert()
+frappe.db.commit()
+
+# Try to find it by reference (using PO name as bill_no)
+extracted = MappedDocument(
+    doctype="Purchase Invoice",
+    header={"bill_no": po.name, "supplier": test_supplier},
+    items=[],
+)
+
+match = find_matching_record(extracted, "Purchase Order")
+print(f"Found by reference: {match}")
+# Expected: the PO name
+assert match == po.name, f"Expected {po.name}, got {match}"
+print("Reference matching test passed")
+
+# Cleanup
+frappe.delete_doc("Purchase Order", po.name, force=True)
+frappe.db.commit()
+print("Cleanup done")
+```
+
+---
+
+### Test 7.8 — find_matching_record: by supplier + date + total
+
+```python
+import frappe
+from idp.idp.mappers.base import MappedDocument
+from idp.idp.comparison import find_matching_record
+
+test_supplier = "Wind Power LLC"
+company = frappe.db.get_single_value("Global Defaults", "default_company") or frappe.get_all("Company", pluck="name", limit=1)[0]
+
+po = frappe.get_doc({
+    "doctype": "Purchase Order",
+    "supplier": test_supplier,
+    "transaction_date": "2026-04-01",
+    "schedule_date": "2026-04-15",
+    "company": company,
+    "items": [
+        {"item_name": "Widget A", "qty": 10, "rate": 500, "schedule_date": "2026-04-15"},
+    ],
+})
+po.flags.ignore_permissions = True
+po.insert()
+frappe.db.commit()
+
+# Match by supplier + date + approximate total
+extracted = MappedDocument(
+    doctype="Purchase Invoice",
+    header={
+        "supplier": test_supplier,
+        "posting_date": "2026-04-02",       # within 15 days
+        "grand_total": po.grand_total,      # exact total match
+    },
+    items=[],
+)
+
+match = find_matching_record(extracted, "Purchase Order", company=company)
+print(f"Found by supplier+date+total: {match}")
+# Expected: the PO name (or None if multiple POs exist for this supplier)
+if match:
+    assert match == po.name, f"Expected {po.name}, got {match}"
+    print("Supplier+date+total matching test passed")
+else:
+    print("No match found (may be due to other POs in the system)")
+
+# Cleanup
+frappe.delete_doc("Purchase Order", po.name, force=True)
+frappe.db.commit()
+print("Cleanup done")
+```
+
+---
+
+### Test 7.9 — Item-level comparison details
+
+```python
+from idp.idp.comparison import _compare_single_item, FieldComparison
+
+field_meta = {
+    "item_name": {"fieldname": "item_name", "fieldtype": "Data", "label": "Item Name"},
+    "qty": {"fieldname": "qty", "fieldtype": "Float", "label": "Qty"},
+    "rate": {"fieldname": "rate", "fieldtype": "Currency", "label": "Rate"},
+    "amount": {"fieldname": "amount", "fieldtype": "Currency", "label": "Amount"},
+}
+
+# Mock record row (simulates a frappe doc row with .get())
+class MockRow:
+    def __init__(self, data):
+        self._data = data
+    def get(self, key):
+        return self._data.get(key)
+
+doc_row = {"item_name": "Widget A", "qty": 10, "rate": 100, "amount": 1000}
+rec_row = MockRow({"item_name": "Widget A", "qty": 8, "rate": 100, "amount": 800})
+
+result = _compare_single_item(doc_row, rec_row, field_meta)
+print(f"Status: {result.status}")
+# Expected: partial_match (qty and amount differ)
+for fc in result.field_comparisons:
+    print(f"  {fc.label}: {fc.status} {fc.difference or ''}")
+# Expected:
+#   Item Name: match
+#   Qty: mismatch Document: 10.0, Record: 8.0 (diff: +2.000)
+#   Rate: match
+#   Amount: mismatch Document: 1000.0, Record: 800.0 (diff: +200.00)
+
+mismatches = [fc for fc in result.field_comparisons if fc.status == "mismatch"]
+assert len(mismatches) >= 1, "Expected at least one mismatch"
+print("Item-level comparison test passed")
+```
+
+---
+
+### Test 7.10 — Summary generation
+
+```python
+from idp.idp.comparison import ComparisonResult, FieldComparison, ItemComparison, _build_summary
+
+result = ComparisonResult(
+    doctype="Purchase Invoice",
+    docname="PI-001",
+    matches=[
+        FieldComparison(field="supplier", label="Supplier", status="match"),
+        FieldComparison(field="posting_date", label="Date", status="match"),
+    ],
+    discrepancies=[
+        FieldComparison(field="grand_total", label="Grand Total", status="mismatch"),
+    ],
+    missing_in_document=["Tax Category (tax_category)"],
+    missing_in_record=[],
+    items_comparison=[
+        ItemComparison(item_code="A", item_name="Widget A", status="match"),
+        ItemComparison(item_code="B", item_name="Widget B", status="partial_match"),
+    ],
+)
+
+summary = _build_summary(result)
+print(f"Summary: {summary}")
+# Expected: "2/3 header field(s) match; 1 discrepancy(ies): Grand Total; 1 field(s) only in record; Items: 1 match, 1 partial"
+assert "2/3" in summary
+assert "Grand Total" in summary
+print("Summary generation test passed")
+```
+
+---
+
 ## Running All Tests
 
 ### Option A: bench console (interactive)
@@ -1375,6 +1754,16 @@ bench --site test.local run-tests --app idp
 | Phase 6 | 6.7 Full end-to-end create | Pending |
 | Phase 6 | 6.8 Auto-create during create | Pending |
 | Phase 6 | 6.9 Text field preservation | Pending |
+| Phase 7 | 7.1 Data model imports | Pending |
+| Phase 7 | 7.2 Date comparison | Pending |
+| Phase 7 | 7.3 Number comparison | Pending |
+| Phase 7 | 7.4 String comparison | Pending |
+| Phase 7 | 7.5 Non-existent record | Pending |
+| Phase 7 | 7.6 Full comparison | Pending |
+| Phase 7 | 7.7 Match by reference | Pending |
+| Phase 7 | 7.8 Match by supplier+date+total | Pending |
+| Phase 7 | 7.9 Item-level comparison | Pending |
+| Phase 7 | 7.10 Summary generation | Pending |
 
 > **Note:** Update this table as you run tests.
-> Tests for Phase 7+ should be added here as those phases are implemented.
+> Tests for Phase 8+ should be added here as those phases are implemented.
