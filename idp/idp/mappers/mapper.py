@@ -57,90 +57,90 @@ class FieldMapper:
 	# ------------------------------------------------------------------
 	FIELD_KEYWORDS: ClassVar[dict[str, dict[str, list[str]]]] = {
 		"Purchase Invoice": {
-			"supplier": ["supplier", "vendor", "seller", "from", "bill from", "sold by"],
-			"posting_date": ["date", "invoice date", "bill date", "dated", "inv date"],
+			"supplier": ["supplier", "vendor", "seller", "bill from", "sold by"],
+			"posting_date": ["invoice date", "bill date", "dated", "inv date"],
 			"due_date": ["due date", "payment due", "due by", "pay by"],
-			"bill_no": ["invoice no", "invoice number", "bill no", "reference", "inv no", "ref no"],
+			"bill_no": ["invoice no", "invoice number", "bill no", "inv no", "ref no"],
 			"taxes_and_charges": ["tax", "vat", "gst", "tax amount", "tax total"],
 			"net_total": ["subtotal", "sub total", "net total", "net amount"],
-			"grand_total": ["grand total", "total", "total amount", "amount due", "balance due"],
+			"grand_total": ["grand total", "total amount", "amount due", "balance due"],
 			"remarks": ["remarks", "notes", "memo", "comments"],
 			"terms": ["terms", "terms and conditions", "payment terms"],
 			"currency": ["currency"],
 		},
 		"Sales Invoice": {
 			"customer": ["customer", "buyer", "client", "bill to", "sold to"],
-			"posting_date": ["date", "invoice date", "bill date", "dated"],
+			"posting_date": ["invoice date", "bill date", "dated", "inv date"],
 			"due_date": ["due date", "payment due", "due by"],
 			"po_no": ["po no", "po number", "purchase order", "your order"],
 			"taxes_and_charges": ["tax", "vat", "gst", "tax amount"],
 			"net_total": ["subtotal", "sub total", "net total"],
-			"grand_total": ["grand total", "total", "total amount"],
+			"grand_total": ["grand total", "total amount"],
 			"currency": ["currency"],
 		},
 		"Purchase Order": {
 			"supplier": ["supplier", "vendor", "seller"],
-			"transaction_date": ["date", "order date", "po date", "dated"],
+			"transaction_date": ["order date", "po date", "dated"],
 			"schedule_date": ["delivery date", "expected date", "required by"],
 			"net_total": ["subtotal", "sub total", "net total"],
-			"grand_total": ["grand total", "total", "total amount"],
+			"grand_total": ["grand total", "total amount"],
 			"currency": ["currency"],
 		},
 		"Sales Order": {
 			"customer": ["customer", "buyer", "client", "bill to"],
-			"transaction_date": ["date", "order date", "so date", "dated"],
+			"transaction_date": ["order date", "so date", "dated"],
 			"delivery_date": ["delivery date", "ship date", "expected date"],
 			"po_no": ["po no", "po number", "purchase order", "your ref"],
 			"net_total": ["subtotal", "sub total", "net total"],
-			"grand_total": ["grand total", "total", "total amount"],
+			"grand_total": ["grand total", "total amount"],
 			"currency": ["currency"],
 		},
 		"Quotation": {
-			"party_name": ["customer", "buyer", "client", "to", "quote to"],
-			"transaction_date": ["date", "quotation date", "quote date", "dated"],
+			"party_name": ["customer", "buyer", "client", "quote to"],
+			"transaction_date": ["quotation date", "quote date", "dated"],
 			"valid_till": ["valid till", "validity", "expiry date", "valid until"],
 			"net_total": ["subtotal", "sub total", "net total"],
-			"grand_total": ["grand total", "total", "total amount"],
+			"grand_total": ["grand total", "total amount"],
 			"currency": ["currency"],
 		},
 		"Payment Entry": {
 			"party": ["party", "customer", "supplier", "vendor", "paid to", "received from"],
-			"posting_date": ["date", "payment date", "dated"],
-			"paid_amount": ["amount", "paid amount", "payment amount", "total"],
-			"reference_no": ["reference", "ref no", "cheque no", "check no", "utr"],
+			"posting_date": ["payment date", "dated"],
+			"paid_amount": ["paid amount", "payment amount"],
+			"reference_no": ["ref no", "cheque no", "check no", "utr"],
 			"reference_date": ["reference date", "cheque date", "check date"],
-			"mode_of_payment": ["mode", "payment mode", "method", "payment method"],
+			"mode_of_payment": ["payment mode", "payment method"],
 		},
 		"Journal Entry": {
-			"posting_date": ["date", "journal date", "entry date", "dated"],
-			"cheque_no": ["reference", "ref no", "cheque no", "check no"],
+			"posting_date": ["journal date", "entry date", "dated"],
+			"cheque_no": ["ref no", "cheque no", "check no"],
 			"cheque_date": ["reference date", "cheque date", "check date"],
 			"total_debit": ["total debit", "debit total"],
 			"total_credit": ["total credit", "credit total"],
-			"remark": ["remarks", "narration", "description", "memo"],
+			"remark": ["remarks", "narration", "memo"],
 		},
 		"Opportunity": {
-			"party_name": ["customer", "lead", "party", "prospect", "company name", "client"],
-			"opportunity_from": ["opportunity from", "lead source", "party type"],
-			"transaction_date": ["date", "opportunity date", "dated"],
-			"expected_closing": ["closing date", "expected closing", "expected date"],
-			"opportunity_amount": ["amount", "opportunity amount", "value", "deal value", "deal size"],
-			"opportunity_type": ["type", "opportunity type"],
-			"sales_stage": ["stage", "sales stage", "pipeline stage"],
-			"probability": ["probability", "chance", "likelihood"],
+			"party_name": ["customer", "lead", "prospect", "company name", "client"],
+			"opportunity_from": ["opportunity from", "party type"],
+			"transaction_date": ["opportunity date", "dated"],
+			"expected_closing": ["closing date", "expected closing"],
+			"opportunity_amount": ["opportunity amount", "deal value", "deal size"],
+			"opportunity_type": ["opportunity type"],
+			"sales_stage": ["sales stage", "pipeline stage"],
+			"probability": ["probability", "likelihood"],
 			"currency": ["currency"],
-			"utm_source": ["source", "lead source", "campaign source"],
-			"contact_person": ["contact", "contact person", "poc"],
-			"contact_email": ["email", "contact email", "email address"],
-			"contact_mobile": ["mobile", "phone", "contact mobile", "contact phone"],
+			"utm_source": ["lead source", "campaign source"],
+			"contact_person": ["contact person", "poc"],
+			"contact_email": ["contact email", "email address"],
+			"contact_mobile": ["contact mobile", "contact phone"],
 		},
 		"Supplier Quotation": {
-			"supplier": ["supplier", "vendor", "seller", "from", "quoted by"],
-			"transaction_date": ["date", "quotation date", "quote date", "dated"],
+			"supplier": ["supplier", "vendor", "seller", "quoted by"],
+			"transaction_date": ["quotation date", "quote date", "dated"],
 			"valid_till": ["valid till", "validity", "expiry date", "valid until"],
-			"quotation_number": ["quotation no", "quote no", "reference", "ref no", "sq no"],
+			"quotation_number": ["quotation no", "quote no", "sq no"],
 			"net_total": ["subtotal", "sub total", "net total", "net amount"],
-			"grand_total": ["grand total", "total", "total amount"],
+			"grand_total": ["grand total", "total amount"],
 			"currency": ["currency"],
 		},
 	}
@@ -213,6 +213,154 @@ class FieldMapper:
 	# Public API
 	# ==================================================================
 
+	# ------------------------------------------------------------------
+	# Regex patterns for extracting fields directly from OCR text
+	# ------------------------------------------------------------------
+	# These handle OCR output where labels and values are merged without
+	# clean separators (e.g. "Invoice No. GST-3425-26" on a single line).
+	TEXT_EXTRACTION_PATTERNS: ClassVar[dict[str, dict[str, list[tuple[str, int]]]]] = {
+		"Purchase Invoice": {
+			"bill_no": [
+				# "Invoice No. GST-3425-26" — value MUST contain a digit
+				(
+					r"(?:Invoice\s*(?:No\.?|Number|#)|Inv\.?\s*No\.?)\s*[:\-]?\s*([A-Za-z0-9\-/]*\d[A-Za-z0-9\-/]*)",
+					1,
+				),
+				# "Bill No. 12345"
+				(r"(?:Bill\s*(?:No\.?|Number))\s*[:\-]?\s*([A-Za-z0-9\-/]*\d[A-Za-z0-9\-/]*)", 1),
+				# "INVOICE\nSI-SINV-2025-000420" — heading then number on next line
+				(r"INVOICE\s*\n\s*([A-Za-z0-9\-/]*\d[A-Za-z0-9\-/]*)", 1),
+				# "Ref No. ABC-123"
+				(r"(?:Ref(?:erence)?\.?\s*(?:No\.?|#))\s*[:\-]?\s*([A-Za-z0-9\-/]*\d[A-Za-z0-9\-/]*)", 1),
+			],
+			"posting_date": [
+				# "Invoice Date 23-Jul-2025" or "Invoice Date: 26/12/2025"
+				(
+					r"(?:Invoice\s*Date|Inv\.?\s*Date|Bill\s*Date)\s*[:\-]?\s*(\d{1,2}[/\-.\s][A-Za-z0-9]{2,9}[/\-.\s]\d{2,4})",
+					1,
+				),
+				# "Invoice Date 2025-07-23"
+				(
+					r"(?:Invoice\s*Date|Inv\.?\s*Date|Bill\s*Date)\s*[:\-]?\s*(\d{4}[/\-.]\d{1,2}[/\-.]\d{1,2})",
+					1,
+				),
+				# "Dated 23-Jul-2025"
+				(r"(?:Dated)\s*[:\-]?\s*(\d{1,2}[/\-.\s][A-Za-z0-9]{2,9}[/\-.\s]\d{2,4})", 1),
+			],
+			"due_date": [
+				(
+					r"(?:Due\s*Date|Payment\s*Due|Pay\s*[Bb]y)\s*[:\-]?\s*(\d{1,2}[/\-.\s][A-Za-z0-9]{2,9}[/\-.\s]\d{2,4})",
+					1,
+				),
+				(r"(?:Due\s*Date|Payment\s*Due|Pay\s*[Bb]y)\s*[:\-]?\s*(\d{4}[/\-.]\d{1,2}[/\-.]\d{1,2})", 1),
+			],
+			"supplier": [
+				# "M/S Tara General Trading LLC"
+				(r"(?:M/[Ss]\.?|Messrs\.?)\s+(.+?)(?:\s{2,}|\n|Challan|Address|GSTIN|Phone)", 1),
+				# "Supplier: Acme Corp" or "Vendor: Acme Corp"
+				(r"(?:Supplier|Vendor|Seller|Bill\s*[Ff]rom)\s*[:\-]\s*(.+?)(?:\s{2,}|\n)", 1),
+				# "For Akash Trading Co." (at document end)
+				(r"(?:For)\s+(.+?(?:Co\.?|Ltd\.?|LLC|Pvt|Inc|Corp|Trading|Enterprise|S\.p\.A)\.?)\b", 1),
+				# Company name with legal suffix on its own: "Bonatti S.p.A. - Iraqi Branch"
+				(
+					r"^(.+?(?:S\.p\.A\.?|Ltd\.?|LLC|Pvt\.?\s*Ltd|Inc\.?|Corp\.?|GmbH|AG|SA|SAS|BV)\.?(?:\s*[-\u2013]\s*\w[\w\s]*)?)\s*$",
+					1,
+				),
+			],
+			"net_total": [
+				(
+					r"(?:Sub\s*[Tt]otal|Net\s*Total|Net\s*Amount|Taxable\s*Value)\s*[:\-]?\s*[₹$€£Rs.]*\s*([\d,]+\.?\d*)",
+					1,
+				),
+			],
+			"grand_total": [
+				(
+					r"(?:Grand\s*Total)\s*[:\-]?\s*[₹$€£Rs.]*\s*([\d,]+\.?\d*)",
+					1,
+				),
+				(r"(?:Total\s*Amount|Amount\s*Due|Balance\s*Due)\s*[:\-]?\s*[₹$€£Rs.]*\s*([\d,]+\.?\d*)", 1),
+				(r"Total\s+\d+\s+(?:NOS|EA|PCS)\s+[₹$€£Rs.]*\s*([\d,]+\.?\d*)", 1),
+			],
+			"taxes_and_charges": [
+				(r"(?:IGST|CGST|SGST|GST|Tax|VAT)\s*\([\d.]+\s*%?\s*\)\s*[₹$€£Rs.]*\s*([\d,]+\.?\d*)", 1),
+			],
+		},
+		"Sales Invoice": {
+			"customer": [
+				(r"(?:M/[Ss]\.?|Messrs\.?)\s+(.+?)(?:\s{2,}|\n|Address|GSTIN|Phone)", 1),
+				(r"(?:Customer|Buyer|Client|Bill\s*[Tt]o|Sold\s*[Tt]o)\s*[:\-]\s*(.+?)(?:\s{2,}|\n)", 1),
+			],
+			"posting_date": [
+				(
+					r"(?:Invoice\s*Date|Inv\.?\s*Date|Bill\s*Date)\s*[:\-]?\s*(\d{1,2}[/\-.\s][A-Za-z0-9]{2,9}[/\-.\s]\d{2,4})",
+					1,
+				),
+				(
+					r"(?:Invoice\s*Date|Inv\.?\s*Date|Bill\s*Date)\s*[:\-]?\s*(\d{4}[/\-.]\d{1,2}[/\-.]\d{1,2})",
+					1,
+				),
+			],
+			"po_no": [
+				(
+					r"(?:PO\s*(?:No\.?|Number)|Purchase\s*Order|Your\s*Order)\s*[:\-]?\s*([A-Za-z0-9\-/]*\d[A-Za-z0-9\-/]*)",
+					1,
+				),
+			],
+			"net_total": [
+				(r"(?:Sub\s*[Tt]otal|Net\s*Total|Net\s*Amount)\s*[:\-]?\s*[₹$€£Rs.]*\s*([\d,]+\.?\d*)", 1),
+			],
+			"grand_total": [
+				(r"(?:Grand\s*Total)\s*[:\-]?\s*[₹$€£Rs.]*\s*([\d,]+\.?\d*)", 1),
+				(r"(?:Total\s*Amount|Amount\s*Due)\s*[:\-]?\s*[₹$€£Rs.]*\s*([\d,]+\.?\d*)", 1),
+			],
+		},
+		"Purchase Order": {
+			"supplier": [
+				(r"(?:M/[Ss]\.?|Messrs\.?)\s+(.+?)(?:\s{2,}|\n|Address|GSTIN|Phone)", 1),
+				(r"(?:Supplier|Vendor|Seller)\s*[:\-]\s*(.+?)(?:\s{2,}|\n)", 1),
+			],
+			"transaction_date": [
+				(
+					r"(?:Order\s*Date|PO\s*Date)\s*[:\-]?\s*(\d{1,2}[/\-.\s][A-Za-z0-9]{2,9}[/\-.\s]\d{2,4})",
+					1,
+				),
+				(r"(?:Order\s*Date|PO\s*Date)\s*[:\-]?\s*(\d{4}[/\-.]\d{1,2}[/\-.]\d{1,2})", 1),
+			],
+			"grand_total": [
+				(r"(?:Grand\s*Total)\s*[:\-]?\s*[₹$€£Rs.]*\s*([\d,]+\.?\d*)", 1),
+				(r"(?:Total\s*Amount)\s*[:\-]?\s*[₹$€£Rs.]*\s*([\d,]+\.?\d*)", 1),
+			],
+		},
+		"Sales Order": {
+			"customer": [
+				(r"(?:Customer|Buyer|Client|Bill\s*[Tt]o)\s*[:\-]\s*(.+?)(?:\s{2,}|\n)", 1),
+			],
+			"transaction_date": [
+				(
+					r"(?:Order\s*Date|SO\s*Date)\s*[:\-]?\s*(\d{1,2}[/\-.\s][A-Za-z0-9]{2,9}[/\-.\s]\d{2,4})",
+					1,
+				),
+				(r"(?:Order\s*Date|SO\s*Date)\s*[:\-]?\s*(\d{4}[/\-.]\d{1,2}[/\-.]\d{1,2})", 1),
+			],
+			"grand_total": [
+				(r"(?:Grand\s*Total)\s*[:\-]?\s*[₹$€£Rs.]*\s*([\d,]+\.?\d*)", 1),
+				(r"(?:Total\s*Amount)\s*[:\-]?\s*[₹$€£Rs.]*\s*([\d,]+\.?\d*)", 1),
+			],
+		},
+	}
+
+	# Regex patterns for extracting line items directly from OCR text
+	# when structured tables are not available.
+	ITEM_LINE_PATTERN: ClassVar[str] = (
+		r"^\s*(\d+)\s+"  # serial number
+		r"(.+?)\s+"  # item name
+		r"(\d{4,8})\s+"  # HSN/SAC code
+		r"(\d+(?:\.\d+)?)\s+"  # qty
+		r"([A-Z]+)\s+"  # UOM (NOS, KG, etc.)
+		r"([\d,]+\.?\d*)\s+"  # rate
+		r"([\d,]+\.?\d*)"  # amount
+	)
+
 	def map_fields(
 		self,
 		extracted: ExtractionResult,
@@ -223,19 +371,22 @@ class FieldMapper:
 
 		Strategy:
 		1. Load the DocType schema.
-		2. Parse text into label-value pairs.
+		2. Parse text into label-value pairs (colon/tab/space separated).
 		3. Match header fields via keyword proximity + type inference.
-		4. Match line items via column-header matching.
-		5. Normalise values (dates, numbers, currencies).
-		6. Resolve Link fields against the database.
+		4. **Regex pass** — scan full text for known patterns to fill gaps.
+		5. Match line items via column-header matching (from tables).
+		6. **Text-based item extraction** if no structured tables found.
+		7. Normalise values (dates, numbers, currencies).
+		8. Resolve Link fields against the database.
 		"""
 		schema = get_doctype_schema(target_doctype)
 		result = MappedDocument(doctype=target_doctype)
+		full_text = extracted.text or ""
 
-		# --- Parse label-value pairs from text ---
-		pairs = self._parse_label_value_pairs(extracted.text or "")
+		# --- Pass 1: Parse label-value pairs from text ---
+		pairs = self._parse_label_value_pairs(full_text)
 
-		# --- Map header fields ---
+		# --- Map header fields from pairs ---
 		keywords = self.FIELD_KEYWORDS.get(target_doctype, {})
 		schema_fields = schema["fields"]
 
@@ -248,12 +399,23 @@ class FieldMapper:
 			else:
 				result.unmapped_fields.append({"label": label, "value": value})
 
-		# --- Map line items from tables ---
+		# --- Pass 2: Regex extraction for fields not yet mapped ---
+		self._extract_by_regex(full_text, target_doctype, schema_fields, result)
+
+		# --- Map line items from structured tables ---
 		if extracted.tables:
 			child_table_info = self._find_primary_child_table(schema)
 			if child_table_info:
 				items = self._map_table_items(extracted.tables, child_table_info)
 				result.items = items
+
+		# --- Fallback: extract items from text if no structured tables ---
+		if not result.items:
+			child_table_info = self._find_primary_child_table(schema)
+			if child_table_info:
+				text_items = self._extract_items_from_text(full_text, child_table_info)
+				if text_items:
+					result.items = text_items
 
 		# --- Resolve Link fields ---
 		self._resolve_links(result, schema, company)
@@ -357,6 +519,115 @@ class FieldMapper:
 			return 0.6
 
 		return 0.5
+
+	# ==================================================================
+	# Regex-based extraction (Pass 2)
+	# ==================================================================
+
+	def _extract_by_regex(
+		self,
+		text: str,
+		target_doctype: str,
+		schema_fields: list[dict],
+		result: MappedDocument,
+	) -> None:
+		"""Scan full text with regex patterns to extract fields not found by label-value parsing.
+
+		Only fills fields that are not already present in ``result.header``.
+		"""
+		patterns = self.TEXT_EXTRACTION_PATTERNS.get(target_doctype, {})
+		if not patterns:
+			return
+
+		for fieldname, regex_list in patterns.items():
+			if fieldname in result.header:
+				continue  # Already found in Pass 1
+
+			for pattern, group_idx in regex_list:
+				match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
+				if match:
+					raw_value = match.group(group_idx).strip()
+					if raw_value:
+						normalised = self._normalise_value(raw_value, fieldname, schema_fields)
+						result.header[fieldname] = normalised
+						result.confidence_scores[fieldname] = 0.7  # Regex match confidence
+						logger.debug(f"Regex extracted {fieldname}={raw_value!r} via pattern")
+						break
+
+	def _extract_items_from_text(
+		self,
+		text: str,
+		child_table_info: dict,
+	) -> list[dict]:
+		"""Extract line items from OCR text when no structured tables are available.
+
+		Matches lines like::
+
+		    1 Bosch All-in-One Metal Hand Tool Kit 8302 1 NOS 2,535.00 2,535.00
+
+		Falls back to a simpler pattern if the full pattern doesn't match.
+		"""
+		child_fields = child_table_info.get("fields", [])
+		items: list[dict] = []
+
+		# Field existence checks
+		has_item_name = any(f["fieldname"] == "item_name" for f in child_fields)
+		has_qty = any(f["fieldname"] == "qty" for f in child_fields)
+		has_rate = any(f["fieldname"] == "rate" for f in child_fields)
+		has_amount = any(f["fieldname"] == "amount" for f in child_fields)
+		has_uom = any(f["fieldname"] == "uom" for f in child_fields)
+		has_item_code = any(f["fieldname"] == "item_code" for f in child_fields)
+
+		# Full pattern: serial item_name HSN qty UOM rate amount
+		full_pattern = re.compile(self.ITEM_LINE_PATTERN, re.MULTILINE)
+
+		for match in full_pattern.finditer(text):
+			row: dict = {}
+			_serial, name, hsn, qty, uom, rate, amount = match.groups()
+			if has_item_name:
+				row["item_name"] = name.strip()
+			if has_item_code:
+				row["item_code"] = hsn.strip()
+			if has_qty:
+				row["qty"] = self._normalise_number(qty)
+			if has_uom:
+				row["uom"] = uom.strip()
+			if has_rate:
+				row["rate"] = self._normalise_number(rate)
+			if has_amount:
+				row["amount"] = self._normalise_number(amount)
+			if row:
+				items.append(row)
+
+		if items:
+			return items
+
+		# Simpler fallback: lines with item-like patterns
+		# serial item_name qty rate amount (no HSN/UOM)
+		simple_pattern = re.compile(
+			r"^\s*(\d+)\s+"  # serial
+			r"(.+?)\s+"  # item name
+			r"(\d+(?:\.\d+)?)\s+"  # qty
+			r"([\d,]+\.?\d*)\s+"  # rate
+			r"([\d,]+\.?\d*)\s*$",  # amount
+			re.MULTILINE,
+		)
+
+		for match in simple_pattern.finditer(text):
+			row = {}
+			_serial, name, qty, rate, amount = match.groups()
+			if has_item_name:
+				row["item_name"] = name.strip()
+			if has_qty:
+				row["qty"] = self._normalise_number(qty)
+			if has_rate:
+				row["rate"] = self._normalise_number(rate)
+			if has_amount:
+				row["amount"] = self._normalise_number(amount)
+			if row:
+				items.append(row)
+
+		return items
 
 	# ==================================================================
 	# Value normalisation

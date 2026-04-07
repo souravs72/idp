@@ -1,0 +1,13 @@
+{
+	"private": true,
+	"type": "module",
+	"name": "idp",
+	"description": "Intelligent Document Processing for ERPNext",
+	"author": "Sanjay Kumar",
+	"license": "MIT",
+	"scripts": {
+		"postinstall": "cd frontend && yarn install --check-files",
+		"dev": "cd frontend && yarn dev",
+		"build": "cd frontend && yarn build"
+	}
+}

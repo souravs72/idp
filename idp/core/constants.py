@@ -102,6 +102,35 @@ EXTRACTABLE_FIELD_TYPES: list[str] = [
 	"Check",
 ]
 
+# ---------------------------------------------------------------------------
+# Fields auto-populated by ERPNext controllers (skip in required-field checks)
+# ---------------------------------------------------------------------------
+AUTO_POPULATED_FIELDS: set[str] = {
+	# Naming
+	"naming_series",
+	"name",
+	"amended_from",
+	# Accounting defaults — set by controller based on party/company
+	"credit_to",
+	"debit_to",
+	"party_account_currency",
+	"is_opening",
+	"is_return",
+	# Company — set from user session / form context
+	"company",
+	# Status / workflow
+	"status",
+	"docstatus",
+	# Conversion rates — default to 1.0
+	"conversion_rate",
+	"plc_conversion_rate",
+	# Timestamps
+	"creation",
+	"modified",
+	"owner",
+	"modified_by",
+}
+
 # Field types to exclude (layout / non-data fields)
 EXCLUDED_FIELD_TYPES: list[str] = [
 	"Section Break",

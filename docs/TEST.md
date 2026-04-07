@@ -2096,6 +2096,220 @@ print("Comparison serialization test passed")
 
 ---
 
+## Phase 9: Frontend -- Vue 3 SPA with Frappe UI
+
+> **Note:** Phase 9 delivers the frontend source files. These tests verify
+> the file structure, build configuration, and Python SPA entry point.
+> The Vue components themselves are tested via `yarn dev` / `yarn build`.
+
+### Test 9.1 — Frontend directory structure
+
+```bash
+# Run from the project root
+cd /home/sanjay/erpnext/frappe-bench-test/apps/idp
+
+# Verify all expected files exist
+for f in \
+  frontend/package.json \
+  frontend/vite.config.js \
+  frontend/tailwind.config.js \
+  frontend/postcss.config.js \
+  frontend/index.html \
+  frontend/src/main.js \
+  frontend/src/App.vue \
+  frontend/src/router.js \
+  frontend/src/index.css \
+  frontend/src/utils/api.js \
+  frontend/src/utils/formatters.js \
+  frontend/src/composables/useSettings.js \
+  frontend/src/composables/useFileUpload.js \
+  frontend/src/composables/useExtraction.js \
+  frontend/src/composables/useComparison.js \
+  frontend/src/components/FileDropzone.vue \
+  frontend/src/components/ExtractionForm.vue \
+  frontend/src/components/ExtractionPreview.vue \
+  frontend/src/components/ComparisonTable.vue \
+  frontend/src/components/ConfirmationCard.vue \
+  frontend/src/components/MissingMastersDialog.vue \
+  frontend/src/components/ProcessingStatus.vue \
+  frontend/src/components/DocumentThumbnail.vue \
+  frontend/src/components/SettingsPanel.vue \
+  frontend/src/components/StatusBadge.vue \
+  frontend/src/pages/DocumentUpload.vue \
+  frontend/src/pages/ExtractionReview.vue \
+  frontend/src/pages/ComparisonView.vue \
+  frontend/src/pages/ProcessingHistory.vue \
+  idp/www/idp.py; do
+  if [ -f "$f" ]; then
+    echo "OK: $f"
+  else
+    echo "MISSING: $f"
+  fi
+done
+
+# Expected: all files show "OK"
+```
+
+---
+
+### Test 9.2 — package.json structure
+
+```bash
+cd /home/sanjay/erpnext/frappe-bench-test/apps/idp/frontend
+
+# Verify key fields
+python3 -c "
+import json
+with open('package.json') as f:
+    pkg = json.load(f)
+
+assert pkg['name'] == 'idp-frontend', f'name: {pkg[\"name\"]}'
+assert 'vue' in pkg['dependencies'], 'Missing vue dependency'
+assert 'vue-router' in pkg['dependencies'], 'Missing vue-router'
+assert 'frappe-ui' in pkg['dependencies'], 'Missing frappe-ui'
+assert 'pinia' in pkg['dependencies'], 'Missing pinia'
+assert 'build' in pkg['scripts'], 'Missing build script'
+assert '/assets/idp/frontend/' in pkg['scripts']['build'], 'Build base mismatch'
+assert 'copy-html-entry' in pkg['scripts'], 'Missing copy-html-entry script'
+print('package.json structure test passed')
+"
+```
+
+---
+
+### Test 9.3 — www/idp.py context provider
+
+```python
+from idp.www.idp import get_boot, no_cache
+
+# Verify no_cache is set
+assert no_cache == 1, f"no_cache should be 1, got {no_cache}"
+
+# Verify boot data structure
+boot = get_boot()
+print(f"site_name: {boot.site_name}")
+print(f"user: {boot.user}")
+print(f"desk_theme: {boot.desk_theme}")
+print(f"timezone: {boot.timezone}")
+assert "site_name" in boot, "Missing site_name"
+assert "csrf_token" in boot, "Missing csrf_token"
+assert "user" in boot, "Missing user"
+assert "desk_theme" in boot, "Missing desk_theme"
+assert "timezone" in boot, "Missing timezone"
+print("www/idp.py context provider test passed")
+```
+
+---
+
+### Test 9.4 — Router configuration matches hooks.py
+
+```python
+# Verify that hooks.py website_route_rules match the Vue router base
+import idp.hooks as hooks
+
+rules = hooks.website_route_rules
+assert len(rules) >= 1, "No website_route_rules found"
+
+idp_rule = rules[0]
+assert idp_rule["from_route"] == "/idp/<path:app_path>", f"Unexpected route: {idp_rule}"
+assert idp_rule["to_route"] == "idp", f"Unexpected to_route: {idp_rule}"
+
+# The Vue router should use createWebHistory('/idp/')
+# This is verified in the router.js file
+print("Route configuration test passed")
+```
+
+---
+
+### Test 9.5 — API utility functions exist
+
+```bash
+cd /home/sanjay/erpnext/frappe-bench-test/apps/idp/frontend
+
+# Check that api.js exports the expected functions
+python3 -c "
+content = open('src/utils/api.js').read()
+expected = [
+    'fetchSettings', 'uploadDocument', 'extractDocument',
+    'createDocument', 'getMissingMasters',
+    'compareDocument', 'findMatchingRecord',
+]
+for fn in expected:
+    assert f'export function {fn}' in content, f'Missing export: {fn}'
+    print(f'OK: {fn}')
+print('API utility functions test passed')
+"
+```
+
+---
+
+### Test 9.6 — Formatter utility functions exist
+
+```bash
+cd /home/sanjay/erpnext/frappe-bench-test/apps/idp/frontend
+
+python3 -c "
+content = open('src/utils/formatters.js').read()
+expected = [
+    'formatNumber', 'formatCurrency', 'formatDate',
+    'timeAgo', 'formatFileSize', 'formatConfidence',
+]
+for fn in expected:
+    assert f'export function {fn}' in content, f'Missing export: {fn}'
+    print(f'OK: {fn}')
+print('Formatter utility functions test passed')
+"
+```
+
+---
+
+### Test 9.7 — Vue page components have correct structure
+
+```bash
+cd /home/sanjay/erpnext/frappe-bench-test/apps/idp/frontend
+
+python3 -c "
+import os
+
+pages = [
+    'src/pages/DocumentUpload.vue',
+    'src/pages/ExtractionReview.vue',
+    'src/pages/ComparisonView.vue',
+    'src/pages/ProcessingHistory.vue',
+]
+for page in pages:
+    content = open(page).read()
+    assert '<template>' in content, f'{page}: Missing <template>'
+    assert 'Copyright (c) 2026' in content, f'{page}: Missing copyright header'
+    print(f'OK: {page}')
+print('Vue page structure test passed')
+"
+```
+
+---
+
+### Test 9.8 — Composables have correct exports
+
+```bash
+cd /home/sanjay/erpnext/frappe-bench-test/apps/idp/frontend
+
+python3 -c "
+composables = {
+    'src/composables/useSettings.js': 'useSettings',
+    'src/composables/useFileUpload.js': 'useFileUpload',
+    'src/composables/useExtraction.js': 'useExtraction',
+    'src/composables/useComparison.js': 'useComparison',
+}
+for path, fn in composables.items():
+    content = open(path).read()
+    assert f'export function {fn}' in content, f'{path}: Missing export {fn}'
+    print(f'OK: {fn}')
+print('Composables export test passed')
+"
+```
+
+---
+
 ## Running All Tests
 
 ### Option A: bench console (interactive)
@@ -2188,6 +2402,14 @@ bench --site test.local run-tests --app idp
 | Phase 8 | 8.10 find_matching_record validation | Pending |
 | Phase 8 | 8.11 JSON parameter parsing | Pending |
 | Phase 8 | 8.12 Comparison serialization | Pending |
+| Phase 9 | 9.1 Frontend directory structure | Pending |
+| Phase 9 | 9.2 package.json structure | Pending |
+| Phase 9 | 9.3 www/idp.py context provider | Pending |
+| Phase 9 | 9.4 Router config matches hooks | Pending |
+| Phase 9 | 9.5 API utility functions | Pending |
+| Phase 9 | 9.6 Formatter utility functions | Pending |
+| Phase 9 | 9.7 Vue page structure | Pending |
+| Phase 9 | 9.8 Composables exports | Pending |
 
 > **Note:** Update this table as you run tests.
-> Tests for Phase 9+ should be added here as those phases are implemented.
+> Tests for Phase 10+ should be added here as those phases are implemented.

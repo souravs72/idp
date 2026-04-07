@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 
 import frappe
 
+from idp.core.constants import AUTO_POPULATED_FIELDS
 from idp.core.logger import get_logger
 from idp.idp.mappers.base import MappedDocument, get_doctype_schema
 from idp.idp.mappers.mapper import LINK_DISPLAY_FIELDS
@@ -130,11 +131,17 @@ def _check_required_fields(
 	result: ValidationResult,
 	row_label: str = "",
 ) -> None:
-	"""Flag missing required fields as errors."""
+	"""Flag missing required fields as errors.
+
+	Skips fields in :data:`AUTO_POPULATED_FIELDS` since ERPNext controllers
+	set them automatically (e.g. ``naming_series``, ``credit_to``, ``company``).
+	"""
 	for f in schema_fields:
 		if not f.get("reqd"):
 			continue
 		fieldname = f["fieldname"]
+		if fieldname in AUTO_POPULATED_FIELDS:
+			continue
 		value = data.get(fieldname)
 		if value is None or (isinstance(value, str) and not value.strip()):
 			prefix = f"{row_label} — " if row_label else ""
