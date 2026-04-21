@@ -136,3 +136,100 @@ def extract_document(
 			f"Extraction failed: {exc}",
 			title="IDP Extraction Error",
 		)
+
+
+# ---------------------------------------------------------------------------
+# Phase 12 — Bank statement endpoints
+# ---------------------------------------------------------------------------
+
+
+@frappe.whitelist()
+def extract_bank_statement_api(file_url: str, language: str = "en") -> dict:
+	"""Extract a bank statement into a structured transaction list.
+
+	Args:
+		file_url: Frappe file URL.
+		language: OCR language code (default ``en``).
+
+	Returns dict with keys:
+		- ``success``: bool
+		- ``statement``: serialised :class:`BankStatement` payload
+		- ``processing_time_ms``: int
+		- ``error`` / ``error_type``: populated on failure
+	"""
+	from idp.idp.extractors.bank_statement import (
+		extract_bank_statement, statement_to_dict,
+	)
+
+	start = time.monotonic()
+
+	if not file_url:
+		frappe.throw("file_url is required.", frappe.ValidationError)
+
+	try:
+		statement = extract_bank_statement(file_url, lang=language)
+		elapsed_ms = int((time.monotonic() - start) * 1000)
+		logger.info(
+			"Bank statement extracted | file=%s txns=%d time=%dms",
+			file_url, len(statement.transactions), elapsed_ms,
+		)
+		return {
+			"success": True,
+			"statement": statement_to_dict(statement),
+			"processing_time_ms": elapsed_ms,
+		}
+	except IDPError as exc:
+		elapsed_ms = int((time.monotonic() - start) * 1000)
+		logger.warning("Bank statement extraction failed | file=%s error=%s", file_url, exc)
+		return {
+			"success": False,
+			"error": str(exc),
+			"error_type": type(exc).__name__,
+			"details": exc.details,
+			"processing_time_ms": elapsed_ms,
+		}
+
+
+@frappe.whitelist()
+def reconcile_bank_statement_api(
+	bank_account: str,
+	transactions: str | list,
+	company: str | None = None,
+) -> dict:
+	"""Reconcile a list of parsed transactions against ERPNext records.
+
+	Args:
+		bank_account: ERPNext Account for the bank account.
+		transactions: JSON string or list of transaction dicts as produced
+			by ``statement_to_dict`` (the ``transactions`` key).
+		company: Optional company filter.
+
+	Returns:
+		dict containing the serialised ``ReconciliationResult``.
+	"""
+	import json
+
+	from idp.idp.bank_reconciliation import reconcile_bank_statement, result_to_dict
+	from idp.idp.extractors.bank_statement import transactions_from_dicts
+
+	if not bank_account:
+		frappe.throw("bank_account is required.", frappe.ValidationError)
+
+	if isinstance(transactions, str):
+		try:
+			rows = json.loads(transactions)
+		except ValueError as exc:
+			frappe.throw(f"transactions must be JSON: {exc}", frappe.ValidationError)
+	else:
+		rows = transactions
+
+	if not isinstance(rows, list):
+		frappe.throw("transactions must be a list of dicts.", frappe.ValidationError)
+
+	txns = transactions_from_dicts(rows)
+	result = reconcile_bank_statement(
+		transactions=txns,
+		bank_account=bank_account,
+		company=company or None,
+	)
+	return {"success": True, "reconciliation": result_to_dict(result)}

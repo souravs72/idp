@@ -127,3 +127,33 @@ export function findMatchingRecord({
     },
   })
 }
+
+// ---------------------------------------------------------------------------
+// Bank statement (Phase 12)
+// ---------------------------------------------------------------------------
+
+export function extractBankStatement({ fileUrl, language }) {
+  return frappeRequest({
+    url: '/api/method/idp.api.extract.extract_bank_statement_api',
+    params: {
+      file_url: fileUrl,
+      language: language || 'en',
+    },
+  })
+}
+
+export function reconcileBankStatement({
+  bankAccount,
+  transactions,
+  company,
+}) {
+  return frappeRequest({
+    url: '/api/method/idp.api.extract.reconcile_bank_statement_api',
+    method: 'POST',
+    params: {
+      bank_account: bankAccount,
+      transactions: JSON.stringify(transactions || []),
+      company: company || undefined,
+    },
+  })
+}

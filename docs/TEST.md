@@ -2864,6 +2864,445 @@ print("has_conversation_permission ownership test passed")
 
 ---
 
+## Phase 12: Bank Statement Processing
+
+> **Note:** Phase 12 adds a specialised bank-statement extractor
+> (`idp.idp.extractors.bank_statement`) and a reconciliation engine
+> (`idp.idp.bank_reconciliation`) plus two whitelisted API endpoints
+> in `idp.api.extract`. The tests below cover the pure-Python helpers,
+> the reconciliation matching logic, the API wrappers, and the
+> frontend wiring.
+
+### Test 12.1 — Module imports
+
+```python
+from idp.idp.extractors.bank_statement import (
+    BankStatement, BankStatementIssue, BankTransaction,
+    extract_bank_statement, parse_bank_statement,
+    statement_to_dict, transactions_from_dicts,
+)
+from idp.idp.bank_reconciliation import (
+    ReconciliationMatch, ReconciledTransaction, ReconciliationResult,
+    reconcile_bank_statement, result_to_dict,
+)
+from idp.api.extract import (
+    extract_bank_statement_api, reconcile_bank_statement_api,
+)
+print("Phase 12 imports OK")
+# Expected: Phase 12 imports OK
+```
+
+---
+
+### Test 12.2 — Amount parsing (CR/DR, parens, grouping)
+
+```python
+from idp.idp.extractors.bank_statement import _parse_amount
+
+assert _parse_amount("1,234.56") == 1234.56
+assert _parse_amount("1,23,456.78") == 123456.78   # Indian grouping
+assert _parse_amount("1.234,56") == 1234.56        # European
+assert _parse_amount("(123.45)") == -123.45        # parenthesised negative
+assert _parse_amount("500.00 CR") == 500.00
+assert _parse_amount("500.00 DR") == -500.00
+assert _parse_amount("") is None
+assert _parse_amount(None) is None
+assert _parse_amount("--") is None
+print("Amount parsing test passed")
+# Expected: Amount parsing test passed
+```
+
+---
+
+### Test 12.3 — Date parsing (multiple formats, 2-digit years)
+
+```python
+from idp.idp.extractors.bank_statement import _parse_date
+
+assert _parse_date("2026-01-15") == "2026-01-15"
+assert _parse_date("15-01-2026") == "2026-01-15"
+assert _parse_date("15/01/2026") == "2026-01-15"
+assert _parse_date("15-Jan-2026") == "2026-01-15"
+assert _parse_date("15-Jan-26") == "2026-01-15"   # 2-digit year coerced to 2000s
+assert _parse_date("not a date") is None
+assert _parse_date("") is None
+print("Date parsing test passed")
+# Expected: Date parsing test passed
+```
+
+---
+
+### Test 12.4 — Header matching (English + substring)
+
+```python
+from idp.idp.extractors.bank_statement import (
+    _match_header, _DATE_KEYWORDS, _DEBIT_KEYWORDS,
+    _CREDIT_KEYWORDS, _BALANCE_KEYWORDS, _REFERENCE_KEYWORDS,
+)
+
+headers = [
+    "Txn Date", "Narration", "Withdrawal (Dr)",
+    "Deposit (Cr)", "Closing Balance (INR)", "Cheque No",
+]
+assert _match_header(headers, _DATE_KEYWORDS) == 0
+assert _match_header(headers, _DEBIT_KEYWORDS) == 2
+assert _match_header(headers, _CREDIT_KEYWORDS) == 3
+assert _match_header(headers, _BALANCE_KEYWORDS) == 4
+assert _match_header(headers, _REFERENCE_KEYWORDS) == 5
+print("Header matching test passed")
+# Expected: Header matching test passed
+```
+
+---
+
+### Test 12.5 — parse_bank_statement on synthetic ExtractionResult
+
+```python
+from idp.idp.extractors.base import ExtractionResult
+from idp.idp.extractors.bank_statement import parse_bank_statement
+
+table = [
+    ["Date", "Narration", "Debit", "Credit", "Balance"],
+    ["2026-01-01", "Opening Entry", "", "", "1000.00"],
+    ["2026-01-02", "ATM Withdrawal", "200.00", "", "800.00"],
+    ["2026-01-03", "Salary", "", "5000.00", "5800.00"],
+    ["2026-01-04", "UPI Payment", "150.00", "", "5650.00"],
+]
+er = ExtractionResult(text="Account No: 1234567890 INR", tables=[table], metadata={})
+stmt = parse_bank_statement(er)
+
+assert len(stmt.transactions) == 4
+assert stmt.transactions[1].debit == 200.00
+assert stmt.transactions[2].credit == 5000.00
+assert stmt.closing_balance == 5650.00
+assert stmt.currency == "INR"
+assert stmt.account_number and "1234567890" in stmt.account_number
+# No balance mismatch issues expected
+errors = [i for i in stmt.issues if i.severity == "error"]
+assert not errors, f"Unexpected errors: {errors}"
+print(f"parse_bank_statement OK | txns={len(stmt.transactions)} "
+      f"closing={stmt.closing_balance} issues={len(stmt.issues)}")
+# Expected: parse_bank_statement OK | txns=4 closing=5650.0 issues=0
+```
+
+---
+
+### Test 12.6 — parse_bank_statement flags running-balance mismatch
+
+```python
+from idp.idp.extractors.base import ExtractionResult
+from idp.idp.extractors.bank_statement import parse_bank_statement
+
+# Balance walk is broken: 1000 - 200 should be 800 but statement says 900
+table = [
+    ["Date", "Narration", "Debit", "Credit", "Balance"],
+    ["2026-01-01", "Open", "", "", "1000.00"],
+    ["2026-01-02", "Withdrawal", "200.00", "", "900.00"],
+]
+er = ExtractionResult(text="", tables=[table], metadata={})
+stmt = parse_bank_statement(er)
+warns = [i for i in stmt.issues if i.severity == "warning"]
+assert any("balance mismatch" in w.message.lower() for w in warns), warns
+print(f"Balance mismatch flagged | {warns[0].message}")
+# Expected: Balance mismatch flagged | Running balance mismatch at row ...
+```
+
+---
+
+### Test 12.7 — parse_bank_statement raises when no table present
+
+```python
+from idp.idp.extractors.base import ExtractionResult
+from idp.idp.extractors.bank_statement import parse_bank_statement
+from idp.core.exceptions import ExtractionError
+
+er = ExtractionResult(text="No tables here", tables=[], metadata={})
+try:
+    parse_bank_statement(er)
+    raise AssertionError("Expected ExtractionError")
+except ExtractionError as exc:
+    print(f"Correctly raised: {exc}")
+# Expected: Correctly raised: Could not identify a transaction table in the document.
+```
+
+---
+
+### Test 12.8 — statement_to_dict + transactions_from_dicts round-trip
+
+```python
+from idp.idp.extractors.base import ExtractionResult
+from idp.idp.extractors.bank_statement import (
+    parse_bank_statement, statement_to_dict, transactions_from_dicts,
+)
+
+table = [
+    ["Date", "Narration", "Debit", "Credit", "Balance"],
+    ["2026-01-02", "Payment", "100.00", "", "900.00"],
+    ["2026-01-03", "Receipt", "", "250.00", "1150.00"],
+]
+stmt = parse_bank_statement(ExtractionResult(text="", tables=[table], metadata={}))
+payload = statement_to_dict(stmt)
+assert payload["transaction_count"] == 2
+assert payload["transactions"][0]["debit"] == 100.00
+
+round_trip = transactions_from_dicts(payload["transactions"])
+assert len(round_trip) == 2
+assert round_trip[0].debit == 100.00
+assert round_trip[1].credit == 250.00
+print("Round-trip test passed")
+# Expected: Round-trip test passed
+```
+
+---
+
+### Test 12.9 — reconcile_bank_statement with injected candidates (exact match)
+
+```python
+from idp.idp.extractors.bank_statement import BankTransaction
+from idp.idp.bank_reconciliation import (
+    ReconciliationMatch, reconcile_bank_statement,
+)
+
+txns = [
+    BankTransaction(date="2026-01-10", description="Vendor A",
+                    debit=500.00, credit=None, balance=9500.00,
+                    reference="UTR123", row_index=1),
+    BankTransaction(date="2026-01-12", description="Customer B",
+                    debit=None, credit=1200.00, balance=10700.00,
+                    reference=None, row_index=2),
+]
+candidates = [
+    ReconciliationMatch(doctype="Payment Entry", name="PE-001",
+                        posting_date="2026-01-10", amount=-500.00,
+                        reference_no="UTR123", party="Vendor A"),
+    ReconciliationMatch(doctype="Payment Entry", name="PE-002",
+                        posting_date="2026-01-11", amount=1200.00,
+                        reference_no=None, party="Customer B"),
+]
+result = reconcile_bank_statement(
+    transactions=txns, bank_account="Bank - MEL",
+    candidates=candidates,
+)
+assert len(result.matched) == 2, result.summary
+assert result.matched[0].selected.match_type == "reference"
+assert result.matched[1].selected.match_type == "exact"
+assert not result.unmatched
+print(f"Exact match reconciliation OK | {result.summary}")
+# Expected: Exact match reconciliation OK | 2 matched (100.0% exact), 0 partial, ...
+```
+
+---
+
+### Test 12.10 — reconcile flags partial and unmatched
+
+```python
+from idp.idp.extractors.bank_statement import BankTransaction
+from idp.idp.bank_reconciliation import (
+    ReconciliationMatch, reconcile_bank_statement,
+)
+
+txns = [
+    BankTransaction(date="2026-01-10", description="Supplier X",
+                    debit=300.00, credit=None, balance=0.0,
+                    reference=None, row_index=1),
+    BankTransaction(date="2026-01-11", description="Orphan",
+                    debit=None, credit=999.00, balance=0.0,
+                    reference=None, row_index=2),
+]
+candidates = [
+    # Amount matches but date is 10 days off -> "partial"
+    ReconciliationMatch(doctype="Payment Entry", name="PE-010",
+                        posting_date="2026-01-20", amount=-300.00),
+]
+result = reconcile_bank_statement(
+    transactions=txns, bank_account="Bank - MEL",
+    candidates=candidates,
+)
+assert len(result.partially_matched) == 1
+assert len(result.unmatched) == 1
+assert result.partially_matched[0].selected.match_type == "partial"
+print(f"Partial/unmatched OK | {result.summary}")
+# Expected: Partial/unmatched OK | 0 matched (0.0% exact), 1 partial, 0 needs-review, 1 unmatched — 2 total
+```
+
+---
+
+### Test 12.11 — reconcile detects multiple_matches
+
+```python
+from idp.idp.extractors.bank_statement import BankTransaction
+from idp.idp.bank_reconciliation import (
+    ReconciliationMatch, reconcile_bank_statement,
+)
+
+txns = [
+    BankTransaction(date="2026-01-10", description="Twin",
+                    debit=None, credit=100.00, balance=0.0,
+                    reference=None, row_index=1),
+]
+candidates = [
+    ReconciliationMatch(doctype="Payment Entry", name="PE-A",
+                        posting_date="2026-01-10", amount=100.00),
+    ReconciliationMatch(doctype="Payment Entry", name="PE-B",
+                        posting_date="2026-01-10", amount=100.00),
+]
+result = reconcile_bank_statement(
+    transactions=txns, bank_account="Bank - MEL",
+    candidates=candidates,
+)
+assert len(result.multiple_matches) == 1
+assert len(result.multiple_matches[0].candidates) == 2
+print(f"Multiple-matches detection OK | candidates="
+      f"{len(result.multiple_matches[0].candidates)}")
+# Expected: Multiple-matches detection OK | candidates=2
+```
+
+---
+
+### Test 12.12 — reconcile consumes each candidate only once
+
+```python
+from idp.idp.extractors.bank_statement import BankTransaction
+from idp.idp.bank_reconciliation import (
+    ReconciliationMatch, reconcile_bank_statement,
+)
+
+txns = [
+    BankTransaction(date="2026-01-10", description="First",
+                    debit=None, credit=500.00, balance=0.0,
+                    reference=None, row_index=1),
+    BankTransaction(date="2026-01-10", description="Second",
+                    debit=None, credit=500.00, balance=0.0,
+                    reference=None, row_index=2),
+]
+candidates = [
+    ReconciliationMatch(doctype="Payment Entry", name="PE-X",
+                        posting_date="2026-01-10", amount=500.00),
+]
+result = reconcile_bank_statement(
+    transactions=txns, bank_account="Bank - MEL",
+    candidates=candidates,
+)
+# First consumed -> matched.  Second has no remaining candidate -> unmatched.
+assert len(result.matched) == 1
+assert len(result.unmatched) == 1
+print(f"Consume-once semantics OK | {result.summary}")
+# Expected: Consume-once semantics OK | 1 matched (50.0% exact), 0 partial, 0 needs-review, 1 unmatched — 2 total
+```
+
+---
+
+### Test 12.13 — API reconcile_bank_statement_api accepts JSON string
+
+```python
+import json
+from idp.api.extract import reconcile_bank_statement_api
+from idp.idp.bank_reconciliation import ReconciliationMatch
+
+# Mock candidate pool via the underlying engine's candidates kwarg is not
+# exposed via the API; instead we verify the endpoint serialises correctly
+# when given an empty transactions list (nothing to reconcile).
+response = reconcile_bank_statement_api(
+    bank_account="Bank - Dummy",
+    transactions=json.dumps([]),
+)
+assert response["success"] is True
+assert response["reconciliation"]["counts"]["total"] == 0
+print("API reconcile_bank_statement_api (empty) OK")
+# Expected: API reconcile_bank_statement_api (empty) OK
+```
+
+---
+
+### Test 12.14 — API validation errors
+
+```python
+import frappe
+from idp.api.extract import (
+    extract_bank_statement_api, reconcile_bank_statement_api,
+)
+
+# Missing file_url
+try:
+    extract_bank_statement_api(file_url="")
+    raise AssertionError("Expected ValidationError")
+except frappe.ValidationError:
+    print("extract_bank_statement_api rejects missing file_url")
+
+# Missing bank_account
+try:
+    reconcile_bank_statement_api(bank_account="", transactions="[]")
+    raise AssertionError("Expected ValidationError")
+except frappe.ValidationError:
+    print("reconcile_bank_statement_api rejects missing bank_account")
+
+# Invalid transactions JSON
+try:
+    reconcile_bank_statement_api(
+        bank_account="Bank - Dummy", transactions="not-json",
+    )
+    raise AssertionError("Expected ValidationError")
+except frappe.ValidationError:
+    print("reconcile_bank_statement_api rejects invalid JSON")
+
+# transactions must be a list
+try:
+    reconcile_bank_statement_api(
+        bank_account="Bank - Dummy", transactions='{"x": 1}',
+    )
+    raise AssertionError("Expected ValidationError")
+except frappe.ValidationError:
+    print("reconcile_bank_statement_api rejects non-list transactions")
+# Expected: all four rejection messages
+```
+
+---
+
+### Test 12.15 — Frontend Phase-12 file structure
+
+```bash
+cd /home/sanjay/erpnext/frappe-bench-test/apps/idp
+
+for f in \
+  frontend/src/components/BankReconciliation.vue \
+  frontend/src/components/ReconciliationGroup.vue \
+  frontend/src/composables/useBankReconciliation.js \
+  frontend/src/pages/BankStatementView.vue; do
+  if [ -f "$f" ]; then
+    echo "OK: $f"
+  else
+    echo "MISSING: $f"
+  fi
+done
+
+# Expected: all four show "OK"
+```
+
+---
+
+### Test 12.16 — Frontend router + API wiring
+
+```bash
+cd /home/sanjay/erpnext/frappe-bench-test/apps/idp
+
+# Route exists
+grep -q "BankStatementView" frontend/src/router.js && \
+  echo "Route registered" || echo "MISSING route"
+
+# API helpers exist
+grep -q "extractBankStatement" frontend/src/utils/api.js && \
+  echo "extractBankStatement exported" || echo "MISSING extractBankStatement"
+grep -q "reconcileBankStatement" frontend/src/utils/api.js && \
+  echo "reconcileBankStatement exported" || echo "MISSING reconcileBankStatement"
+
+# Expected:
+# Route registered
+# extractBankStatement exported
+# reconcileBankStatement exported
+```
+
+---
+
 ## Running All Tests
 
 ### Option A: bench console (interactive)
@@ -2984,6 +3423,22 @@ bench --site test.local run-tests --app idp
 | Phase 17 | 17.9 Permission query conditions | Completed |
 | Phase 17 | 17.10 Guest auth rejection | Completed |
 | Phase 17 | 17.11 has_conversation_permission ownership | Completed |
+| Phase 12 | 12.1 Module imports | Completed |
+| Phase 12 | 12.2 Amount parsing | Completed |
+| Phase 12 | 12.3 Date parsing | Completed |
+| Phase 12 | 12.4 Header matching | Completed |
+| Phase 12 | 12.5 parse_bank_statement happy path | Completed |
+| Phase 12 | 12.6 Running-balance mismatch flagged | Completed |
+| Phase 12 | 12.7 Missing table raises ExtractionError | Completed |
+| Phase 12 | 12.8 to_dict / from_dicts round-trip | Completed |
+| Phase 12 | 12.9 Exact + reference reconciliation | Completed |
+| Phase 12 | 12.10 Partial and unmatched | Completed |
+| Phase 12 | 12.11 Multiple-matches detection | Completed |
+| Phase 12 | 12.12 Candidate consume-once | Completed |
+| Phase 12 | 12.13 API reconcile accepts JSON | Completed |
+| Phase 12 | 12.14 API validation errors | Completed |
+| Phase 12 | 12.15 Frontend file structure | Completed |
+| Phase 12 | 12.16 Frontend router + API wiring | Completed |
 
 > **Note:** Update this table as you run tests.
 > Tests for Phase 10+ should be added here as those phases are implemented.

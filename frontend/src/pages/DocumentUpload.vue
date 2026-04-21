@@ -13,12 +13,20 @@
           Upload a document to extract structured data and create ERPNext records.
         </p>
       </div>
-      <router-link
-        to="/history"
-        class="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400"
-      >
-        History
-      </router-link>
+      <div class="flex items-center gap-4">
+        <router-link
+          to="/bank-statement"
+          class="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400"
+        >
+          Bank Statement
+        </router-link>
+        <router-link
+          to="/history"
+          class="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400"
+        >
+          History
+        </router-link>
+      </div>
     </div>
 
     <!-- File dropzone -->

@@ -24,6 +24,11 @@ const routes = [
     name: 'ProcessingHistory',
     component: () => import('@/pages/ProcessingHistory.vue'),
   },
+  {
+    path: '/bank-statement',
+    name: 'BankStatementView',
+    component: () => import('@/pages/BankStatementView.vue'),
+  },
 ]
 
 const router = createRouter({
