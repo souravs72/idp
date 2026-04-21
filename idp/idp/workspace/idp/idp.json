@@ -1,0 +1,132 @@
+{
+ "app": "idp",
+ "charts": [],
+ "content": "[{\"id\":\"idp_header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Intelligent Document Processing</b></span>\",\"col\":12}},{\"id\":\"idp_shortcut_header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Shortcuts</b></span>\",\"col\":12}},{\"id\":\"idp_shortcut_upload\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Upload Document\",\"col\":4}},{\"id\":\"idp_shortcut_settings\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"IDP Settings\",\"col\":4}},{\"id\":\"idp_shortcut_history\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Processing History\",\"col\":4}},{\"id\":\"idp_masters_header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Configuration</b></span>\",\"col\":12}}]",
+ "creation": "2026-04-21 00:00:00.000000",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "file",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "IDP",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Configuration",
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "IDP Settings",
+   "link_count": 0,
+   "link_to": "IDP Settings",
+   "link_type": "DocType",
+   "onboard": 1,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "IDP Extraction Template",
+   "link_count": 0,
+   "link_to": "IDP Extraction Template",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Processing",
+   "link_count": 0,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "IDP Document Log",
+   "link_count": 0,
+   "link_to": "IDP Document Log",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "IDP Conversation",
+   "link_count": 0,
+   "link_to": "IDP Conversation",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "dependencies": "",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "IDP Message",
+   "link_count": 0,
+   "link_to": "IDP Message",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-04-21 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "IDP",
+ "name": "IDP",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "restrict_to_domain": "",
+ "roles": [],
+ "sequence_id": 20.0,
+ "shortcuts": [
+  {
+   "color": "Green",
+   "doc_view": "",
+   "label": "Upload Document",
+   "link_to": "/idp",
+   "type": "URL"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "",
+   "label": "IDP Settings",
+   "link_to": "IDP Settings",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Processing History",
+   "link_to": "IDP Document Log",
+   "type": "DocType"
+  },
+  {
+   "color": "Blue",
+   "doc_view": "List",
+   "label": "Conversations",
+   "link_to": "IDP Conversation",
+   "type": "DocType"
+  }
+ ],
+ "title": "IDP",
+ "type": "Workspace"
+}

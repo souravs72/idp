@@ -1,0 +1,204 @@
+{
+ "actions": [],
+ "autoname": "format:IDPCONV-{YYYY}-{#####}",
+ "creation": "2026-04-21 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "title",
+  "user",
+  "status",
+  "column_break_header",
+  "target_doctype",
+  "company",
+  "llm_section",
+  "llm_provider",
+  "llm_model",
+  "column_break_llm",
+  "ocr_language",
+  "output_language",
+  "usage_section",
+  "total_tokens_used",
+  "estimated_cost_usd",
+  "column_break_usage",
+  "message_count",
+  "last_message_on",
+  "attachments_section",
+  "attachments",
+  "metadata_section",
+  "metadata"
+ ],
+ "fields": [
+  {
+   "description": "Auto-generated from the first user message; editable",
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Title",
+   "length": 255
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "User",
+   "options": "User",
+   "reqd": 1
+  },
+  {
+   "default": "Active",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Active\nArchived\nFailed"
+  },
+  {
+   "fieldname": "column_break_header",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "target_doctype",
+   "fieldtype": "Link",
+   "label": "Target DocType",
+   "options": "DocType"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "llm_section",
+   "fieldtype": "Section Break",
+   "label": "LLM"
+  },
+  {
+   "fieldname": "llm_provider",
+   "fieldtype": "Select",
+   "label": "LLM Provider",
+   "options": "\nopenai\nanthropic\nollama"
+  },
+  {
+   "description": "e.g. claude-opus-4-5-20251101, gpt-4o-mini",
+   "fieldname": "llm_model",
+   "fieldtype": "Data",
+   "label": "LLM Model"
+  },
+  {
+   "fieldname": "column_break_llm",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ocr_language",
+   "fieldtype": "Data",
+   "label": "OCR Language"
+  },
+  {
+   "default": "English",
+   "fieldname": "output_language",
+   "fieldtype": "Data",
+   "label": "Output Language"
+  },
+  {
+   "fieldname": "usage_section",
+   "fieldtype": "Section Break",
+   "label": "Usage"
+  },
+  {
+   "fieldname": "total_tokens_used",
+   "fieldtype": "Int",
+   "label": "Total Tokens Used",
+   "non_negative": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "estimated_cost_usd",
+   "fieldtype": "Currency",
+   "label": "Estimated Cost (USD)",
+   "options": "USD",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_usage",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "message_count",
+   "fieldtype": "Int",
+   "label": "Message Count",
+   "non_negative": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_message_on",
+   "fieldtype": "Datetime",
+   "label": "Last Message On",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "attachments_section",
+   "fieldtype": "Section Break",
+   "label": "Attachments"
+  },
+  {
+   "fieldname": "attachments",
+   "fieldtype": "Table",
+   "label": "Attachments",
+   "options": "IDP Conversation Attachment"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "metadata_section",
+   "fieldtype": "Section Break",
+   "label": "Metadata"
+  },
+  {
+   "description": "Free-form JSON — feature flags, template hints, etc.",
+   "fieldname": "metadata",
+   "fieldtype": "JSON",
+   "label": "Metadata"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-04-21 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "IDP",
+ "name": "IDP Conversation",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "if_owner": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "IDP User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "title",
+ "track_changes": 1
+}

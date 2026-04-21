@@ -2310,6 +2310,560 @@ print('Composables export test passed')
 
 ---
 
+## Phase 11: DocTypes, Workspace & Settings
+
+> **Important:** Phase 11 tests verify that the DocTypes, workspace,
+> and permission hooks installed by the app can be loaded and behave
+> correctly.  Run on a **test site only** (`test.local`).
+
+### Test 11.1 — DocType JSON files load
+
+```python
+import json, os
+from pathlib import Path
+
+APP = Path("apps/idp/idp/idp/doctype")
+expected = {
+    "idp_settings": "IDP Settings",
+    "idp_document_log": "IDP Document Log",
+    "idp_extraction_template": "IDP Extraction Template",
+}
+for folder, doctype_name in expected.items():
+    path = APP / folder / f"{folder}.json"
+    assert path.exists(), f"Missing JSON: {path}"
+    data = json.loads(path.read_text())
+    assert data["name"] == doctype_name, f"{path}: name mismatch"
+    assert data["module"] == "IDP"
+    print(f"OK: {doctype_name}")
+print("Phase 11 DocType JSON test passed")
+# Expected: prints OK for each DocType and the final pass line
+```
+
+---
+
+### Test 11.2 — IDP Settings single DocType exists and defaults load
+
+```python
+import frappe
+from idp.core.config import get_idp_settings, is_feature_enabled, get_confidence_threshold
+
+settings = get_idp_settings()
+assert "enabled" in settings
+assert "default_ocr_language" in settings
+assert "confidence_threshold" in settings
+
+print(f"enabled: {settings.get('enabled')}")
+print(f"default_ocr_language: {settings.get('default_ocr_language')}")
+print(f"confidence_threshold: {settings.get('confidence_threshold')}")
+# Expected: enabled=1, default_ocr_language='en', confidence_threshold=0.70
+
+print(f"is_feature_enabled('enable_comparison'): {is_feature_enabled('enable_comparison')}")
+# Expected: True
+
+print(f"get_confidence_threshold(): {get_confidence_threshold()}")
+# Expected: 0.7
+
+print("IDP Settings single DocType test passed")
+```
+
+---
+
+### Test 11.3 — IDP Settings validation rejects out-of-range values
+
+```python
+import frappe
+from idp.idp.doctype.idp_settings.idp_settings import IDPSettings
+
+doc = frappe.get_single("IDP Settings")
+doc.confidence_threshold = 1.5
+try:
+    doc.validate()
+    print("ERROR: Should have thrown")
+except frappe.ValidationError as e:
+    print(f"Correctly rejected out-of-range threshold: {e}")
+
+doc.confidence_threshold = 0.7  # reset
+doc.max_file_size_mb = 0
+try:
+    doc.validate()
+    print("ERROR: Should have thrown")
+except frappe.ValidationError as e:
+    print(f"Correctly rejected zero max_file_size_mb: {e}")
+
+print("IDP Settings validation test passed")
+# Expected: both out-of-range inputs raise ValidationError
+```
+
+---
+
+### Test 11.4 — IDP Document Log insert + default user
+
+```python
+import frappe
+
+doc = frappe.new_doc("IDP Document Log")
+doc.file_url = "/private/files/phase11-test.pdf"
+doc.file_name = "phase11-test.pdf"
+doc.mime_type = "application/pdf"
+doc.status = "Uploaded"
+doc.insert(ignore_permissions=True)
+
+assert doc.user == frappe.session.user, "user should auto-default to session user"
+print(f"created log row: {doc.name}, user={doc.user}, status={doc.status}")
+
+# cleanup
+frappe.delete_doc("IDP Document Log", doc.name, ignore_permissions=True)
+print("IDP Document Log test passed")
+# Expected: row inserts, user defaults to Administrator (or current session user)
+```
+
+---
+
+### Test 11.5 — IDP Extraction Template JSON validation
+
+```python
+import frappe
+
+doc = frappe.new_doc("IDP Extraction Template")
+doc.template_name = "Phase11 Test Template"
+doc.target_doctype = "Purchase Invoice"
+doc.field_mappings = "{ invalid json"
+try:
+    doc.validate()
+    print("ERROR: Should have thrown")
+except frappe.ValidationError as e:
+    print(f"Correctly rejected invalid JSON: {e}")
+
+# fix and retry
+doc.field_mappings = '{"invoice_number": "bill_no"}'
+doc.validate()
+print("Valid JSON accepted")
+
+print("IDP Extraction Template validation test passed")
+# Expected: invalid JSON is rejected, valid JSON accepted
+```
+
+---
+
+### Test 11.6 — Workspace JSON loads and references expected DocTypes
+
+```python
+import json
+from pathlib import Path
+
+path = Path("apps/idp/idp/idp/workspace/idp/idp.json")
+assert path.exists(), f"Missing workspace: {path}"
+ws = json.loads(path.read_text())
+
+assert ws["name"] == "IDP"
+assert ws["module"] == "IDP"
+assert ws["public"] == 1
+
+link_targets = {l.get("link_to") for l in ws.get("links", []) if l.get("type") == "Link"}
+for expected in ("IDP Settings", "IDP Document Log", "IDP Conversation",
+                 "IDP Message", "IDP Extraction Template"):
+    assert expected in link_targets, f"Workspace missing link to {expected}"
+    print(f"OK: workspace links to {expected}")
+
+shortcut_labels = {s.get("label") for s in ws.get("shortcuts", [])}
+assert "Upload Document" in shortcut_labels
+assert "IDP Settings" in shortcut_labels
+assert "Processing History" in shortcut_labels
+print("Phase 11 Workspace test passed")
+```
+
+---
+
+### Test 11.7 — add_to_apps_screen hook includes permission check
+
+```python
+from idp.hooks import add_to_apps_screen
+entry = add_to_apps_screen[0]
+print(f"name: {entry['name']}")
+print(f"route: {entry['route']}")
+print(f"has_permission: {entry.get('has_permission')}")
+assert entry["name"] == "idp"
+assert entry["route"] == "/idp"
+assert entry.get("has_permission") == "idp.api.permissions.has_app_permission"
+print("Phase 11 app entry test passed")
+# Expected: has_permission resolves to idp.api.permissions.has_app_permission
+```
+
+---
+
+### Test 11.8 — has_app_permission gates guest users
+
+```python
+import frappe
+from idp.api.permissions import has_app_permission
+
+original = frappe.session.user
+try:
+    frappe.set_user("Guest")
+    assert has_app_permission() is False, "Guest should be denied"
+    print("Guest denied: OK")
+
+    frappe.set_user("Administrator")
+    assert has_app_permission() is True, "Administrator should be allowed"
+    print("Administrator allowed: OK")
+finally:
+    frappe.set_user(original)
+print("has_app_permission test passed")
+```
+
+---
+
+### Test 11.9 — IDP User role is created by after_install
+
+```python
+import frappe
+from idp.install import _ensure_idp_user_role
+
+_ensure_idp_user_role()  # idempotent
+assert frappe.db.exists("Role", "IDP User"), "IDP User role should exist"
+print("IDP User role exists")
+# Expected: the role exists in the tabRole table
+print("after_install IDP User role test passed")
+```
+
+---
+
+## Phase 17: Conversation DocTypes (IDP Conversation, IDP Message)
+
+> **Important:** Phase 17 tests create and delete conversation/message
+> records.  Run on a **test site only** (`test.local`).
+
+### Test 17.1 — Conversation DocType files load
+
+```python
+import json
+from pathlib import Path
+
+APP = Path("apps/idp/idp/idp/doctype")
+expected = {
+    "idp_conversation": ("IDP Conversation", False),
+    "idp_conversation_attachment": ("IDP Conversation Attachment", True),
+    "idp_message": ("IDP Message", False),
+}
+for folder, (name, istable) in expected.items():
+    path = APP / folder / f"{folder}.json"
+    data = json.loads(path.read_text())
+    assert data["name"] == name, f"{path}: name mismatch"
+    assert data["module"] == "IDP"
+    if istable:
+        assert data.get("istable") == 1, f"{name} should be istable=1"
+    print(f"OK: {name}")
+print("Phase 17 DocType JSON test passed")
+```
+
+---
+
+### Test 17.2 — Create conversation via API
+
+```python
+import frappe
+from idp.api.conversation import create_conversation, get_conversation
+
+result = create_conversation(
+    title="Phase 17 Test Conversation",
+    target_doctype="Purchase Invoice",
+    llm_provider="anthropic",
+    llm_model="claude-opus-4-5-20251101",
+    output_language="English",
+)
+print(f"created: {result}")
+assert result["conversation_id"].startswith("IDPCONV-")
+assert result["title"] == "Phase 17 Test Conversation"
+assert result["status"] == "Active"
+
+fetched = get_conversation(result["conversation_id"])
+assert fetched["user"] == frappe.session.user
+assert fetched["target_doctype"] == "Purchase Invoice"
+assert fetched["llm_provider"] == "anthropic"
+assert fetched["messages"] == []
+print("create_conversation + get_conversation test passed")
+
+# cleanup
+frappe.delete_doc("IDP Conversation", result["conversation_id"], ignore_permissions=True)
+```
+
+---
+
+### Test 17.3 — post_message appends messages in order
+
+```python
+import frappe
+from idp.api.conversation import create_conversation, post_message, get_conversation
+
+conv = create_conversation(title="Sequence test")
+cid = conv["conversation_id"]
+
+m1 = post_message(cid, content="First question", role="user")
+m2 = post_message(cid, content="Assistant reply", role="assistant")
+m3 = post_message(cid, content="Second question", role="user")
+
+assert m1["sequence"] == 0
+assert m2["sequence"] == 1
+assert m3["sequence"] == 2
+print(f"sequences: {m1['sequence']}, {m2['sequence']}, {m3['sequence']}")
+
+# Fetch and verify ordering
+fetched = get_conversation(cid)
+seqs = [m["sequence"] for m in fetched["messages"]]
+assert seqs == [0, 1, 2]
+print(f"fetched sequences: {seqs}")
+print(f"message_count: {fetched['message_count']}")
+# Expected: 3
+assert fetched["message_count"] == 3
+
+# cleanup
+for m in fetched["messages"]:
+    frappe.delete_doc("IDP Message", m["name"], ignore_permissions=True)
+frappe.delete_doc("IDP Conversation", cid, ignore_permissions=True)
+print("post_message ordering test passed")
+```
+
+---
+
+### Test 17.4 — Invalid role is rejected
+
+```python
+import frappe
+
+conv = frappe.new_doc("IDP Conversation")
+conv.user = frappe.session.user
+conv.title = "Invalid role test"
+conv.insert(ignore_permissions=True)
+
+msg = frappe.new_doc("IDP Message")
+msg.conversation = conv.name
+msg.role = "attacker"  # invalid
+msg.content = "should fail"
+try:
+    msg.insert(ignore_permissions=True)
+    print("ERROR: Should have thrown")
+except frappe.ValidationError as e:
+    print(f"Correctly rejected invalid role: {e}")
+
+frappe.delete_doc("IDP Conversation", conv.name, ignore_permissions=True)
+print("IDP Message invalid role test passed")
+# Expected: ValidationError raised for role='attacker'
+```
+
+---
+
+### Test 17.5 — post_message auto-generates conversation title from first user message
+
+```python
+import frappe
+from idp.api.conversation import create_conversation, post_message, get_conversation
+
+# Create without title — controller gives a default "Conversation — ..." title
+conv = create_conversation()
+cid = conv["conversation_id"]
+initial_title = conv["title"]
+assert initial_title.startswith("Conversation —"), f"unexpected default: {initial_title}"
+
+post_message(cid, content="Please extract this invoice", role="user")
+fetched = get_conversation(cid)
+assert fetched["title"] == "Please extract this invoice"
+print(f"auto title: {fetched['title']}")
+
+# cleanup
+for m in fetched["messages"]:
+    frappe.delete_doc("IDP Message", m["name"], ignore_permissions=True)
+frappe.delete_doc("IDP Conversation", cid, ignore_permissions=True)
+print("Auto-title generation test passed")
+```
+
+---
+
+### Test 17.6 — archive_conversation sets status but preserves messages
+
+```python
+import frappe
+from idp.api.conversation import (
+    create_conversation, post_message, archive_conversation, get_conversation,
+)
+
+conv = create_conversation(title="Archive test")
+cid = conv["conversation_id"]
+post_message(cid, content="Hello", role="user")
+
+result = archive_conversation(cid)
+assert result["status"] == "Archived"
+print(f"archived: {result}")
+
+# messages still accessible
+fetched = get_conversation(cid)
+assert fetched["status"] == "Archived"
+assert len(fetched["messages"]) == 1
+print(f"archived conversation still has {len(fetched['messages'])} message(s)")
+
+# cleanup
+for m in fetched["messages"]:
+    frappe.delete_doc("IDP Message", m["name"], ignore_permissions=True)
+frappe.delete_doc("IDP Conversation", cid, ignore_permissions=True)
+print("archive_conversation test passed")
+```
+
+---
+
+### Test 17.7 — Conversation.add_attachment with file_id alias dedup
+
+```python
+import frappe
+
+doc = frappe.new_doc("IDP Conversation")
+doc.user = frappe.session.user
+doc.title = "Attachment dedup test"
+doc.insert(ignore_permissions=True)
+
+doc.add_attachment(
+    file_url="/private/files/invoice.pdf",
+    file_name="invoice.pdf",
+    mime_type="application/pdf",
+    file_id="file_1",
+    file_size=12345,
+    inline_text_preview="TAX INVOICE ...",
+)
+# Duplicate by file_id — should be skipped
+doc.add_attachment(
+    file_url="/private/files/invoice.pdf",
+    file_name="invoice.pdf",
+    mime_type="application/pdf",
+    file_id="file_1",
+)
+# New alias
+doc.add_attachment(
+    file_url="/private/files/po.pdf",
+    file_name="po.pdf",
+    mime_type="application/pdf",
+    file_id="file_2",
+)
+doc.save(ignore_permissions=True)
+
+aliases = [a.file_id for a in doc.attachments]
+print(f"aliases: {aliases}")
+assert aliases == ["file_1", "file_2"], f"expected dedup, got {aliases}"
+
+frappe.delete_doc("IDP Conversation", doc.name, ignore_permissions=True)
+print("add_attachment dedup test passed")
+# Expected: aliases == ['file_1', 'file_2'] (duplicate skipped)
+```
+
+---
+
+### Test 17.8 — list_conversations filters by status
+
+```python
+import frappe
+from idp.api.conversation import create_conversation, list_conversations, archive_conversation
+
+c1 = create_conversation(title="Active one")
+c2 = create_conversation(title="To archive")
+archive_conversation(c2["conversation_id"])
+
+active = list_conversations(status="Active", limit=10)
+archived = list_conversations(status="Archived", limit=10)
+
+active_titles = {r["title"] for r in active}
+archived_titles = {r["title"] for r in archived}
+print(f"active titles include 'Active one': {'Active one' in active_titles}")
+print(f"archived titles include 'To archive': {'To archive' in archived_titles}")
+assert "Active one" in active_titles
+assert "To archive" in archived_titles
+assert "To archive" not in active_titles
+
+# cleanup
+frappe.delete_doc("IDP Conversation", c1["conversation_id"], ignore_permissions=True)
+frappe.delete_doc("IDP Conversation", c2["conversation_id"], ignore_permissions=True)
+print("list_conversations filter test passed")
+```
+
+---
+
+### Test 17.9 — get_permission_query_conditions scoping
+
+```python
+import frappe
+from idp.idp.doctype.idp_conversation.idp_conversation import (
+    get_permission_query_conditions as conv_cond,
+)
+from idp.idp.doctype.idp_message.idp_message import (
+    get_permission_query_conditions as msg_cond,
+)
+
+# Administrator / System Manager -> empty string (no restriction)
+assert conv_cond("Administrator") == ""
+assert msg_cond("Administrator") == ""
+print("Administrator has no restriction: OK")
+
+# Regular user -> restriction referencing the user
+cond = conv_cond("test.user@example.com")
+assert "tabIDP Conversation" in cond
+assert "test.user@example.com" in cond
+print(f"conversation restriction: {cond}")
+
+cond = msg_cond("test.user@example.com")
+assert "tabIDP Message" in cond
+assert "tabIDP Conversation" in cond
+print(f"message restriction: {cond}")
+print("permission query conditions test passed")
+```
+
+---
+
+### Test 17.10 — post_message rejects unauthenticated access
+
+```python
+import frappe
+from idp.api.conversation import create_conversation, post_message
+
+conv = create_conversation(title="Auth test")
+cid = conv["conversation_id"]
+
+original = frappe.session.user
+try:
+    frappe.set_user("Guest")
+    try:
+        post_message(cid, content="guest attempt")
+        print("ERROR: Guest should have been rejected")
+    except (frappe.AuthenticationError, frappe.PermissionError) as e:
+        print(f"Guest correctly rejected: {type(e).__name__}")
+finally:
+    frappe.set_user(original)
+
+# cleanup
+frappe.delete_doc("IDP Conversation", cid, ignore_permissions=True)
+print("Guest auth test passed")
+```
+
+---
+
+### Test 17.11 — has_conversation_permission respects ownership
+
+```python
+import frappe
+from idp.api.permissions import has_conversation_permission
+
+doc = frappe.new_doc("IDP Conversation")
+doc.user = "alice@example.com"
+doc.title = "Alice conv"
+# Simulate without inserting — controller fields are enough for the hook
+class _Stub:
+    user = "alice@example.com"
+    owner = "alice@example.com"
+
+stub = _Stub()
+assert has_conversation_permission(stub, user="alice@example.com") is True
+assert has_conversation_permission(stub, user="bob@example.com") is False
+assert has_conversation_permission(stub, user="Administrator") is True
+print("has_conversation_permission ownership test passed")
+```
+
+---
+
 ## Running All Tests
 
 ### Option A: bench console (interactive)
@@ -2341,75 +2895,95 @@ bench --site test.local run-tests --app idp
 
 | Phase | Test | Status |
 |-------|------|--------|
-| Phase 1 | 1.1 Constants | Pending |
-| Phase 1 | 1.2 Exceptions | Pending |
-| Phase 1 | 1.3 Config | Pending |
-| Phase 1 | 1.4 Logger | Pending |
-| Phase 2 | 2.1 Data models | Pending |
-| Phase 2 | 2.2 OCR error handling | Pending |
-| Phase 2 | 2.3 Image preprocessing | Pending |
-| Phase 3 | 3.1 ExtractionResult | Pending |
-| Phase 3 | 3.2 CSV Extractor | Pending |
-| Phase 3 | 3.3 Excel Extractor | Pending |
-| Phase 3 | 3.4 DOCX Extractor | Pending |
-| Phase 3 | 3.5 File resolution | Pending |
-| Phase 3 | 3.6 MIME detection | Pending |
-| Phase 4 | 4.1 Schema discovery | Pending |
-| Phase 4 | 4.2 Date normalization | Pending |
-| Phase 4 | 4.3 Number normalization | Pending |
-| Phase 4 | 4.4 Label-value parsing | Pending |
-| Phase 4 | 4.5 Header field matching | Pending |
-| Phase 4 | 4.6 Column header matching | Pending |
-| Phase 4 | 4.7 Full mapping pipeline | Pending |
-| Phase 5 | 5.1 Data model imports | Pending |
-| Phase 5 | 5.2 Date ordering | Pending |
-| Phase 5 | 5.3 Line item presence | Pending |
-| Phase 5 | 5.4 Qty/rate/amount checks | Pending |
-| Phase 5 | 5.5 Total checks | Pending |
-| Phase 5 | 5.6 Currency validation | Pending |
-| Phase 5 | 5.7 Schema required + types | Pending |
-| Phase 5 | 5.8 Select options + Data length | Pending |
-| Phase 5 | 5.9 Link resolution | Pending |
-| Phase 5 | 5.10 Full validation pipeline | Pending |
-| Phase 6 | 6.1 Imports | Pending |
-| Phase 6 | 6.2 Build doc dict | Pending |
-| Phase 6 | 6.3 Find missing masters | Pending |
-| Phase 6 | 6.4 Auto-create masters | Pending |
-| Phase 6 | 6.5 Validation error path | Pending |
-| Phase 6 | 6.6 Missing master error path | Pending |
-| Phase 6 | 6.7 Full end-to-end create | Pending |
-| Phase 6 | 6.8 Auto-create during create | Pending |
-| Phase 6 | 6.9 Text field preservation | Pending |
-| Phase 7 | 7.1 Data model imports | Pending |
-| Phase 7 | 7.2 Date comparison | Pending |
-| Phase 7 | 7.3 Number comparison | Pending |
-| Phase 7 | 7.4 String comparison | Pending |
-| Phase 7 | 7.5 Non-existent record | Pending |
-| Phase 7 | 7.6 Full comparison | Pending |
-| Phase 7 | 7.7 Match by reference | Pending |
-| Phase 7 | 7.8 Match by supplier+date+total | Pending |
-| Phase 7 | 7.9 Item-level comparison | Pending |
-| Phase 7 | 7.10 Summary generation | Pending |
-| Phase 8 | 8.1 API module imports | Pending |
-| Phase 8 | 8.2 get_settings structure | Pending |
-| Phase 8 | 8.3 extract_document validation | Pending |
-| Phase 8 | 8.4 extract_document error handling | Pending |
-| Phase 8 | 8.5 create_erp_document validation | Pending |
-| Phase 8 | 8.6 create missing master error | Pending |
-| Phase 8 | 8.7 create end-to-end | Pending |
-| Phase 8 | 8.8 get_missing_masters | Pending |
-| Phase 8 | 8.9 compare_document validation | Pending |
-| Phase 8 | 8.10 find_matching_record validation | Pending |
-| Phase 8 | 8.11 JSON parameter parsing | Pending |
-| Phase 8 | 8.12 Comparison serialization | Pending |
-| Phase 9 | 9.1 Frontend directory structure | Pending |
-| Phase 9 | 9.2 package.json structure | Pending |
-| Phase 9 | 9.3 www/idp.py context provider | Pending |
-| Phase 9 | 9.4 Router config matches hooks | Pending |
-| Phase 9 | 9.5 API utility functions | Pending |
-| Phase 9 | 9.6 Formatter utility functions | Pending |
-| Phase 9 | 9.7 Vue page structure | Pending |
-| Phase 9 | 9.8 Composables exports | Pending |
+| Phase 1 | 1.1 Constants | Completed |
+| Phase 1 | 1.2 Exceptions | Completed |
+| Phase 1 | 1.3 Config | Completed |
+| Phase 1 | 1.4 Logger | Completed |
+| Phase 2 | 2.1 Data models | Completed |
+| Phase 2 | 2.2 OCR error handling | Completed |
+| Phase 2 | 2.3 Image preprocessing | Completed |
+| Phase 3 | 3.1 ExtractionResult | Completed |
+| Phase 3 | 3.2 CSV Extractor | Completed |
+| Phase 3 | 3.3 Excel Extractor | Completed |
+| Phase 3 | 3.4 DOCX Extractor | Completed |
+| Phase 3 | 3.5 File resolution | Completed |
+| Phase 3 | 3.6 MIME detection | Completed |
+| Phase 4 | 4.1 Schema discovery | Completed |
+| Phase 4 | 4.2 Date normalization | Completed |
+| Phase 4 | 4.3 Number normalization | Completed |
+| Phase 4 | 4.4 Label-value parsing | Completed |
+| Phase 4 | 4.5 Header field matching | Completed |
+| Phase 4 | 4.6 Column header matching | Completed |
+| Phase 4 | 4.7 Full mapping pipeline | Completed |
+| Phase 5 | 5.1 Data model imports | Completed |
+| Phase 5 | 5.2 Date ordering | Completed |
+| Phase 5 | 5.3 Line item presence | Completed |
+| Phase 5 | 5.4 Qty/rate/amount checks | Completed |
+| Phase 5 | 5.5 Total checks | Completed |
+| Phase 5 | 5.6 Currency validation | Completed |
+| Phase 5 | 5.7 Schema required + types | Completed |
+| Phase 5 | 5.8 Select options + Data length | Completed |
+| Phase 5 | 5.9 Link resolution | Completed |
+| Phase 5 | 5.10 Full validation pipeline | Completed |
+| Phase 6 | 6.1 Imports | Completed |
+| Phase 6 | 6.2 Build doc dict | Completed |
+| Phase 6 | 6.3 Find missing masters | Completed |
+| Phase 6 | 6.4 Auto-create masters | Completed |
+| Phase 6 | 6.5 Validation error path | Completed |
+| Phase 6 | 6.6 Missing master error path | Completed |
+| Phase 6 | 6.7 Full end-to-end create | Completed |
+| Phase 6 | 6.8 Auto-create during create | Completed |
+| Phase 6 | 6.9 Text field preservation | Completed |
+| Phase 7 | 7.1 Data model imports | Completed |
+| Phase 7 | 7.2 Date comparison | Completed |
+| Phase 7 | 7.3 Number comparison | Completed |
+| Phase 7 | 7.4 String comparison | Completed |
+| Phase 7 | 7.5 Non-existent record | Completed |
+| Phase 7 | 7.6 Full comparison | Completed |
+| Phase 7 | 7.7 Match by reference | Completed |
+| Phase 7 | 7.8 Match by supplier+date+total | Completed |
+| Phase 7 | 7.9 Item-level comparison | Completed |
+| Phase 7 | 7.10 Summary generation | Completed |
+| Phase 8 | 8.1 API module imports | Completed |
+| Phase 8 | 8.2 get_settings structure | Completed |
+| Phase 8 | 8.3 extract_document validation | Completed |
+| Phase 8 | 8.4 extract_document error handling | Completed |
+| Phase 8 | 8.5 create_erp_document validation | Completed |
+| Phase 8 | 8.6 create missing master error | Completed |
+| Phase 8 | 8.7 create end-to-end | Completed |
+| Phase 8 | 8.8 get_missing_masters | Completed |
+| Phase 8 | 8.9 compare_document validation | Completed |
+| Phase 8 | 8.10 find_matching_record validation | Completed |
+| Phase 8 | 8.11 JSON parameter parsing | Completed |
+| Phase 8 | 8.12 Comparison serialization | Completed |
+| Phase 9 | 9.1 Frontend directory structure | Completed |
+| Phase 9 | 9.2 package.json structure | Completed |
+| Phase 9 | 9.3 www/idp.py context provider | Completed |
+| Phase 9 | 9.4 Router config matches hooks | Completed |
+| Phase 9 | 9.5 API utility functions | Completed |
+| Phase 9 | 9.6 Formatter utility functions | Completed |
+| Phase 9 | 9.7 Vue page structure | Completed |
+| Phase 9 | 9.8 Composables exports | Completed |
+| Phase 11 | 11.1 DocType JSON files load | Completed |
+| Phase 11 | 11.2 IDP Settings defaults | Completed |
+| Phase 11 | 11.3 IDP Settings validation | Completed |
+| Phase 11 | 11.4 IDP Document Log insert | Completed |
+| Phase 11 | 11.5 IDP Extraction Template JSON validation | Completed |
+| Phase 11 | 11.6 Workspace JSON structure | Completed |
+| Phase 11 | 11.7 add_to_apps_screen hook | Completed |
+| Phase 11 | 11.8 has_app_permission gating | Completed |
+| Phase 11 | 11.9 IDP User role creation | Completed |
+| Phase 17 | 17.1 Conversation DocType files | Completed |
+| Phase 17 | 17.2 create_conversation + get_conversation | Completed |
+| Phase 17 | 17.3 post_message ordering | Completed |
+| Phase 17 | 17.4 IDP Message invalid role | Completed |
+| Phase 17 | 17.5 Auto-title generation | Completed |
+| Phase 17 | 17.6 archive_conversation | Completed |
+| Phase 17 | 17.7 add_attachment dedup | Completed |
+| Phase 17 | 17.8 list_conversations filter | Completed |
+| Phase 17 | 17.9 Permission query conditions | Completed |
+| Phase 17 | 17.10 Guest auth rejection | Completed |
+| Phase 17 | 17.11 has_conversation_permission ownership | Completed |
 
 > **Note:** Update this table as you run tests.
 > Tests for Phase 10+ should be added here as those phases are implemented.

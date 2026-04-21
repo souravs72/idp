@@ -1,0 +1,78 @@
+{
+ "actions": [],
+ "creation": "2026-04-21 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "file_id",
+  "file_name",
+  "file_url",
+  "mime_type",
+  "file_size",
+  "uploaded_on",
+  "tabfile_name",
+  "inline_text_preview"
+ ],
+ "fields": [
+  {
+   "description": "Monotonic short alias exposed to the LLM (e.g., file_1, file_2)",
+   "fieldname": "file_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "File ID (Alias)"
+  },
+  {
+   "fieldname": "file_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "File Name"
+  },
+  {
+   "fieldname": "file_url",
+   "fieldtype": "Data",
+   "label": "File URL",
+   "reqd": 1
+  },
+  {
+   "fieldname": "mime_type",
+   "fieldtype": "Data",
+   "label": "MIME Type"
+  },
+  {
+   "description": "File size in bytes",
+   "fieldname": "file_size",
+   "fieldtype": "Int",
+   "label": "File Size"
+  },
+  {
+   "fieldname": "uploaded_on",
+   "fieldtype": "Datetime",
+   "label": "Uploaded On"
+  },
+  {
+   "description": "Internal secondary registry key (tabFile.name) for server-side dedup. NEVER exposed to LLM.",
+   "fieldname": "tabfile_name",
+   "fieldtype": "Data",
+   "label": "tabFile Name (Internal)"
+  },
+  {
+   "description": "First 15K chars of extracted text (inline preview for LLM context)",
+   "fieldname": "inline_text_preview",
+   "fieldtype": "Long Text",
+   "label": "Inline Text Preview"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-04-21 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "IDP",
+ "name": "IDP Conversation Attachment",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

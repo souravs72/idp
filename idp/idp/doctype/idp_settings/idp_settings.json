@@ -1,0 +1,198 @@
+{
+ "actions": [],
+ "creation": "2026-04-21 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "ocr_section",
+  "default_ocr_language",
+  "confidence_threshold",
+  "column_break_ocr",
+  "enable_table_extraction",
+  "enable_layout_analysis",
+  "max_file_size_mb",
+  "processing_section",
+  "default_target_doctype",
+  "enable_write_operations",
+  "column_break_processing",
+  "auto_create_missing_masters",
+  "enable_comparison",
+  "formats_section",
+  "enable_pdf",
+  "enable_images",
+  "enable_excel",
+  "column_break_formats",
+  "enable_csv",
+  "enable_docx",
+  "advanced_section",
+  "ocr_timeout_seconds",
+  "max_pages_per_pdf"
+ ],
+ "fields": [
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "ocr_section",
+   "fieldtype": "Section Break",
+   "label": "OCR Configuration"
+  },
+  {
+   "default": "en",
+   "fieldname": "default_ocr_language",
+   "fieldtype": "Select",
+   "label": "Default OCR Language",
+   "options": "en\nch\nhi\nar\nfr\nde\nja\nko\nes\nta\nte\npt"
+  },
+  {
+   "default": "0.70",
+   "description": "Minimum OCR confidence (0.0-1.0) before flagging for review",
+   "fieldname": "confidence_threshold",
+   "fieldtype": "Float",
+   "label": "Confidence Threshold",
+   "precision": "2"
+  },
+  {
+   "fieldname": "column_break_ocr",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_table_extraction",
+   "fieldtype": "Check",
+   "label": "Enable Table Extraction"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_layout_analysis",
+   "fieldtype": "Check",
+   "label": "Enable Layout Analysis"
+  },
+  {
+   "default": "25",
+   "description": "Maximum upload size in megabytes",
+   "fieldname": "max_file_size_mb",
+   "fieldtype": "Int",
+   "label": "Max File Size (MB)"
+  },
+  {
+   "fieldname": "processing_section",
+   "fieldtype": "Section Break",
+   "label": "Document Processing"
+  },
+  {
+   "fieldname": "default_target_doctype",
+   "fieldtype": "Link",
+   "label": "Default Target DocType",
+   "options": "DocType"
+  },
+  {
+   "default": "0",
+   "description": "When off, the API will never create ERPNext documents (dry-run mode).",
+   "fieldname": "enable_write_operations",
+   "fieldtype": "Check",
+   "label": "Enable Write Operations"
+  },
+  {
+   "fieldname": "column_break_processing",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "Automatically create missing Supplier/Customer/Item masters during extraction",
+   "fieldname": "auto_create_missing_masters",
+   "fieldtype": "Check",
+   "label": "Auto-create Missing Masters"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_comparison",
+   "fieldtype": "Check",
+   "label": "Enable Comparison"
+  },
+  {
+   "fieldname": "formats_section",
+   "fieldtype": "Section Break",
+   "label": "Supported Formats"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_pdf",
+   "fieldtype": "Check",
+   "label": "Enable PDF"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_images",
+   "fieldtype": "Check",
+   "label": "Enable Images"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_excel",
+   "fieldtype": "Check",
+   "label": "Enable Excel"
+  },
+  {
+   "fieldname": "column_break_formats",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_csv",
+   "fieldtype": "Check",
+   "label": "Enable CSV"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_docx",
+   "fieldtype": "Check",
+   "label": "Enable DOCX"
+  },
+  {
+   "fieldname": "advanced_section",
+   "fieldtype": "Section Break",
+   "label": "Advanced"
+  },
+  {
+   "default": "60",
+   "fieldname": "ocr_timeout_seconds",
+   "fieldtype": "Int",
+   "label": "OCR Timeout (seconds)"
+  },
+  {
+   "default": "50",
+   "fieldname": "max_pages_per_pdf",
+   "fieldtype": "Int",
+   "label": "Max Pages per PDF"
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-04-21 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "IDP",
+ "name": "IDP Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "quick_entry": 1,
+ "sort_field": "creation",
+ "sort_order": "ASC",
+ "states": [],
+ "track_changes": 1
+}

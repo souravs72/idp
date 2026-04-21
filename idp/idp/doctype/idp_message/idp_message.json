@@ -1,0 +1,231 @@
+{
+ "actions": [],
+ "autoname": "format:IDPMSG-{YYYY}-{#####}",
+ "creation": "2026-04-21 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "conversation",
+  "sequence",
+  "role",
+  "column_break_header",
+  "created_on",
+  "stop_processing",
+  "content_section",
+  "content",
+  "tool_section",
+  "tool_call_id",
+  "tool_name",
+  "column_break_tool",
+  "tool_arguments",
+  "tool_result",
+  "attachments_section",
+  "attachments",
+  "card_section",
+  "rendered_card_type",
+  "rendered_card_payload",
+  "usage_section",
+  "tokens_in",
+  "tokens_out",
+  "column_break_usage",
+  "latency_ms",
+  "error_section",
+  "error"
+ ],
+ "fields": [
+  {
+   "fieldname": "conversation",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Conversation",
+   "options": "IDP Conversation",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "description": "Ordering within the conversation (0-based)",
+   "fieldname": "sequence",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Sequence",
+   "non_negative": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "role",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Role",
+   "options": "system\nuser\nassistant\ntool",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_header",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "created_on",
+   "fieldtype": "Datetime",
+   "label": "Created On",
+   "search_index": 1
+  },
+  {
+   "default": "0",
+   "description": "True if this message halted the tool loop",
+   "fieldname": "stop_processing",
+   "fieldtype": "Check",
+   "label": "Stop Processing"
+  },
+  {
+   "fieldname": "content_section",
+   "fieldtype": "Section Break",
+   "label": "Content"
+  },
+  {
+   "description": "Message body. May be empty for tool-only assistant messages.",
+   "fieldname": "content",
+   "fieldtype": "Long Text",
+   "label": "Content"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "tool_section",
+   "fieldtype": "Section Break",
+   "label": "Tool"
+  },
+  {
+   "description": "Populated for role=tool or role=assistant with tool calls",
+   "fieldname": "tool_call_id",
+   "fieldtype": "Data",
+   "label": "Tool Call ID"
+  },
+  {
+   "fieldname": "tool_name",
+   "fieldtype": "Data",
+   "label": "Tool Name"
+  },
+  {
+   "fieldname": "column_break_tool",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "JSON arguments supplied by the assistant",
+   "fieldname": "tool_arguments",
+   "fieldtype": "JSON",
+   "label": "Tool Arguments"
+  },
+  {
+   "description": "JSON result returned by the tool execution",
+   "fieldname": "tool_result",
+   "fieldtype": "JSON",
+   "label": "Tool Result"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "attachments_section",
+   "fieldtype": "Section Break",
+   "label": "Attachments"
+  },
+  {
+   "description": "JSON list of {file_url, file_id, file_name, mime_type}",
+   "fieldname": "attachments",
+   "fieldtype": "JSON",
+   "label": "Attachments"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "card_section",
+   "fieldtype": "Section Break",
+   "label": "Rendered Card"
+  },
+  {
+   "default": "None",
+   "fieldname": "rendered_card_type",
+   "fieldtype": "Select",
+   "label": "Rendered Card Type",
+   "options": "None\nConfirmationCard\nComparisonCard\nErrorCard"
+  },
+  {
+   "fieldname": "rendered_card_payload",
+   "fieldtype": "JSON",
+   "label": "Rendered Card Payload"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "usage_section",
+   "fieldtype": "Section Break",
+   "label": "Usage"
+  },
+  {
+   "fieldname": "tokens_in",
+   "fieldtype": "Int",
+   "label": "Tokens In",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "tokens_out",
+   "fieldtype": "Int",
+   "label": "Tokens Out",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "column_break_usage",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "latency_ms",
+   "fieldtype": "Int",
+   "label": "Latency (ms)",
+   "non_negative": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "error_section",
+   "fieldtype": "Section Break",
+   "label": "Error"
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Long Text",
+   "label": "Error"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-04-21 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "IDP",
+ "name": "IDP Message",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "IDP User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "sequence",
+ "sort_order": "ASC",
+ "states": [],
+ "track_changes": 0
+}

@@ -1,0 +1,186 @@
+{
+ "actions": [],
+ "autoname": "IDPLOG-.YYYY.-.#####",
+ "creation": "2026-04-21 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "file_section",
+  "file_url",
+  "file_name",
+  "mime_type",
+  "column_break_file",
+  "target_doctype",
+  "company",
+  "user",
+  "status_section",
+  "status",
+  "processing_time_ms",
+  "column_break_status",
+  "ocr_confidence",
+  "ocr_language",
+  "created_section",
+  "created_doctype",
+  "created_document",
+  "data_section",
+  "extraction_data",
+  "validation_errors",
+  "error_message"
+ ],
+ "fields": [
+  {
+   "fieldname": "file_section",
+   "fieldtype": "Section Break",
+   "label": "File"
+  },
+  {
+   "fieldname": "file_url",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "File URL",
+   "reqd": 1
+  },
+  {
+   "fieldname": "file_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "File Name"
+  },
+  {
+   "fieldname": "mime_type",
+   "fieldtype": "Data",
+   "label": "MIME Type"
+  },
+  {
+   "fieldname": "column_break_file",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "target_doctype",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Target DocType",
+   "options": "DocType"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "options": "User"
+  },
+  {
+   "fieldname": "status_section",
+   "fieldtype": "Section Break",
+   "label": "Status"
+  },
+  {
+   "default": "Uploaded",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Uploaded\nExtracting\nExtracted\nCreating\nCreated\nFailed"
+  },
+  {
+   "fieldname": "processing_time_ms",
+   "fieldtype": "Int",
+   "label": "Processing Time (ms)"
+  },
+  {
+   "fieldname": "column_break_status",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ocr_confidence",
+   "fieldtype": "Float",
+   "label": "OCR Confidence",
+   "precision": "3"
+  },
+  {
+   "fieldname": "ocr_language",
+   "fieldtype": "Data",
+   "label": "OCR Language"
+  },
+  {
+   "fieldname": "created_section",
+   "fieldtype": "Section Break",
+   "label": "Created Record"
+  },
+  {
+   "fieldname": "created_doctype",
+   "fieldtype": "Link",
+   "label": "Created DocType",
+   "options": "DocType"
+  },
+  {
+   "fieldname": "created_document",
+   "fieldtype": "Dynamic Link",
+   "label": "Created Document",
+   "options": "created_doctype"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "data_section",
+   "fieldtype": "Section Break",
+   "label": "Data"
+  },
+  {
+   "fieldname": "extraction_data",
+   "fieldtype": "JSON",
+   "label": "Extraction Data"
+  },
+  {
+   "fieldname": "validation_errors",
+   "fieldtype": "JSON",
+   "label": "Validation Errors"
+  },
+  {
+   "fieldname": "error_message",
+   "fieldtype": "Text",
+   "label": "Error Message"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-04-21 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "IDP",
+ "name": "IDP Document Log",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "IDP User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "file_name",
+ "track_changes": 1
+}

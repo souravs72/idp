@@ -1,0 +1,63 @@
+{
+ "app": "idp",
+ "creation": "2026-04-21 17:04:42.177900",
+ "docstatus": 0,
+ "doctype": "Workspace Sidebar",
+ "header_icon": "files",
+ "idx": 0,
+ "items": [
+  {
+   "child": 0,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Home",
+   "link_to": "IDP",
+   "link_type": "Workspace",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "settings",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "IDP Settings",
+   "link_to": "IDP Settings",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "message-circle-more",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "IDP Conversation",
+   "link_to": "IDP Conversation",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "message-1",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "IDP Message",
+   "link_to": "IDP Message",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-04-21 17:04:42.177900",
+ "modified_by": "Administrator",
+ "name": "IDP",
+ "owner": "Administrator",
+ "standard": 1,
+ "title": "IDP"
+}

@@ -20,6 +20,7 @@ add_to_apps_screen = [
 		"logo": "/assets/idp/logo.png",
 		"title": "Intelligent Document Processing",
 		"route": "/idp",
+		"has_permission": "idp.api.permissions.has_app_permission",
 	}
 ]
 
@@ -95,7 +96,7 @@ website_route_rules = [
 # ------------
 
 # before_install = "idp.install.before_install"
-# after_install = "idp.install.after_install"
+after_install = "idp.install.after_install"
 
 # Uninstallation
 # ------------
@@ -129,13 +130,14 @@ website_route_rules = [
 # -----------
 # Permissions evaluated in scripted ways
 
-# permission_query_conditions = {
-# 	"Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
-# }
-#
-# has_permission = {
-# 	"Event": "frappe.desk.doctype.event.event.has_permission",
-# }
+permission_query_conditions = {
+	"IDP Conversation": "idp.idp.doctype.idp_conversation.idp_conversation.get_permission_query_conditions",
+	"IDP Message": "idp.idp.doctype.idp_message.idp_message.get_permission_query_conditions",
+}
+
+has_permission = {
+	"IDP Conversation": "idp.api.permissions.has_conversation_permission",
+}
 
 # Document Events
 # ---------------
