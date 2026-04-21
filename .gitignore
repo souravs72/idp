@@ -56,6 +56,7 @@ jspm_packages/
 
 # IDP
 idp/public/frontend
+idp/public/node_modules
 idp/www/idp.html
 build
 yarn.lock

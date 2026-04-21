@@ -15,7 +15,7 @@ A Frappe application that extracts structured data from uploaded documents (PDF,
 
 | Dependency | Version |
 |------------|---------|
-| Python | >= 3.14 |
+| Python | >= 3.10 |
 | Frappe | v16 |
 | ERPNext | v16 |
 
