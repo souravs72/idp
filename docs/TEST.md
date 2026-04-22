@@ -3330,6 +3330,337 @@ bench --site test.local run-tests --app idp
 
 ---
 
+## Phase 13: Testing, Audit & Observability
+
+The Phase 13 audit/metrics layer ships two new modules
+(`idp/core/audit.py`, `idp/core/metrics.py`) and a pytest-style unit
+test suite under `idp/tests/`.  The tests run in a framework-light mode
+via the `frappe_stub` fixture in `conftest.py`, so they can be executed
+with plain pytest **or** through Frappe's bench test runner.
+
+### 13.1 Audit module imports cleanly
+
+```python
+# bench --site test.local console
+from idp.core.audit import (
+    VALID_STATUSES,
+    is_audit_enabled,
+    log_event,
+    log_extraction_event,
+    log_creation_event,
+    log_comparison_event,
+    log_bank_event,
+    get_recent_logs,
+)
+
+print("VALID_STATUSES:", sorted(VALID_STATUSES))
+# Expected:
+# VALID_STATUSES: ['Created', 'Creating', 'Extracted', 'Extracting', 'Failed', 'Uploaded']
+```
+
+### 13.2 `log_event` writes a row and returns its name
+
+```python
+import frappe
+from idp.core.audit import log_event
+
+name = log_event(
+    file_url="/private/files/phase13-test.pdf",
+    target_doctype="Purchase Invoice",
+    status="Extracted",
+    processing_time_ms=420,
+    ocr_confidence=0.91,
+    ocr_language="en",
+)
+print("Created log:", name)
+doc = frappe.get_doc("IDP Document Log", name)
+print("Status:", doc.status, "| Time:", doc.processing_time_ms)
+# Expected:
+# Created log: IDPLOG-... (non-empty)
+# Status: Extracted | Time: 420
+```
+
+### 13.3 Invalid status is coerced to a valid one
+
+```python
+from idp.core.audit import log_event
+
+# Unknown status + error -> Failed
+n1 = log_event(file_url="/a.pdf", status="Garbage", error_message="boom")
+# Unknown status + no error -> Uploaded
+n2 = log_event(file_url="/b.pdf", status="Junk")
+
+import frappe
+print("n1 status:", frappe.db.get_value("IDP Document Log", n1, "status"))
+print("n2 status:", frappe.db.get_value("IDP Document Log", n2, "status"))
+# Expected:
+# n1 status: Failed
+# n2 status: Uploaded
+```
+
+### 13.4 `log_extraction_event` success persists confidence
+
+```python
+from idp.core.audit import log_extraction_event
+import frappe
+
+name = log_extraction_event(
+    file_url="/private/files/inv.pdf",
+    target_doctype="Purchase Invoice",
+    success=True,
+    processing_time_ms=123,
+    confidence=0.92,
+    language="en",
+    extraction_data={"header": {"supplier": "ACME"}, "items": []},
+)
+doc = frappe.get_doc("IDP Document Log", name)
+print("status:", doc.status, "| conf:", doc.ocr_confidence)
+# Expected:
+# status: Extracted | conf: 0.92
+```
+
+### 13.5 `log_creation_event` success records created document
+
+```python
+from idp.core.audit import log_creation_event
+import frappe
+
+name = log_creation_event(
+    target_doctype="Purchase Invoice",
+    success=True,
+    created_name="PI-TEST-0001",
+    file_url="/private/files/inv.pdf",
+)
+doc = frappe.get_doc("IDP Document Log", name)
+print(doc.status, doc.created_doctype, doc.created_document)
+# Expected:
+# Created Purchase Invoice PI-TEST-0001
+```
+
+### 13.6 `log_comparison_event` embeds the summary
+
+```python
+from idp.core.audit import log_comparison_event
+import frappe, json
+
+name = log_comparison_event(
+    file_url="/private/files/inv.pdf",
+    compare_doctype="Purchase Order",
+    compare_docname="PO-00042",
+    success=True,
+    processing_time_ms=80,
+    summary="5 matches, 1 discrepancy",
+)
+doc = frappe.get_doc("IDP Document Log", name)
+payload = json.loads(doc.extraction_data or "{}")
+print("status:", doc.status, "| summary:", payload.get("comparison_summary"))
+# Expected:
+# status: Extracted | summary: 5 matches, 1 discrepancy
+```
+
+### 13.7 `log_bank_event` captures counts
+
+```python
+from idp.core.audit import log_bank_event
+import frappe, json
+
+name = log_bank_event(
+    file_url="/private/files/stmt.pdf",
+    success=True,
+    processing_time_ms=200,
+    transaction_count=3,
+    bank_account="Main - TEST",
+    matched=2,
+    unmatched=1,
+)
+payload = json.loads(frappe.db.get_value("IDP Document Log", name, "extraction_data") or "{}")
+print(payload)
+# Expected:
+# {'bank_account': 'Main - TEST', 'transaction_count': 3, 'matched': 2, 'unmatched': 1}
+```
+
+### 13.8 Audit disabled via IDP Settings short-circuits
+
+```python
+# Only valid if IDP Settings ever grows an `enable_audit_log` field.  With
+# the default install (no flag), this call MUST produce a row.
+from idp.core.audit import is_audit_enabled, log_event
+print("enabled:", is_audit_enabled())
+name = log_event(file_url="/x.pdf")
+print("got name:", bool(name))
+# Expected (default install):
+# enabled: True
+# got name: True
+```
+
+### 13.9 Metrics module imports and exposes all endpoints
+
+```python
+from idp.core.metrics import (
+    extraction_count, extraction_duration, ocr_confidence,
+    validation_failure_rate, record_creation_count, comparison_count,
+    dashboard, get_dashboard,
+)
+print([fn.__name__ for fn in (
+    extraction_count, extraction_duration, ocr_confidence,
+    validation_failure_rate, record_creation_count, comparison_count,
+    dashboard, get_dashboard,
+)])
+# Expected:
+# ['extraction_count', 'extraction_duration', 'ocr_confidence',
+#  'validation_failure_rate', 'record_creation_count', 'comparison_count',
+#  'dashboard', 'get_dashboard']
+```
+
+### 13.10 Dashboard bundles every metric
+
+```python
+from idp.core.metrics import dashboard
+out = dashboard(since_hours=24)
+for k in (
+    "extraction_count", "extraction_duration", "ocr_confidence",
+    "validation_failure_rate", "record_creation_count", "comparison_count",
+):
+    assert k in out, k
+print("ok: dashboard has", len(out), "sections")
+# Expected:
+# ok: dashboard has 6 sections
+```
+
+### 13.11 `_percentile` linear interpolation
+
+```python
+from idp.core.metrics import _percentile
+assert _percentile([], 95) == 0.0
+assert _percentile([42.0], 95) == 42.0
+vals = [float(i) for i in range(1, 11)]
+print("p50:", _percentile(vals, 50))
+# Expected:
+# p50: 5.5
+```
+
+### 13.12 `_duration_stats` ignores None / 0
+
+```python
+from idp.core.metrics import _duration_stats
+print(_duration_stats([None, 0, 100, 200, 300]))
+# Expected (dict):
+# {'count': 3, 'mean_ms': 200.0, 'median_ms': 200.0, 'p95_ms': 290.0, 'max_ms': 300.0}
+```
+
+### 13.13 `get_dashboard` coerces garbage `since_hours`
+
+```python
+from idp.core.metrics import get_dashboard
+out = get_dashboard(since_hours="not-a-number")
+print(type(out).__name__, "extraction_count" in out)
+# Expected:
+# dict True
+```
+
+### 13.14 Extract API wires audit calls (success)
+
+```python
+# Full round-trip requires a sample file; this block only asserts that
+# an extraction run produces an IDP Document Log row.
+import frappe
+before = frappe.db.count("IDP Document Log")
+from idp.api.extract import extract_document
+try:
+    extract_document(file_url="/private/files/non-existent.pdf", target_doctype="Purchase Invoice")
+except Exception:
+    pass  # expected — file does not exist
+after = frappe.db.count("IDP Document Log")
+print("log rows delta >= 1:", (after - before) >= 1)
+# Expected:
+# log rows delta >= 1: True
+```
+
+### 13.15 Create API wires audit calls (validation failure)
+
+```python
+import frappe
+before = frappe.db.count("IDP Document Log", {"status": "Failed"})
+from idp.api.create import create_erp_document
+res = create_erp_document(
+    target_doctype="Purchase Invoice",
+    extracted_data='{"header": {}, "items": []}',
+)
+after = frappe.db.count("IDP Document Log", {"status": "Failed"})
+print("success:", res.get("success"), "| failed delta >= 1:", (after - before) >= 1)
+# Expected:
+# success: False | failed delta >= 1: True
+```
+
+### 13.16 Compare API wires audit calls (validation failure)
+
+```python
+from idp.api.compare import compare_document
+import frappe
+before = frappe.db.count("IDP Document Log")
+try:
+    compare_document(
+        file_url="",
+        compare_doctype="Purchase Order",
+        compare_docname="PO-NOPE",
+    )
+except frappe.ValidationError:
+    pass
+# Even on throw the audit path is not reached (pre-validation); assert
+# behaviour matches: no audit row for input validation errors.
+after = frappe.db.count("IDP Document Log")
+print("rows unchanged:", after == before)
+# Expected:
+# rows unchanged: True
+```
+
+### 13.17 `get_recent_logs` returns a list
+
+```python
+from idp.core.audit import log_event, get_recent_logs
+log_event(file_url="/recent-1.pdf", status="Extracted")
+log_event(file_url="/recent-2.pdf", status="Failed", error_message="nope")
+rows = get_recent_logs(limit=5)
+print("rows:", len(rows), type(rows).__name__)
+print("fields:", sorted(rows[0].keys()) if rows else None)
+# Expected:
+# rows: >= 2 list
+# fields: includes 'creation', 'file_url', 'status', 'user'
+```
+
+### 13.18 Pytest suite runs (framework-light tests)
+
+```bash
+# From the repo root:
+cd apps/idp
+
+# Optional: create a venv with pytest.
+python -m pip install --user pytest
+
+# Pure-mode tests (no Frappe site required) — use the conftest stub:
+python -m pytest idp/tests/test_audit.py \
+                 idp/tests/test_metrics.py \
+                 idp/tests/test_bank_statement_helpers.py \
+                 idp/tests/test_bank_reconciliation_helpers.py \
+                 idp/tests/test_api_imports.py \
+                 idp/tests/test_validator_models.py -q
+# Expected:
+#   All tests pass.  No test requires a running Frappe site because
+#   conftest.py provides a minimal `frappe` stub.
+```
+
+### 13.19 Bench test runner invocation
+
+```bash
+# Full-stack integration (requires the test site):
+bench --site test.local run-tests --app idp
+# Expected:
+#   Discovery picks up files under idp/tests/; any tests that use real
+#   DocTypes (IDP Document Log) exercise the DB path end-to-end.
+```
+
+---
+
 ## Test Status Tracker
 
 | Phase | Test | Status |
@@ -3439,6 +3770,25 @@ bench --site test.local run-tests --app idp
 | Phase 12 | 12.14 API validation errors | Completed |
 | Phase 12 | 12.15 Frontend file structure | Completed |
 | Phase 12 | 12.16 Frontend router + API wiring | Completed |
+| Phase 13 | 13.1 Audit module imports | Completed |
+| Phase 13 | 13.2 log_event writes a row | Completed |
+| Phase 13 | 13.3 Invalid status coercion | Completed |
+| Phase 13 | 13.4 log_extraction_event success | Completed |
+| Phase 13 | 13.5 log_creation_event success | Completed |
+| Phase 13 | 13.6 log_comparison_event summary | Completed |
+| Phase 13 | 13.7 log_bank_event counts | Completed |
+| Phase 13 | 13.8 Feature flag default-enabled | Completed |
+| Phase 13 | 13.9 Metrics module imports | Completed |
+| Phase 13 | 13.10 Dashboard bundle | Completed |
+| Phase 13 | 13.11 Percentile math | Completed |
+| Phase 13 | 13.12 Duration stats | Completed |
+| Phase 13 | 13.13 get_dashboard input coercion | Completed |
+| Phase 13 | 13.14 Extract API audit wiring | Completed |
+| Phase 13 | 13.15 Create API audit wiring | Completed |
+| Phase 13 | 13.16 Compare API audit wiring | Completed |
+| Phase 13 | 13.17 get_recent_logs helper | Completed |
+| Phase 13 | 13.18 pytest suite | Completed |
+| Phase 13 | 13.19 Bench run-tests | Completed |
 
 > **Note:** Update this table as you run tests.
 > Tests for Phase 10+ should be added here as those phases are implemented.

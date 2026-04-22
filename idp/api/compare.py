@@ -11,6 +11,7 @@ import time
 
 import frappe
 
+from idp.core.audit import log_comparison_event
 from idp.core.config import get_default_company
 from idp.core.constants import SUPPORTED_DOCTYPES
 from idp.core.exceptions import IDPError
@@ -84,6 +85,16 @@ def compare_document(
 			f"time={elapsed_ms}ms"
 		)
 
+		log_comparison_event(
+			file_url=file_url,
+			compare_doctype=compare_doctype,
+			compare_docname=compare_docname,
+			success=True,
+			processing_time_ms=elapsed_ms,
+			summary=result.summary,
+			company=company,
+		)
+
 		return {
 			"success": True,
 			"comparison": _serialize_comparison(result),
@@ -98,6 +109,15 @@ def compare_document(
 	except IDPError as exc:
 		elapsed_ms = int((time.monotonic() - start) * 1000)
 		logger.warning(f"Comparison failed | {compare_doctype}/{compare_docname} error={exc}")
+		log_comparison_event(
+			file_url=file_url,
+			compare_doctype=compare_doctype,
+			compare_docname=compare_docname,
+			success=False,
+			processing_time_ms=elapsed_ms,
+			error_message=f"{type(exc).__name__}: {exc}",
+			company=company,
+		)
 		return {
 			"success": False,
 			"error": str(exc),
@@ -109,6 +129,15 @@ def compare_document(
 	except Exception as exc:
 		elapsed_ms = int((time.monotonic() - start) * 1000)
 		logger.error(f"Unexpected comparison error: {exc}")
+		log_comparison_event(
+			file_url=file_url,
+			compare_doctype=compare_doctype,
+			compare_docname=compare_docname,
+			success=False,
+			processing_time_ms=elapsed_ms,
+			error_message=f"Unexpected: {exc}",
+			company=company,
+		)
 		frappe.throw(
 			f"Comparison failed: {exc}",
 			title="IDP Comparison Error",

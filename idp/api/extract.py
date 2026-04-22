@@ -12,6 +12,7 @@ import time
 
 import frappe
 
+from idp.core.audit import log_bank_event, log_extraction_event
 from idp.core.config import get_default_company
 from idp.core.constants import SUPPORTED_DOCTYPES
 from idp.core.exceptions import IDPError
@@ -104,6 +105,18 @@ def extract_document(
 			f"valid={schema_result.is_valid} time={elapsed_ms}ms"
 		)
 
+		log_extraction_event(
+			file_url=file_url,
+			target_doctype=target_doctype,
+			success=True,
+			processing_time_ms=elapsed_ms,
+			confidence=extraction.confidence,
+			language=language,
+			extraction_data={"header": mapped.header, "items": mapped.items},
+			validation_errors=validation["errors"] + validation["warnings"],
+			company=company,
+		)
+
 		return {
 			"success": True,
 			"extracted_data": {
@@ -121,6 +134,15 @@ def extract_document(
 	except IDPError as exc:
 		elapsed_ms = int((time.monotonic() - start) * 1000)
 		logger.warning(f"Extraction failed | file={file_url} error={exc}")
+		log_extraction_event(
+			file_url=file_url,
+			target_doctype=target_doctype,
+			success=False,
+			processing_time_ms=elapsed_ms,
+			language=language,
+			error_message=f"{type(exc).__name__}: {exc}",
+			company=company,
+		)
 		return {
 			"success": False,
 			"error": str(exc),
@@ -132,6 +154,15 @@ def extract_document(
 	except Exception as exc:
 		elapsed_ms = int((time.monotonic() - start) * 1000)
 		logger.error(f"Unexpected extraction error | file={file_url} error={exc}")
+		log_extraction_event(
+			file_url=file_url,
+			target_doctype=target_doctype,
+			success=False,
+			processing_time_ms=elapsed_ms,
+			language=language,
+			error_message=f"{type(exc).__name__}: {exc}",
+			company=company,
+		)
 		frappe.throw(
 			f"Extraction failed: {exc}",
 			title="IDP Extraction Error",
@@ -173,6 +204,12 @@ def extract_bank_statement_api(file_url: str, language: str = "en") -> dict:
 			"Bank statement extracted | file=%s txns=%d time=%dms",
 			file_url, len(statement.transactions), elapsed_ms,
 		)
+		log_bank_event(
+			file_url=file_url,
+			success=True,
+			processing_time_ms=elapsed_ms,
+			transaction_count=len(statement.transactions),
+		)
 		return {
 			"success": True,
 			"statement": statement_to_dict(statement),
@@ -181,6 +218,12 @@ def extract_bank_statement_api(file_url: str, language: str = "en") -> dict:
 	except IDPError as exc:
 		elapsed_ms = int((time.monotonic() - start) * 1000)
 		logger.warning("Bank statement extraction failed | file=%s error=%s", file_url, exc)
+		log_bank_event(
+			file_url=file_url,
+			success=False,
+			processing_time_ms=elapsed_ms,
+			error_message=f"{type(exc).__name__}: {exc}",
+		)
 		return {
 			"success": False,
 			"error": str(exc),
@@ -230,6 +273,16 @@ def reconcile_bank_statement_api(
 	result = reconcile_bank_statement(
 		transactions=txns,
 		bank_account=bank_account,
+		company=company or None,
+	)
+	log_bank_event(
+		file_url="<reconcile>",
+		success=True,
+		processing_time_ms=0,
+		transaction_count=result.total_count(),
+		bank_account=bank_account,
+		matched=len(result.matched),
+		unmatched=len(result.unmatched),
 		company=company or None,
 	)
 	return {"success": True, "reconciliation": result_to_dict(result)}

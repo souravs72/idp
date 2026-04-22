@@ -11,6 +11,7 @@ import json
 
 import frappe
 
+from idp.core.audit import log_creation_event
 from idp.core.config import get_default_company
 from idp.core.constants import SUPPORTED_DOCTYPES
 from idp.core.exceptions import IDPError, MissingMasterError, ValidationError
@@ -108,10 +109,23 @@ def create_erp_document(
 			item_defaults=item_defs,
 		)
 		logger.info(f"Created {result['doctype']} {result['name']} via API")
+		log_creation_event(
+			target_doctype=target_doctype,
+			success=True,
+			created_name=result.get("name"),
+			company=company,
+			warnings=result.get("warnings") or [],
+		)
 		return result
 
 	except ValidationError as exc:
 		logger.warning(f"Validation failed during create: {exc}")
+		log_creation_event(
+			target_doctype=target_doctype,
+			success=False,
+			company=company,
+			error_message=f"ValidationError: {exc}",
+		)
 		return {
 			"success": False,
 			"error": str(exc),
@@ -121,6 +135,12 @@ def create_erp_document(
 
 	except MissingMasterError as exc:
 		logger.info(f"Missing masters during create: {exc}")
+		log_creation_event(
+			target_doctype=target_doctype,
+			success=False,
+			company=company,
+			error_message=f"MissingMasterError: {exc}",
+		)
 		return {
 			"success": False,
 			"error": str(exc),
@@ -130,6 +150,12 @@ def create_erp_document(
 
 	except IDPError as exc:
 		logger.warning(f"IDP error during create: {exc}")
+		log_creation_event(
+			target_doctype=target_doctype,
+			success=False,
+			company=company,
+			error_message=f"{type(exc).__name__}: {exc}",
+		)
 		return {
 			"success": False,
 			"error": str(exc),
@@ -139,6 +165,12 @@ def create_erp_document(
 
 	except Exception as exc:
 		logger.error(f"Unexpected error during create: {exc}")
+		log_creation_event(
+			target_doctype=target_doctype,
+			success=False,
+			company=company,
+			error_message=f"Unexpected: {exc}",
+		)
 		frappe.throw(
 			f"Document creation failed: {exc}",
 			title="IDP Creation Error",

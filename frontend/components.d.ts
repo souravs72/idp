@@ -8,6 +8,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    BankReconciliation: typeof import('./src/components/BankReconciliation.vue')['default']
     ComparisonTable: typeof import('./src/components/ComparisonTable.vue')['default']
     ConfirmationCard: typeof import('./src/components/ConfirmationCard.vue')['default']
     DocumentThumbnail: typeof import('./src/components/DocumentThumbnail.vue')['default']
@@ -16,6 +17,7 @@ declare module 'vue' {
     FileDropzone: typeof import('./src/components/FileDropzone.vue')['default']
     MissingMastersDialog: typeof import('./src/components/MissingMastersDialog.vue')['default']
     ProcessingStatus: typeof import('./src/components/ProcessingStatus.vue')['default']
+    ReconciliationGroup: typeof import('./src/components/ReconciliationGroup.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SettingsPanel: typeof import('./src/components/SettingsPanel.vue')['default']
