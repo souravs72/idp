@@ -15,8 +15,10 @@ import frappe
 from idp.core.audit import log_bank_event, log_extraction_event
 from idp.core.config import get_default_company
 from idp.core.constants import SUPPORTED_DOCTYPES
-from idp.core.exceptions import IDPError
+from idp.core.exceptions import IDPError, RateLimitExceededError, SecurityError
 from idp.core.logger import get_logger
+from idp.core.rate_limit import check_and_consume
+from idp.core.security import assert_safe_file_url, assert_user_can_read
 from idp.idp.extractors import extract_content
 from idp.idp.mappers import FieldMapper, MappedDocument
 from idp.idp.validators import validate_business_rules, validate_schema
@@ -68,6 +70,46 @@ def extract_document(
 			f'Unsupported target DocType: "{target_doctype}". Supported: {", ".join(SUPPORTED_DOCTYPES)}',
 			frappe.ValidationError,
 		)
+
+	# --- Phase 14 hardening: rate limit + security pre-flight ---
+	try:
+		check_and_consume()
+		assert_safe_file_url(file_url)
+		assert_user_can_read(target_doctype)
+	except RateLimitExceededError as exc:
+		logger.info("Extraction rejected by rate limiter: %s", exc)
+		log_extraction_event(
+			file_url=file_url,
+			target_doctype=target_doctype,
+			success=False,
+			processing_time_ms=0,
+			language=language,
+			error_message=f"RateLimitExceededError: {exc}",
+			company=company,
+		)
+		return {
+			"success": False,
+			"error": str(exc),
+			"error_type": "RateLimitExceededError",
+			"details": exc.details,
+		}
+	except SecurityError as exc:
+		logger.warning("Extraction blocked by security guard: %s", exc)
+		log_extraction_event(
+			file_url=file_url,
+			target_doctype=target_doctype,
+			success=False,
+			processing_time_ms=0,
+			language=language,
+			error_message=f"SecurityError: {exc}",
+			company=company,
+		)
+		return {
+			"success": False,
+			"error": str(exc),
+			"error_type": "SecurityError",
+			"details": exc.details,
+		}
 
 	try:
 		# 1. Extract content from file

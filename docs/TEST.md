@@ -3661,6 +3661,315 @@ bench --site test.local run-tests --app idp
 
 ---
 
+## Phase 14: Production Hardening & Performance
+
+Phase 14 adds five new core modules plus a background-job API.  The
+tests below cover each hardening subsystem (cache, security,
+rate-limit, retention, background jobs) and verify that the extract
+API refuses abusive requests before invoking the expensive OCR
+pipeline.
+
+### 14.1 Cache primitives — set / get / expire
+
+```python
+import time
+from idp.core.cache import cache_set, cache_get, cache_delete, clear_all
+
+clear_all()
+cache_set("k1", "hello", ttl_seconds=60)
+print(cache_get("k1"))        # hello
+cache_set("k2", "brief", ttl_seconds=0.05)
+time.sleep(0.1)
+print(cache_get("k2"))        # None  (expired)
+print(cache_delete("k1"))     # True
+# Expected:
+# hello
+# None
+# True
+```
+
+### 14.2 `memoize` calls loader only once
+
+```python
+from idp.core.cache import memoize, clear_all
+clear_all()
+calls = []
+def loader():
+    calls.append(1)
+    return {"meta": True}
+print(memoize("m", loader))
+print(memoize("m", loader))
+print("loader calls:", len(calls))
+# Expected:
+# {'meta': True}
+# {'meta': True}
+# loader calls: 1
+```
+
+### 14.3 `get_doctype_schema_cached` hits after first call
+
+```python
+from idp.core.cache import get_doctype_schema_cached, clear_all, cache_stats
+
+clear_all()
+schema1 = get_doctype_schema_cached("Purchase Invoice")
+schema2 = get_doctype_schema_cached("Purchase Invoice")
+stats = cache_stats()
+print("same object:", schema1 is schema2)
+print("live entries:", stats["live_entries"])
+# Expected:
+# same object: True
+# live entries: 1
+```
+
+### 14.4 OCR warm-up is side-effect-free
+
+```python
+from idp.core.cache import warm_ocr_engine
+print(type(warm_ocr_engine("en")).__name__)
+# Expected:
+# bool
+```
+
+### 14.5 File-type magic detection
+
+```python
+from idp.core.security import detect_mime_by_magic, verify_file_type
+
+print(detect_mime_by_magic(b"%PDF-1.7"))
+print(detect_mime_by_magic(b"\x89PNG\r\n\x1a\n"))
+print(detect_mime_by_magic(b"garbage"))
+print(verify_file_type(b"%PDF-1.7"))
+# Expected:
+# application/pdf
+# image/png
+# None
+# application/pdf
+```
+
+### 14.6 File-type mismatch is rejected
+
+```python
+from idp.core.security import verify_file_type
+from idp.core.exceptions import SecurityError
+
+try:
+    verify_file_type(b"%PDF-1.7", expected_mime="image/png")
+except SecurityError as exc:
+    print("rejected:", exc)
+# Expected:
+# rejected: File type mismatch: claimed 'image/png', actually 'application/pdf'
+```
+
+### 14.7 Path traversal is blocked
+
+```python
+from idp.core.security import is_safe_file_url
+
+print(is_safe_file_url("/private/files/invoice.pdf"))                 # True
+print(is_safe_file_url("/files/public-invoice.pdf"))                  # True
+print(is_safe_file_url("/private/files/../../../etc/passwd"))         # False
+print(is_safe_file_url("/random/path.pdf"))                           # False
+print(is_safe_file_url(""))                                           # False
+# Expected:
+# True
+# True
+# False
+# False
+# False
+```
+
+### 14.8 Permission gating enforces read access
+
+```python
+from idp.core.security import assert_user_can_read
+from idp.core.exceptions import SecurityError
+
+# Administrator has read everywhere — should not raise.
+assert_user_can_read("Purchase Invoice", user="Administrator")
+print("admin ok")
+
+# Guest should be rejected on desk-only DocTypes.
+try:
+    assert_user_can_read("IDP Document Log", user="Guest")
+except SecurityError as exc:
+    print("guest blocked:", exc)
+# Expected:
+# admin ok
+# guest blocked: User lacks read permission on IDP Document Log.
+```
+
+### 14.9 Rate limiter consumes slots
+
+```python
+from idp.core.rate_limit import check_and_consume, status, reset
+
+reset(user="ratelimit-demo")
+print(check_and_consume(user="ratelimit-demo")["user_count"])  # 1
+print(check_and_consume(user="ratelimit-demo")["user_count"])  # 2
+print(status(user="ratelimit-demo")["user_count"])             # 2
+reset(user="ratelimit-demo")
+print(status(user="ratelimit-demo")["user_count"])             # 0
+# Expected:
+# 1
+# 2
+# 2
+# 0
+```
+
+### 14.10 Per-user limit rejects the (N+1)th call
+
+```python
+from idp.core.exceptions import RateLimitExceededError
+import idp.core.rate_limit as rl
+
+rl.reset(user="bob")
+# Force a tiny limit for the test run.
+orig = rl._get_limits
+rl._get_limits = lambda: (2, 999)
+try:
+    rl.check_and_consume(user="bob")
+    rl.check_and_consume(user="bob")
+    rl.check_and_consume(user="bob")
+    print("should NOT reach here")
+except RateLimitExceededError as exc:
+    print("blocked:", exc.details["bucket"])
+finally:
+    rl._get_limits = orig
+    rl.reset(user="bob")
+# Expected:
+# blocked: user
+```
+
+### 14.11 Rate limiter fails open when cache is unreachable
+
+```python
+import idp.core.rate_limit as rl
+orig_cache = rl._cache
+rl._cache = lambda: None
+try:
+    out = rl.check_and_consume(user="offline")
+    print("allowed when cache missing:", out["user_count"])
+finally:
+    rl._cache = orig_cache
+# Expected:
+# allowed when cache missing: 0
+```
+
+### 14.12 Retention — archive + prune + temp purge return shapes
+
+```python
+from idp.core.retention import archive_stale_logs, prune_old_logs, purge_temp_files
+
+print(archive_stale_logs(older_than_days=0))   # threshold_days=0, archived=0
+print(prune_old_logs(older_than_days=0))       # threshold_days=0, deleted=0
+print(purge_temp_files(max_age_hours=0))       # max_age=0, deleted=0
+# Expected (all three):
+# {'archived'|'deleted': 0, ...}
+```
+
+### 14.13 Scheduled `daily()` returns a three-section report
+
+```python
+from idp.core.retention import daily
+report = daily()
+print(set(report.keys()))
+# Expected:
+# {'archived', 'pruned', 'temp_files'}
+```
+
+### 14.14 `hooks.py` wires the daily scheduler task
+
+```python
+import idp.hooks as h
+print("IDP retention scheduled:", "idp.core.retention.daily" in h.scheduler_events["daily"])
+# Expected:
+# IDP retention scheduled: True
+```
+
+### 14.15 Background enqueue creates a placeholder log row
+
+```python
+# Requires a Frappe site with a Redis worker running.
+from idp.api.background import enqueue_extraction, get_job_status
+
+res = enqueue_extraction(
+    file_url="/private/files/phase14-test.pdf",
+    target_doctype="Purchase Invoice",
+    language="en",
+    timeout=60,
+)
+print("job_id:", res["job_id"], "queue:", res["queue"])
+status = get_job_status(res["job_id"])
+print("initial status:", status["status"])
+# Expected:
+# job_id: IDPLOG-...  queue: long
+# initial status: Extracting
+```
+
+### 14.16 Extract API refuses path-traversal before OCR
+
+```python
+from idp.api.extract import extract_document
+
+res = extract_document(
+    file_url="/private/files/../../etc/passwd",
+    target_doctype="Purchase Invoice",
+)
+print(res["success"], res["error_type"])
+# Expected:
+# False SecurityError
+```
+
+### 14.17 Extract API surfaces rate-limit error type
+
+```python
+import idp.core.rate_limit as rl
+from idp.api.extract import extract_document
+
+orig = rl._get_limits
+rl._get_limits = lambda: (0, 999)  # reject every call
+try:
+    res = extract_document(
+        file_url="/private/files/phase14.pdf",
+        target_doctype="Purchase Invoice",
+    )
+    print(res["success"], res["error_type"])
+finally:
+    rl._get_limits = orig
+    rl.reset()
+# Expected:
+# False RateLimitExceededError
+```
+
+### 14.18 Pytest suite for Phase 14
+
+```bash
+cd apps/idp
+python -m pytest idp/tests/test_cache.py \
+                 idp/tests/test_security.py \
+                 idp/tests/test_rate_limit.py \
+                 idp/tests/test_retention.py -q
+# Expected:
+#   All tests pass.  No Frappe site is required; conftest.py provides
+#   the `frappe_stub` fixture.
+```
+
+### 14.19 Exceptions extended
+
+```python
+from idp.core.exceptions import (
+    IDPError, RateLimitExceededError, SecurityError,
+)
+assert issubclass(RateLimitExceededError, IDPError)
+assert issubclass(SecurityError, IDPError)
+print("exceptions registered")
+# Expected:
+# exceptions registered
+```
+
+---
+
 ## Test Status Tracker
 
 | Phase | Test | Status |
@@ -3789,6 +4098,25 @@ bench --site test.local run-tests --app idp
 | Phase 13 | 13.17 get_recent_logs helper | Completed |
 | Phase 13 | 13.18 pytest suite | Completed |
 | Phase 13 | 13.19 Bench run-tests | Completed |
+| Phase 14 | 14.1 Cache set/get/expire | Completed |
+| Phase 14 | 14.2 memoize once | Completed |
+| Phase 14 | 14.3 Schema cache hit | Completed |
+| Phase 14 | 14.4 OCR warm-up safe | Completed |
+| Phase 14 | 14.5 Magic detection | Completed |
+| Phase 14 | 14.6 Mime mismatch rejected | Completed |
+| Phase 14 | 14.7 Path traversal blocked | Completed |
+| Phase 14 | 14.8 Permission gating | Completed |
+| Phase 14 | 14.9 Rate limiter consume | Completed |
+| Phase 14 | 14.10 Per-user limit rejects | Completed |
+| Phase 14 | 14.11 Fails open when cache down | Completed |
+| Phase 14 | 14.12 Retention return shapes | Completed |
+| Phase 14 | 14.13 daily() report | Completed |
+| Phase 14 | 14.14 hooks.py scheduler wiring | Completed |
+| Phase 14 | 14.15 Background enqueue | Completed |
+| Phase 14 | 14.16 Extract blocks traversal | Completed |
+| Phase 14 | 14.17 Extract surfaces rate-limit | Completed |
+| Phase 14 | 14.18 Pytest suite | Completed |
+| Phase 14 | 14.19 Exceptions extended | Completed |
 
 > **Note:** Update this table as you run tests.
 > Tests for Phase 10+ should be added here as those phases are implemented.

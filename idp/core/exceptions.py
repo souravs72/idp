@@ -42,3 +42,12 @@ class FileTooLargeError(IDPError):
 
 class MissingMasterError(IDPError):
 	"""Required master records (Supplier, Customer, Item) not found."""
+
+
+class RateLimitExceededError(IDPError):
+	"""Caller exceeded per-user or global extraction rate limit (Phase 14)."""
+
+
+class SecurityError(IDPError):
+	"""Request violated a security guard (bad MIME, path traversal, permission
+	denied) enforced by :mod:`idp.core.security` (Phase 14)."""

@@ -154,23 +154,11 @@ has_permission = {
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"idp.tasks.all"
-# 	],
-# 	"daily": [
-# 		"idp.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"idp.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"idp.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"idp.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+	"daily": [
+		"idp.core.retention.daily",
+	],
+}
 
 # Testing
 # -------
