@@ -3970,6 +3970,512 @@ print("exceptions registered")
 
 ---
 
+## Phase 15: Advanced Features
+
+Run every block in `bench --site test.local console`.
+
+### Test 15.1 — Advanced package import
+
+```python
+from idp.idp.advanced import templates, batch, feedback, tables, workflow, prompt_library, fine_tuning
+for mod in (templates, batch, feedback, tables, workflow, prompt_library, fine_tuning):
+    print("OK:", mod.__name__)
+# Expected: seven "OK: idp.idp.advanced.<module>" lines.
+```
+
+### Test 15.2 — Template hydrate + specificity
+
+```python
+import json, frappe
+from idp.idp.advanced.templates import load_templates
+
+# Seed a template
+if not frappe.db.exists("IDP Extraction Template", "TEST-TMPL-ACME"):
+    doc = frappe.new_doc("IDP Extraction Template")
+    doc.template_name = "TEST-TMPL-ACME"
+    doc.target_doctype = "Purchase Invoice"
+    doc.field_mappings = json.dumps({
+        "match_keywords": ["Acme Corp", "GSTIN 29ABC"],
+        "mappings": {"invoice no.": "bill_no", "invoice date": "posting_date"},
+    })
+    doc.validation_rules = json.dumps({"required": ["bill_no"]})
+    doc.insert(ignore_permissions=True)
+
+tmpls = load_templates("Purchase Invoice")
+t = [x for x in tmpls if x.name == "TEST-TMPL-ACME"][0]
+assert t.match_keywords == ["Acme Corp", "GSTIN 29ABC"]
+assert t.field_mappings["invoice no."] == "bill_no"
+assert t.specificity == 20 + 2  # 2 keywords * 10 + 2 mappings
+print("specificity:", t.specificity)
+# Expected: specificity: 22
+```
+
+### Test 15.3 — detect_template selects best match
+
+```python
+from idp.idp.extractors.base import ExtractionResult
+from idp.idp.advanced.templates import detect_template
+
+extraction = ExtractionResult(
+    content_type="text",
+    text="Acme Corp\nGSTIN 29ABC123\nInvoice No. INV-42\nInvoice Date: 2026-04-02",
+    tables=None, images=None, metadata={}, ocr_results=None, confidence=0.9,
+)
+match = detect_template(extraction, "Purchase Invoice")
+assert match is not None, "TEST-TMPL-ACME should match"
+print("matched:", match.name)
+# Expected: matched: TEST-TMPL-ACME
+
+# Negative path: keywords missing
+empty = ExtractionResult(content_type="text", text="Hello world",
+    tables=None, images=None, metadata={}, ocr_results=None, confidence=0.9)
+assert detect_template(empty, "Purchase Invoice") is None
+print("no match on empty text: OK")
+# Expected: no match on empty text: OK
+```
+
+### Test 15.4 — apply_template fills gaps
+
+```python
+from idp.idp.advanced.templates import LoadedTemplate, apply_template
+from idp.idp.extractors.base import ExtractionResult
+
+t = LoadedTemplate(
+    name="inline-template",
+    target_doctype="Purchase Invoice",
+    field_mappings={"invoice no.": "bill_no"},
+)
+extraction = ExtractionResult(
+    content_type="text",
+    text="Invoice No. GST-12345\nSupplier: Foo",
+    tables=None, images=None, metadata={}, ocr_results=None, confidence=0.9,
+)
+mapped = apply_template(t, extraction)
+print("bill_no =", mapped.header.get("bill_no"))
+# Expected: bill_no = GST-12345  (value may be normalised/trimmed)
+assert any("Template applied" in w for w in mapped.warnings)
+print("provenance recorded")
+# Expected: provenance recorded
+```
+
+### Test 15.5 — match_and_apply graceful fallback
+
+```python
+from idp.idp.advanced.templates import match_and_apply
+from idp.idp.extractors.base import ExtractionResult
+
+# No matching template -- should still return a MappedDocument (template=None)
+extraction = ExtractionResult(content_type="text",
+    text="Invoice No. XYZ-001\nDated 01/02/2026",
+    tables=None, images=None, metadata={}, ocr_results=None, confidence=0.9)
+mapped, tmpl = match_and_apply(extraction, "Purchase Invoice")
+print("template is None:", tmpl is None)
+print("mapped fields:", list(mapped.header.keys()))
+# Expected: template is None: True; mapped fields: at least ['bill_no', 'posting_date'] (regex pass)
+```
+
+### Test 15.6 — IDP Batch Job creation + counters
+
+```python
+import frappe
+from idp.idp.advanced.batch import create_batch_job
+
+# Use a deterministic existing file url or create a quick sentinel row.
+urls = ["/private/files/sentinel-a.pdf", "/private/files/sentinel-b.pdf"]
+job = create_batch_job(
+    user=frappe.session.user,
+    target_doctype="Purchase Invoice",
+    file_urls=urls,
+    company=None,
+)
+assert job.total_files == 2
+assert job.status == "Queued"
+assert job.processed_files == 0
+print("job:", job.name, job.status, job.total_files)
+# Expected: job: BATCH-... Queued 2
+```
+
+### Test 15.7 — run_batch_job success path (no real files)
+
+```python
+# Simulate a job with URLs pointing to files that can't be extracted;
+# items should be marked Failed, the job should still Complete.
+import frappe
+from idp.idp.advanced.batch import create_batch_job, run_batch_job
+
+job = create_batch_job(
+    user=frappe.session.user,
+    target_doctype="Purchase Invoice",
+    file_urls=["/private/files/does-not-exist-1.pdf", "/private/files/does-not-exist-2.pdf"],
+)
+summary = run_batch_job(job.name, create_documents=False)
+print(summary)
+# Expected: status='Completed', failed=2, succeeded=0, needs_review=0
+assert summary["status"] == "Completed"
+assert summary["failed"] == 2
+```
+
+### Test 15.8 — Batch handles extraction failure gracefully
+
+```python
+# Using the same job above, verify each child row captured an error:
+import frappe
+doc = frappe.get_last_doc("IDP Batch Job")
+for it in doc.items:
+    print(it.file_url, "->", it.status, "| err:", (it.error_message or "")[:40])
+# Expected: two lines with status='Failed' and a non-empty error_message.
+```
+
+### Test 15.9 — create_batch_from_zip unpacking
+
+```python
+# Skip this test interactively if no ZIP is available; smoke-test the guard instead:
+from idp.idp.advanced.batch import create_batch_from_zip
+try:
+    create_batch_from_zip("admin", "Purchase Invoice", "/private/files/nope.zip")
+except Exception as exc:
+    print("guard:", type(exc).__name__)
+# Expected: guard: IDPError (or ExtractionError when resolve_file rejects it)
+```
+
+### Test 15.10 — record_correction rejects no-ops
+
+```python
+import frappe
+from idp.idp.advanced.feedback import record_correction
+
+# Happy path
+name = record_correction(
+    user=frappe.session.user,
+    target_doctype="Purchase Invoice",
+    fieldname="bill_no",
+    extracted_value="GS-1",
+    corrected_value="GS-001",
+    source_text_snippet="Invoice No. GS-001",
+    supplier_or_customer="Acme Corp",
+    origin="rule",
+)
+print("recorded:", name)
+# Expected: recorded: CORR-...
+
+# Rejection paths
+try:
+    record_correction(frappe.session.user, "Purchase Invoice", "bill_no", "X", "X")
+except ValueError as e:
+    print("rejected identical:", e)
+try:
+    record_correction(frappe.session.user, "Purchase Invoice", "bill_no", "X", "")
+except ValueError as e:
+    print("rejected empty:", e)
+# Expected: two 'rejected ...' lines.
+```
+
+### Test 15.11 — build_fewshot_bundle supplier match
+
+```python
+from idp.idp.advanced.feedback import build_fewshot_bundle
+
+bundle = build_fewshot_bundle("Purchase Invoice", supplier_or_customer="Acme Corp", max_examples=3)
+print("count:", len(bundle.examples))
+print("rendered:\n", bundle.render())
+# Expected: count: >= 1; rendered text starts with "# Past user corrections for Purchase Invoice".
+```
+
+### Test 15.12 — rule_mapper_weak_spots aggregation
+
+```python
+from idp.idp.advanced.feedback import rule_mapper_weak_spots
+
+# Seed a few corrections on a single field
+import frappe
+from idp.idp.advanced.feedback import record_correction
+for i in range(3):
+    try:
+        record_correction(
+            user=frappe.session.user, target_doctype="Purchase Invoice",
+            fieldname="due_date", extracted_value=f"X{i}", corrected_value=f"2026-04-{i+1:02d}",
+            source_text_snippet=f"snippet {i}" * 3, supplier_or_customer="Acme Corp", origin="rule",
+        )
+    except Exception: pass
+
+spots = rule_mapper_weak_spots("Purchase Invoice", min_occurrences=2)
+print(spots)
+# Expected: at least one entry with fieldname='due_date'.
+```
+
+### Test 15.13 — accuracy_trend SQL shape
+
+```python
+from idp.idp.advanced.feedback import accuracy_trend
+
+rows = accuracy_trend("Purchase Invoice", days=30)
+assert isinstance(rows, list)
+if rows:
+    assert set(rows[0].keys()) == {"date", "corrections"}
+print("trend rows:", len(rows))
+# Expected: >= 1 after running the previous tests.
+```
+
+### Test 15.14 — merge_multipage_tables header match
+
+```python
+from idp.idp.advanced.tables import merge_multipage_tables
+
+t1 = [["Item", "Qty", "Rate"], ["A", "1", "10"]]
+t2 = [["Item", "Qty", "Rate"], ["B", "2", "20"]]
+t3 = [["Reference", "Amount"], ["INV-1", "30"]]  # different header
+
+merged = merge_multipage_tables([t1, t2, t3])
+assert len(merged) == 2, merged
+assert len(merged[0]) == 3  # header + two data rows
+assert merged[1] == t3
+print("merge OK:", [len(t) for t in merged])
+# Expected: merge OK: [3, 2]
+```
+
+### Test 15.15 — detect_borderless_table grids
+
+```python
+from idp.idp.advanced.tables import detect_borderless_table
+
+sample = (
+    "Item        Qty   Rate   Amount\n"
+    "Bolt         10   2.50   25.00\n"
+    "Nut          20   1.00   20.00\n"
+)
+grid = detect_borderless_table(sample, min_columns=3)
+assert grid is not None
+print("rows:", len(grid), "cols:", len(grid[0]))
+print(grid[1])
+# Expected: rows: 3 cols: 4; second row starts with 'Bolt'.
+```
+
+### Test 15.16 — flatten_nested_cells fan-out
+
+```python
+from idp.idp.advanced.tables import flatten_nested_cells
+
+t = [
+    ["SKU", "Qty", "Note"],
+    ["A", "1\n2", "first\nsecond"],
+    ["B", "5", "only"],
+]
+flat = flatten_nested_cells(t)
+print(flat)
+# Expected: header + two expanded rows for A + one for B (total 4 data rows).
+assert len(flat) == 1 + 2 + 1
+```
+
+### Test 15.17 — ApproverRule threshold matching
+
+```python
+from idp.idp.advanced.workflow import ApproverRule
+
+r1 = ApproverRule(doctype="Purchase Invoice", min_amount=0, max_amount=1000)
+r2 = ApproverRule(doctype="Purchase Invoice", min_amount=1000, max_amount=None)
+
+assert r1.matches(500) is True
+assert r1.matches(2000) is False
+assert r2.matches(5000) is True
+assert r2.matches(0) is False
+assert r1.matches(None) is True  # min_amount == 0 wildcard
+print("threshold checks OK")
+# Expected: threshold checks OK
+```
+
+### Test 15.18 — resolve_approver by role (configured rules)
+
+```python
+import json, frappe
+# Install a rule
+frappe.db.set_single_value("IDP Settings", "approver_rules", json.dumps([
+    {"doctype": "Purchase Invoice", "min_amount": 0, "max_amount": 100, "role": "System Manager"}
+]))
+frappe.db.commit()
+
+from idp.idp.advanced.workflow import resolve_approver
+user, rule = resolve_approver("Purchase Invoice", 50)
+print("approver:", user, "| rule:", rule is not None)
+# Expected: approver is a System Manager email (or None if none exists); rule is True
+```
+
+### Test 15.19 — route_created_document orchestrator (smoke)
+
+```python
+# Doesn't require a real workflow; routes approver + attempts ToDo creation.
+from idp.idp.advanced.workflow import route_created_document
+# Use any existing document for reference_name or skip with a stub:
+res = route_created_document("Purchase Invoice", "NON-EXISTENT", amount=50)
+print(res.as_dict())
+# Expected: {"approver": ..., "workflow_state": None, ...}; errors may reference ToDo insertion.
+```
+
+### Test 15.20 — seed_builtin_prompts idempotent
+
+```python
+from idp.idp.advanced.prompt_library import seed_builtin_prompts
+
+s1 = seed_builtin_prompts()
+s2 = seed_builtin_prompts()
+print("first pass:", s1)
+print("second pass:", s2)
+# Expected: first pass creates several; second pass 'skipped' count > 0, 'created' == 0.
+assert s2["created"] == 0
+```
+
+### Test 15.21 — load_prompt fallback order
+
+```python
+from idp.idp.advanced.prompt_library import load_prompt
+
+# Exact match
+p = load_prompt("Manufacturing", "Purchase Invoice")
+assert p is not None and p.name == "Manufacturing — Purchase Invoice"
+# Generic fallback when no specialised prompt exists
+p2 = load_prompt("Generic", "Journal Entry")
+assert p2 is not None  # Falls back to Generic - Invoice Extraction
+print("fallback:", p2.name)
+# Expected: 'Generic — Invoice Extraction'
+```
+
+### Test 15.22 — export_dataset openai JSONL
+
+```python
+import tempfile, json, frappe
+from idp.idp.advanced.fine_tuning import export_dataset
+
+with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as fh:
+    path = fh.name
+stats = export_dataset(path, format="openai", target_doctype="Purchase Invoice", limit=10)
+print(stats)
+# Expected: ExportStats(format='openai', total_rows >= 1, bytes_written > 0)
+
+with open(path) as fh:
+    line = fh.readline()
+    obj = json.loads(line)
+    assert "messages" in obj and len(obj["messages"]) == 3
+    assert obj["messages"][0]["role"] == "system"
+print("row shape OK")
+```
+
+### Test 15.23 — export_dataset anthropic + plain
+
+```python
+import tempfile, json
+from idp.idp.advanced.fine_tuning import export_dataset
+
+for fmt in ("anthropic", "plain"):
+    with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as fh:
+        path = fh.name
+    stats = export_dataset(path, format=fmt, target_doctype="Purchase Invoice", limit=5)
+    with open(path) as fh:
+        first = fh.readline()
+        if first.strip():
+            row = json.loads(first)
+            if fmt == "anthropic":
+                assert "system" in row and "messages" in row
+            else:
+                assert "input" in row and "output" in row
+    print(fmt, "->", stats.total_rows, "rows")
+# Expected: both formats succeed.
+```
+
+### Test 15.24 — weekly_export file creation
+
+```python
+from idp.idp.advanced.fine_tuning import weekly_export
+import os
+
+summary = weekly_export()
+print(summary)
+# Expected: 'files' key listing 3 files (openai, anthropic, plain).
+for f in summary.get("files", []):
+    assert os.path.exists(f["path"]), f["path"]
+print("all files exist")
+```
+
+### Test 15.25 — API list_templates
+
+```python
+import frappe
+out = frappe.call("idp.api.advanced.list_templates", target_doctype="Purchase Invoice")
+print(out)
+# Expected: list with at least one entry (TEST-TMPL-ACME from 15.2).
+```
+
+### Test 15.26 — API create_batch + status
+
+```python
+import frappe, json
+r = frappe.call(
+    "idp.api.advanced.create_batch",
+    target_doctype="Purchase Invoice",
+    file_urls=json.dumps(["/private/files/x.pdf"]),
+)
+print("created:", r)
+status = frappe.call("idp.api.advanced.get_batch_status", job_name=r["name"])
+print("status:", status["status"], "items:", len(status["items"]))
+# Expected: status='Queued', items=1
+```
+
+### Test 15.27 — API record_correction_api
+
+```python
+import frappe
+r = frappe.call(
+    "idp.api.advanced.record_correction_api",
+    target_doctype="Purchase Invoice",
+    fieldname="bill_no",
+    extracted_value="BN-1",
+    corrected_value="BN-0001",
+    source_text_snippet="Invoice No. BN-0001",
+    supplier_or_customer="API Test Supplier",
+    origin="rule",
+)
+print("recorded via API:", r)
+# Expected: {"name": "CORR-..."}
+```
+
+### Test 15.28 — API get_prompt fallback
+
+```python
+import frappe
+p = frappe.call("idp.api.advanced.get_prompt", industry="Manufacturing",
+                target_doctype="Purchase Invoice")
+print("name:", p and p["name"])
+# Expected: 'Manufacturing — Purchase Invoice'
+
+p2 = frappe.call("idp.api.advanced.get_prompt", industry="Logistics",
+                 target_doctype="Quotation")  # No exact match
+print("fallback:", p2 and p2["name"])
+# Expected: a Generic or Logistics-level match (not None).
+```
+
+### Test 15.29 — API export_fine_tuning gated by role
+
+```python
+import frappe
+# As System Manager this should succeed:
+r = frappe.call("idp.api.advanced.export_fine_tuning", format="plain",
+                target_doctype="Purchase Invoice", limit=2)
+print(r)
+# Expected: dict with file_path + total_rows.
+```
+
+### Test 15.30 — Settings Phase 15 fields present
+
+```python
+import frappe
+meta = frappe.get_meta("IDP Settings")
+for fn in ("enable_templates", "enable_batch_processing", "enable_feedback_loop",
+           "enable_workflow_routing", "enable_prompt_library", "approver_rules"):
+    assert meta.has_field(fn), fn
+print("all Phase 15 settings fields present")
+# Expected: all Phase 15 settings fields present
+```
+
+---
+
 ## Test Status Tracker
 
 | Phase | Test | Status |
@@ -4117,6 +4623,36 @@ print("exceptions registered")
 | Phase 14 | 14.17 Extract surfaces rate-limit | Completed |
 | Phase 14 | 14.18 Pytest suite | Completed |
 | Phase 14 | 14.19 Exceptions extended | Completed |
+| Phase 15 | 15.1 Advanced package import | Pending |
+| Phase 15 | 15.2 Template hydrate + specificity | Pending |
+| Phase 15 | 15.3 detect_template selects best match | Pending |
+| Phase 15 | 15.4 apply_template fills gaps | Pending |
+| Phase 15 | 15.5 match_and_apply graceful fallback | Pending |
+| Phase 15 | 15.6 IDP Batch Job create + counters | Pending |
+| Phase 15 | 15.7 run_batch_job success path | Pending |
+| Phase 15 | 15.8 Batch handles extraction failure | Pending |
+| Phase 15 | 15.9 create_batch_from_zip unpacking | Pending |
+| Phase 15 | 15.10 record_correction rejects no-op | Pending |
+| Phase 15 | 15.11 build_fewshot_bundle supplier match | Pending |
+| Phase 15 | 15.12 rule_mapper_weak_spots aggregation | Pending |
+| Phase 15 | 15.13 accuracy_trend SQL shape | Pending |
+| Phase 15 | 15.14 merge_multipage_tables header match | Pending |
+| Phase 15 | 15.15 detect_borderless_table grids | Pending |
+| Phase 15 | 15.16 flatten_nested_cells fan-out | Pending |
+| Phase 15 | 15.17 ApproverRule threshold matching | Pending |
+| Phase 15 | 15.18 resolve_approver by role | Pending |
+| Phase 15 | 15.19 route_created_document orchestrator | Pending |
+| Phase 15 | 15.20 seed_builtin_prompts idempotent | Pending |
+| Phase 15 | 15.21 load_prompt fallback order | Pending |
+| Phase 15 | 15.22 export_dataset openai JSONL | Pending |
+| Phase 15 | 15.23 export_dataset anthropic + plain | Pending |
+| Phase 15 | 15.24 weekly_export file creation | Pending |
+| Phase 15 | 15.25 API list_templates | Pending |
+| Phase 15 | 15.26 API create_batch + status | Pending |
+| Phase 15 | 15.27 API record_correction_api | Pending |
+| Phase 15 | 15.28 API get_prompt fallback | Pending |
+| Phase 15 | 15.29 API export_fine_tuning gated | Pending |
+| Phase 15 | 15.30 Settings Phase 15 fields present | Pending |
 
 > **Note:** Update this table as you run tests.
 > Tests for Phase 10+ should be added here as those phases are implemented.

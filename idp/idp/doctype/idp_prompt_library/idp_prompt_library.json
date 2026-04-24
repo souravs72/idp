@@ -1,0 +1,46 @@
+{
+ "actions": [],
+ "autoname": "field:prompt_name",
+ "creation": "2026-04-24 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "prompt_name",
+  "industry",
+  "target_doctype",
+  "column_break_1",
+  "description",
+  "enabled",
+  "body_section",
+  "prompt_body",
+  "example_input",
+  "example_output"
+ ],
+ "fields": [
+  {"fieldname": "prompt_name", "fieldtype": "Data", "label": "Prompt Name", "reqd": 1, "unique": 1, "in_list_view": 1},
+  {"fieldname": "industry", "fieldtype": "Select", "label": "Industry", "options": "Generic\nManufacturing\nRetail\nServices\nLogistics\nHealthcare\nConstruction\nFinance", "default": "Generic", "in_list_view": 1, "reqd": 1},
+  {"fieldname": "target_doctype", "fieldtype": "Link", "label": "Target DocType", "options": "DocType", "in_list_view": 1},
+  {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+  {"fieldname": "description", "fieldtype": "Small Text", "label": "Description"},
+  {"fieldname": "enabled", "fieldtype": "Check", "label": "Enabled", "default": 1},
+  {"fieldname": "body_section", "fieldtype": "Section Break", "label": "Prompt"},
+  {"fieldname": "prompt_body", "fieldtype": "Long Text", "label": "Prompt Body", "reqd": 1},
+  {"fieldname": "example_input", "fieldtype": "Long Text", "label": "Example Input"},
+  {"fieldname": "example_output", "fieldtype": "Long Text", "label": "Example Output"}
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-04-24 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "IDP",
+ "name": "IDP Prompt Library",
+ "owner": "Administrator",
+ "permissions": [
+  {"create": 1, "delete": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "System Manager", "share": 1, "write": 1},
+  {"create": 0, "email": 1, "print": 1, "read": 1, "report": 1, "role": "IDP User", "share": 1, "write": 0}
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

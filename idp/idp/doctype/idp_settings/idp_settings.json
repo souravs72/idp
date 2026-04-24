@@ -27,7 +27,15 @@
   "enable_docx",
   "advanced_section",
   "ocr_timeout_seconds",
-  "max_pages_per_pdf"
+  "max_pages_per_pdf",
+  "phase15_section",
+  "enable_templates",
+  "enable_batch_processing",
+  "enable_feedback_loop",
+  "column_break_phase15",
+  "enable_workflow_routing",
+  "enable_prompt_library",
+  "approver_rules"
  ],
  "fields": [
   {
@@ -169,6 +177,56 @@
    "fieldname": "max_pages_per_pdf",
    "fieldtype": "Int",
    "label": "Max Pages per PDF"
+  },
+  {
+   "fieldname": "phase15_section",
+   "fieldtype": "Section Break",
+   "label": "Phase 15 - Advanced Features"
+  },
+  {
+   "default": "1",
+   "description": "Match and apply IDP Extraction Templates during mapping",
+   "fieldname": "enable_templates",
+   "fieldtype": "Check",
+   "label": "Enable Extraction Templates"
+  },
+  {
+   "default": "1",
+   "description": "Allow multi-file / ZIP batch processing",
+   "fieldname": "enable_batch_processing",
+   "fieldtype": "Check",
+   "label": "Enable Batch Processing"
+  },
+  {
+   "default": "1",
+   "description": "Record user corrections for few-shot prompting",
+   "fieldname": "enable_feedback_loop",
+   "fieldtype": "Check",
+   "label": "Enable Feedback Loop"
+  },
+  {
+   "fieldname": "column_break_phase15",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "Auto-assign approvers and advance workflow state on create",
+   "fieldname": "enable_workflow_routing",
+   "fieldtype": "Check",
+   "label": "Enable Workflow Routing"
+  },
+  {
+   "default": "1",
+   "description": "Expose the industry prompt library to the chatbot/LLM layer",
+   "fieldname": "enable_prompt_library",
+   "fieldtype": "Check",
+   "label": "Enable Prompt Library"
+  },
+  {
+   "description": "JSON array of approver rules per DocType (see docs/TEST.md Phase 15)",
+   "fieldname": "approver_rules",
+   "fieldtype": "Long Text",
+   "label": "Approver Rules (JSON)"
   }
  ],
  "issingle": 1,

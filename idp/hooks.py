@@ -133,6 +133,7 @@ after_install = "idp.install.after_install"
 permission_query_conditions = {
 	"IDP Conversation": "idp.idp.doctype.idp_conversation.idp_conversation.get_permission_query_conditions",
 	"IDP Message": "idp.idp.doctype.idp_message.idp_message.get_permission_query_conditions",
+	"IDP Batch Job": "idp.idp.doctype.idp_batch_job.idp_batch_job.get_permission_query_conditions",
 }
 
 has_permission = {
@@ -157,6 +158,9 @@ has_permission = {
 scheduler_events = {
 	"daily": [
 		"idp.core.retention.daily",
+	],
+	"weekly": [
+		"idp.idp.advanced.fine_tuning.weekly_export",
 	],
 }
 

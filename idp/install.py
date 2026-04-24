@@ -9,7 +9,6 @@ in :pymod:`idp.api.permissions` have a role to match against.
 
 import frappe
 
-
 IDP_USER_ROLE = "IDP User"
 
 
@@ -19,6 +18,18 @@ def after_install() -> None:
 	Safe to call multiple times — the role is only created if missing.
 	"""
 	_ensure_idp_user_role()
+	_seed_prompt_library()
+
+
+def _seed_prompt_library() -> None:
+	"""Install the shipped Phase 15 prompt gallery (idempotent)."""
+	try:
+		from idp.idp.advanced.prompt_library import seed_builtin_prompts
+
+		seed_builtin_prompts(overwrite=False)
+	except Exception as exc:
+		# Seeding is optional; never block install on failure.
+		frappe.log_error(f"IDP prompt library seed failed: {exc}", "IDP after_install")
 
 
 def _ensure_idp_user_role() -> None:
