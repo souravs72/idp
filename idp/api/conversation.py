@@ -267,3 +267,92 @@ def archive_conversation(conversation_id: str) -> dict:
 
 	logger.info("Archived IDP Conversation %s", doc.name)
 	return {"conversation_id": doc.name, "status": doc.status}
+
+
+@frappe.whitelist()
+def run_agent(
+	conversation_id: str,
+	content: str = "",
+	attachments: str = "[]",
+	user_confirmed_action: str | None = None,
+) -> dict:
+	"""Append the user's message and run one round of the IDP agent loop.
+
+	This is the Phase 19 entry point that wires the LLM tool-calling
+	runtime into the chatbot UX.  Realtime events are published while
+	the loop runs (see :class:`IDPAgent`); this call returns once the
+	loop terminates with a structured summary of the new messages and
+	the stop reason.
+
+	*user_confirmed_action* (optional JSON object) is set by the
+	frontend when the user clicks Submit on a ConfirmationCard — it
+	signals to the agent that the next ``create_document`` call
+	carrying matching ``user_confirmed=True`` is authorised.
+	"""
+
+	_require_login()
+	doc = _load_conversation(conversation_id)
+	if not frappe.has_permission("IDP Conversation", ptype="write", doc=doc):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	parsed_attachments = _parse_json_arg(attachments, [])
+	if not isinstance(parsed_attachments, list):
+		frappe.throw(_("attachments must be a JSON array"))
+	confirmed = _parse_json_arg(user_confirmed_action, None)
+	if confirmed is not None and not isinstance(confirmed, dict):
+		frappe.throw(_("user_confirmed_action must be a JSON object"))
+
+	from idp.idp.llm.agent import IDPAgent
+
+	agent = IDPAgent(doc.name)
+	result = agent.run(
+		user_message=content or "",
+		attachments=parsed_attachments,
+		user_confirmed_action=confirmed,
+	)
+
+	# Auto-generate title on first user message if not set yet.
+	if (not doc.title or doc.title.startswith("Conversation —")) and (content or "").strip():
+		preview = content.strip().splitlines()[0][:120]
+		if preview:
+			doc.reload()
+			doc.title = preview
+			doc.db_update()
+
+	logger.info(
+		"agent run conv=%s iter=%s stop=%s tokens=%s+%s cost=$%.4f",
+		doc.name,
+		result.iterations,
+		result.stop_reason,
+		result.tokens_in,
+		result.tokens_out,
+		result.cost_usd,
+	)
+
+	return {
+		"conversation_id": doc.name,
+		"iterations": result.iterations,
+		"stop_reason": result.stop_reason,
+		"tokens_in": result.tokens_in,
+		"tokens_out": result.tokens_out,
+		"cost_usd": result.cost_usd,
+		"new_messages": result.new_messages,
+	}
+
+
+@frappe.whitelist()
+def list_agent_tools() -> list[dict]:
+	"""Return the registered Phase 19 tools (for diagnostics / UI hints)."""
+
+	_require_login()
+	from idp.idp.llm.tools.registry import list_tools
+
+	return [
+		{
+			"name": t.name,
+			"description": t.description,
+			"mutating": t.mutating,
+			"requires_role": t.requires_role,
+		}
+		for t in list_tools()
+	]

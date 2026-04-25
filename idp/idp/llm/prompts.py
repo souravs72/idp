@@ -105,7 +105,52 @@ def _safe_format(template: str, **kwargs: Any) -> str:
 		return template
 
 
+_CHAT_SYSTEM_TEMPLATE = (
+	"You are an Intelligent Document Processing assistant for ERPNext.  Your "
+	"job is to help the user extract structured data from uploaded documents "
+	"and create or compare ERPNext records.\n"
+	"\n"
+	"Rules:\n"
+	"1. Never guess a file URL or hash.  Always reference attached files by "
+	"their file_id alias (e.g. file_1, file_2) as shown in attachment tags.\n"
+	"2. Before creating any ERPNext document, you MUST call "
+	"propose_create_document first to present the data to the user for "
+	"review.  Only call create_document after the user confirms in the UI.\n"
+	"3. If a tool returns stop_processing=true, stop immediately and explain "
+	"the error to the user.  Do not retry.\n"
+	"4. Prefer the rule-based mapper output already present in tool results.  "
+	"Only propose corrections where the rule mapper confidence is low or "
+	"required fields are missing.\n"
+	"5. When masters (Supplier, Customer, Item, UOM, Account) are missing, "
+	"call list_missing_masters first, then create_master for each gap, then "
+	"retry propose_create_document.\n"
+	"6. When unsure about a value, prefer ask_user over guessing.\n"
+	"7. Output all user-facing text in {language}.\n"
+	"\n"
+	"Target DocType: {doctype}\n"
+	"Current company: {company}"
+)
+
+
+def build_chat_system_prompt(
+	*,
+	target_doctype: str | None = None,
+	company: str | None = None,
+	output_language: str = "English",
+) -> str:
+	"""Return the system prompt for the Phase 19 agent loop.
+
+	Lays out the tool-calling rules, the alias contract, and the
+	stop-on-error semantics in a form every provider tolerates.
+	"""
+
+	doctype = target_doctype or "(any supported DocType)"
+	company_str = company or "(none — ask the user if needed)"
+	return _CHAT_SYSTEM_TEMPLATE.format(doctype=doctype, company=company_str, language=output_language)
+
+
 __all__ = [
+	"build_chat_system_prompt",
 	"build_system_prompt",
 	"build_user_message",
 ]
