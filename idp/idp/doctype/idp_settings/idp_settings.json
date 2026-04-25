@@ -35,7 +35,19 @@
   "column_break_phase15",
   "enable_workflow_routing",
   "enable_prompt_library",
-  "approver_rules"
+  "approver_rules",
+  "phase16_section",
+  "enable_hybrid_mapper",
+  "llm_provider",
+  "llm_model",
+  "llm_confidence_threshold",
+  "llm_api_key",
+  "column_break_phase16",
+  "ollama_host_url",
+  "custom_providers",
+  "model_overrides",
+  "daily_token_budget",
+  "monthly_token_budget"
  ],
  "fields": [
   {
@@ -227,6 +239,82 @@
    "fieldname": "approver_rules",
    "fieldtype": "Long Text",
    "label": "Approver Rules (JSON)"
+  },
+  {
+   "fieldname": "phase16_section",
+   "fieldtype": "Section Break",
+   "label": "Phase 16 - LLM Configuration"
+  },
+  {
+   "default": "0",
+   "description": "Run the LLM-backed hybrid field mapper for low-confidence extractions",
+   "fieldname": "enable_hybrid_mapper",
+   "fieldtype": "Check",
+   "label": "Enable Hybrid Mapper"
+  },
+  {
+   "default": "openai",
+   "description": "Active LLM provider; only one is used at a time. Custom providers can be declared in the Custom Providers (JSON) field.",
+   "fieldname": "llm_provider",
+   "fieldtype": "Select",
+   "label": "LLM Provider",
+   "options": "openai\nanthropic\nollama"
+  },
+  {
+   "description": "Model id, e.g. gpt-4o-mini, claude-haiku-4-5-20251101, llama3.1:8b",
+   "fieldname": "llm_model",
+   "fieldtype": "Data",
+   "label": "LLM Model"
+  },
+  {
+   "default": "0.70",
+   "description": "Rule-mapper average confidence threshold; LLM is invoked when below this value or when required fields are missing",
+   "fieldname": "llm_confidence_threshold",
+   "fieldtype": "Float",
+   "label": "Hybrid Confidence Threshold"
+  },
+  {
+   "description": "API key for the active provider (encrypted at rest). Ollama does not use this field.",
+   "fieldname": "llm_api_key",
+   "fieldtype": "Password",
+   "label": "LLM API Key"
+  },
+  {
+   "fieldname": "column_break_phase16",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "http://localhost:11434",
+   "description": "Base URL of the Ollama HTTP server (used when the active provider is Ollama)",
+   "fieldname": "ollama_host_url",
+   "fieldtype": "Data",
+   "label": "Ollama Host URL"
+  },
+  {
+   "description": "JSON list of additional providers, e.g. [{\"name\":\"azure\",\"module\":\"my_app.llm.azure\",\"class\":\"AzureProvider\"}]",
+   "fieldname": "custom_providers",
+   "fieldtype": "Long Text",
+   "label": "Custom Providers (JSON)"
+  },
+  {
+   "description": "JSON object overriding model metadata, e.g. {\"gpt-4o-mini\":{\"input_cost_per_1k\":0.0001}}",
+   "fieldname": "model_overrides",
+   "fieldtype": "Long Text",
+   "label": "Model Overrides (JSON)"
+  },
+  {
+   "default": "0",
+   "description": "Per-user daily token cap; 0 = unlimited",
+   "fieldname": "daily_token_budget",
+   "fieldtype": "Int",
+   "label": "Daily Token Budget"
+  },
+  {
+   "default": "0",
+   "description": "Per-user monthly token cap; 0 = unlimited",
+   "fieldname": "monthly_token_budget",
+   "fieldtype": "Int",
+   "label": "Monthly Token Budget"
   }
  ],
  "issingle": 1,

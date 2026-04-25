@@ -51,3 +51,19 @@ class RateLimitExceededError(IDPError):
 class SecurityError(IDPError):
 	"""Request violated a security guard (bad MIME, path traversal, permission
 	denied) enforced by :mod:`idp.core.security` (Phase 14)."""
+
+
+class LLMError(IDPError):
+	"""Base class for LLM-provider related failures (Phase 16)."""
+
+
+class LLMBudgetExceededError(LLMError):
+	"""Caller exceeded daily or monthly token budget configured in IDP Settings."""
+
+
+class LLMProviderUnavailableError(LLMError):
+	"""Requested provider is not registered, or its SDK/host is unavailable."""
+
+
+class LLMResponseParseError(LLMError):
+	"""Could not parse the provider's response into an :class:`LLMResponse`."""
