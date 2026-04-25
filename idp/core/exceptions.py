@@ -67,3 +67,20 @@ class LLMProviderUnavailableError(LLMError):
 
 class LLMResponseParseError(LLMError):
 	"""Could not parse the provider's response into an :class:`LLMResponse`."""
+
+
+class FileAliasNotFoundError(IDPError):
+	"""LLM supplied an unknown file alias (Phase 18).
+
+	Always raised with ``stop_processing=True`` semantics so the tool
+	loop halts instead of speculatively retrying with a different alias
+	the LLM might invent.
+	"""
+
+	def __init__(self, alias: str, *, conversation_id: str | None = None):
+		self.alias = alias
+		self.conversation_id = conversation_id
+		details: dict = {"alias": alias, "stop_processing": True}
+		if conversation_id:
+			details["conversation_id"] = conversation_id
+		super().__init__(f"unknown file alias: {alias!r}", details=details)
