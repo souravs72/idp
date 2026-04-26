@@ -341,6 +341,240 @@ def run_agent(
 
 
 @frappe.whitelist()
+def confirm_card(
+	conversation_id: str,
+	message_id: str,
+	action: str,
+	edited_payload: str | dict | None = None,
+) -> dict:
+	"""Phase 20 — handle a ConfirmationCard action click.
+
+	The frontend posts the card's persisted ``message_id`` along with
+	the user's chosen *action* (``submit``, ``save_draft``, ``edit``,
+	``cancel``) and an optional ``edited_payload`` carrying the
+	user-tweaked header / items / taxes / account mappings.
+
+	Server responsibilities:
+
+	* Look up the card payload originally rendered by
+	  :func:`propose_create_document` and stored on the IDP Message row.
+	* Validate the version, the action membership, and re-run business
+	  rules on the edited payload to surface any new warnings before the
+	  agent issues ``create_document``.
+	* Return a structured envelope the next ``run_agent`` call uses as
+	  the ``user_confirmed_action`` arg — never mutate ERPNext state
+	  itself.
+	"""
+
+	from idp.core.exceptions import ConfirmationCardError
+	from idp.idp.llm.schemas import CONFIRMATION_CARD_PAYLOAD_VERSION
+
+	_require_login()
+	doc = _load_conversation(conversation_id)
+	if not frappe.has_permission("IDP Conversation", ptype="write", doc=doc):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	if not action or not isinstance(action, str):
+		raise ConfirmationCardError(_("action is required"))
+
+	message = frappe.get_doc("IDP Message", message_id)
+	if message.conversation != doc.name:
+		raise ConfirmationCardError(_("Message does not belong to this conversation"))
+
+	card = _parse_json_arg(message.rendered_card_payload, None)
+	if not isinstance(card, dict):
+		raise ConfirmationCardError(_("Message does not carry a confirmation card"))
+
+	version = card.get("version")
+	if version != CONFIRMATION_CARD_PAYLOAD_VERSION:
+		raise ConfirmationCardError(
+			_("ConfirmationCard payload version mismatch (got {0}, expected {1})").format(
+				version, CONFIRMATION_CARD_PAYLOAD_VERSION
+			)
+		)
+
+	allowed = {a.get("id") for a in (card.get("actions") or []) if isinstance(a, dict)}
+	if action not in allowed:
+		raise ConfirmationCardError(_("Action {0!r} is not permitted on this card").format(action))
+
+	edited = _parse_json_arg(edited_payload, None)
+	if edited is not None and not isinstance(edited, dict):
+		raise ConfirmationCardError(_("edited_payload must be a JSON object"))
+
+	# Re-run business rules on the edited values so the user sees fresh
+	# warnings before the next agent turn fires create_document.
+	revalidation: list[str] = []
+	if action in {"submit", "save_draft"}:
+		revalidation = _revalidate_card(card, edited)
+
+	logger.info(
+		"confirm_card conv=%s msg=%s action=%s warnings=%s",
+		doc.name,
+		message.name,
+		action,
+		len(revalidation),
+	)
+
+	return {
+		"conversation_id": doc.name,
+		"message_id": message.name,
+		"action": action,
+		"version": version,
+		"doctype": card.get("doctype"),
+		"revalidation_warnings": revalidation,
+		# The frontend hands this back to ``run_agent`` so the agent can
+		# authorise the next ``create_document`` invocation.
+		"confirmed_payload": {
+			"action": action,
+			"doctype": card.get("doctype"),
+			"message_id": message.name,
+			"edits": edited or {},
+		},
+	}
+
+
+@frappe.whitelist()
+def get_card_items_page(
+	conversation_id: str,
+	message_id: str,
+	page: int = 1,
+	page_size: int = 10,
+) -> dict:
+	"""Phase 20 — paginated access to a ConfirmationCard's ``items.rows``.
+
+	The card payload only ships the first page (default 10 rows) to
+	keep the chat message size predictable.  This endpoint serves
+	subsequent pages straight off the persisted card payload.
+	"""
+
+	from idp.core.exceptions import ConfirmationCardError
+
+	_require_login()
+	doc = _load_conversation(conversation_id)
+	if not frappe.has_permission("IDP Conversation", ptype="read", doc=doc):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	try:
+		page = max(1, int(page or 1))
+		page_size = max(1, min(int(page_size or 10), 100))
+	except (TypeError, ValueError):
+		raise ConfirmationCardError(_("page and page_size must be integers")) from None
+
+	message = frappe.get_doc("IDP Message", message_id)
+	if message.conversation != doc.name:
+		raise ConfirmationCardError(_("Message does not belong to this conversation"))
+
+	card = _parse_json_arg(message.rendered_card_payload, None)
+	if not isinstance(card, dict):
+		raise ConfirmationCardError(_("Message does not carry a confirmation card"))
+
+	# The persisted card only stores page 1 inline — for deeper pages we
+	# fall back to the raw items list serialised in the tool result, if
+	# available.  Phase 20 keeps both around so we can render any page
+	# without re-running the LLM.
+	tool_result = _parse_json_arg(message.tool_result, None) or {}
+	tool_args = _parse_json_arg(message.tool_arguments, None) or {}
+	source_items = tool_args.get("items") or []
+	total = len(source_items) or (card.get("items") or {}).get("total") or 0
+
+	start = (page - 1) * page_size
+	end = start + page_size
+	slice_rows = source_items[start:end] if isinstance(source_items, list) else []
+
+	rendered = []
+	for offset, row in enumerate(slice_rows):
+		if not isinstance(row, dict):
+			continue
+		rendered.append({"index": start + offset, "data": row})
+
+	return {
+		"conversation_id": doc.name,
+		"message_id": message.name,
+		"page": page,
+		"page_size": page_size,
+		"total": total,
+		"has_more": end < total,
+		"rows": rendered,
+		# Echo the tool_result data block for any debug consumers.
+		"diagnostic": {
+			"tool_result_data": tool_result.get("data") if isinstance(tool_result, dict) else None,
+		},
+	}
+
+
+def _revalidate_card(card: dict, edited: dict | None) -> list[str]:
+	"""Apply user edits onto the card snapshot and re-run business rules.
+
+	* ``edited.header``: dict overriding header field values.
+	* ``edited.items``: list[dict] replacing the items rows wholesale.
+	* ``edited.taxes``: list[dict] replacing the tax rows wholesale.
+	* ``edited.account_mappings``: ``{row_index: account_name}`` —
+	  resolves user-picked ``erpnext_account`` for each tax row.
+	"""
+
+	try:
+		from idp.idp.mappers.base import MappedDocument
+		from idp.idp.validators.business_rules import validate_business_rules
+	except Exception:
+		return []
+
+	header = {}
+	for h in card.get("header") or []:
+		if isinstance(h, dict) and h.get("fieldname"):
+			header[h["fieldname"]] = h.get("value")
+
+	# Items — pull from the card snapshot's first page and the persisted
+	# card never holds beyond ``items.total`` on its own; we trust the
+	# user edits to be the full set when provided.
+	items_block = card.get("items") or {}
+	items = [r.get("data") for r in (items_block.get("rows") or []) if isinstance(r, dict)]
+
+	taxes_block = card.get("taxes") or {}
+	taxes = []
+	for r in taxes_block.get("rows") or []:
+		if not isinstance(r, dict):
+			continue
+		extracted = r.get("extracted") or {}
+		taxes.append(
+			{
+				"account": r.get("erpnext_account") or extracted.get("account"),
+				"rate": extracted.get("rate"),
+				"tax_amount": extracted.get("tax_amount"),
+				"taxable_amount": extracted.get("taxable_amount"),
+				"description": extracted.get("description"),
+			}
+		)
+
+	if isinstance(edited, dict):
+		if isinstance(edited.get("header"), dict):
+			header.update(edited["header"])
+		if isinstance(edited.get("items"), list):
+			items = edited["items"]
+		if isinstance(edited.get("taxes"), list):
+			taxes = edited["taxes"]
+		mappings = edited.get("account_mappings") or {}
+		if isinstance(mappings, dict):
+			for raw_idx, account in mappings.items():
+				try:
+					i = int(raw_idx)
+				except (TypeError, ValueError):
+					continue
+				if 0 <= i < len(taxes) and isinstance(taxes[i], dict) and account:
+					taxes[i]["account"] = account
+
+	mapped = MappedDocument(
+		doctype=card.get("doctype") or "",
+		header=header,
+		items=[r for r in items if isinstance(r, dict)],
+		taxes=[r for r in taxes if isinstance(r, dict)],
+	)
+	try:
+		return validate_business_rules(mapped, card.get("company") or "")
+	except Exception:
+		return []
+
+
+@frappe.whitelist()
 def list_agent_tools() -> list[dict]:
 	"""Return the registered Phase 19 tools (for diagnostics / UI hints)."""
 

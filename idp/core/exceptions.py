@@ -84,3 +84,12 @@ class FileAliasNotFoundError(IDPError):
 		if conversation_id:
 			details["conversation_id"] = conversation_id
 		super().__init__(f"unknown file alias: {alias!r}", details=details)
+
+
+class ConfirmationCardError(IDPError):
+	"""ConfirmationCard validation or commit failure (Phase 20).
+
+	Raised by :func:`idp.api.conversation.confirm_card` when the
+	payload is malformed, the action is not in the card's allowed
+	list, or the user-edited values fail re-validation.
+	"""

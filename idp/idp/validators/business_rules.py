@@ -73,6 +73,7 @@ def validate_business_rules(mapped_data: MappedDocument, company: str = "") -> l
 	_check_line_items_present(mapped_data, issues)
 	_check_line_item_values(mapped_data, issues)
 	_check_amount_totals(mapped_data, issues)
+	_check_tax_rows(mapped_data, issues)
 	_check_currency(mapped_data, issues)
 	_check_fiscal_year(mapped_data, company, issues)
 
@@ -163,6 +164,66 @@ def _check_amount_totals(mapped_data: MappedDocument, issues: list[str]) -> None
 			# Without explicit taxes, grand_total should be >= net_total
 			if grand_total < net_total - AMOUNT_TOLERANCE:
 				issues.append(f"grand_total ({grand_total}) is less than net_total ({net_total})")
+
+
+def _check_tax_rows(mapped_data: MappedDocument, issues: list[str]) -> None:
+	"""Phase 20: validate the per-row tax breakdown surfaced by
+	:mod:`idp.idp.mappers.tax_extractor`.
+
+	* ``rate`` must be in ``[0, 1]`` (we normalise percent at extraction).
+	* ``tax_amount`` must be non-negative.
+	* When a ``taxable_amount`` is present, ``tax_amount`` should
+	  approximate ``rate * taxable_amount`` within :data:`TAX_TOLERANCE`.
+	* The sum of row amounts should approximate
+	  ``header.total_taxes_and_charges`` (when both are present).
+	"""
+
+	taxes = getattr(mapped_data, "taxes", None) or []
+	if not taxes:
+		return
+
+	row_total = 0.0
+	any_amount = False
+
+	for idx, row in enumerate(taxes, start=1):
+		if not isinstance(row, dict):
+			issues.append(f"Tax row {idx}: invalid payload (expected object)")
+			continue
+
+		account = (row.get("account") or row.get("account_head") or "").strip()
+		rate = _to_float(row.get("rate"))
+		tax_amount = _to_float(row.get("tax_amount") or row.get("amount"))
+		taxable_amount = _to_float(row.get("taxable_amount") or row.get("base"))
+
+		if not account:
+			issues.append(f"Tax row {idx}: account is required")
+
+		if rate is not None and (rate < 0 or rate > 1.0001):
+			issues.append(f"Tax row {idx}: rate ({rate}) must be between 0 and 1 (e.g. 0.18 for 18%)")
+
+		if tax_amount is not None:
+			if tax_amount < 0:
+				issues.append(f"Tax row {idx}: tax_amount ({tax_amount}) must be >= 0")
+			any_amount = True
+			row_total += tax_amount
+
+		if rate is not None and taxable_amount is not None and tax_amount is not None:
+			expected = rate * taxable_amount
+			if abs(tax_amount - expected) > TAX_TOLERANCE:
+				issues.append(
+					f"Tax row {idx}: tax_amount ({tax_amount}) != rate ({rate}) "
+					f"x taxable_amount ({taxable_amount}) = {expected:.2f}"
+				)
+
+	header_total = _to_float(mapped_data.header.get("total_taxes_and_charges")) or _to_float(
+		mapped_data.header.get("taxes_and_charges")
+	)
+	if any_amount and header_total is not None:
+		if abs(row_total - header_total) > TAX_TOLERANCE:
+			issues.append(
+				f"Sum of tax rows ({row_total:.2f}) does not match "
+				f"total_taxes_and_charges ({header_total:.2f})"
+			)
 
 
 def _check_currency(mapped_data: MappedDocument, issues: list[str]) -> None:

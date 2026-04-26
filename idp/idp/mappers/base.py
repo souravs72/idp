@@ -30,6 +30,10 @@ class MappedDocument:
 	doctype: str
 	header: dict = field(default_factory=dict)  # {fieldname: value}
 	items: list[dict] = field(default_factory=list)  # [{fieldname: value}, ...]
+	# Phase 20: per-row tax breakdown surfaced separately so the
+	# ConfirmationCard can render an Accounts table.  Each entry is
+	# ``{account, rate, tax_amount, ...}``.
+	taxes: list[dict] = field(default_factory=list)
 	unmapped_fields: list[dict] = field(default_factory=list)  # [{label, value}]
 	confidence_scores: dict = field(default_factory=dict)  # {fieldname: float}
 	warnings: list[str] = field(default_factory=list)

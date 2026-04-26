@@ -76,7 +76,15 @@ CLARIFICATION_TOOL_SCHEMA: dict = {
 }
 
 
+# Phase 20 — ConfirmationCard payload schema version.  Bump whenever the
+# card payload shape changes so the UI can refuse to render outdated
+# (or future) payloads, and so server-side ``confirm_card`` can validate
+# the version round-tripped from the client.
+CONFIRMATION_CARD_PAYLOAD_VERSION: int = 1
+
+
 __all__ = [
 	"CLARIFICATION_TOOL_SCHEMA",
+	"CONFIRMATION_CARD_PAYLOAD_VERSION",
 	"FIELD_MAPPING_TOOL_SCHEMA",
 ]
