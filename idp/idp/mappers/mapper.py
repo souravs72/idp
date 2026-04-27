@@ -16,6 +16,10 @@ import frappe
 from idp.core.logger import get_logger
 from idp.idp.extractors.base import ExtractionResult
 from idp.idp.mappers.base import MappedDocument, get_doctype_schema
+from idp.idp.mappers.keywords_ml import (
+	merge_keywords_for_languages,
+	normalize_language,
+)
 
 logger = get_logger("idp.mappers")
 
@@ -366,6 +370,8 @@ class FieldMapper:
 		extracted: ExtractionResult,
 		target_doctype: str,
 		company: str | None = None,
+		*,
+		source_lang: str | None = None,
 	) -> MappedDocument:
 		"""Map extracted content to *target_doctype* fields.
 
@@ -378,6 +384,10 @@ class FieldMapper:
 		6. **Text-based item extraction** if no structured tables found.
 		7. Normalise values (dates, numbers, currencies).
 		8. Resolve Link fields against the database.
+
+		``source_lang`` (Phase 22) tells the mapper to merge in the
+		multilingual keyword aliases for that language alongside English.
+		``None`` keeps the legacy English-only behaviour.
 		"""
 		schema = get_doctype_schema(target_doctype)
 		result = MappedDocument(doctype=target_doctype)
@@ -387,7 +397,7 @@ class FieldMapper:
 		pairs = self._parse_label_value_pairs(full_text)
 
 		# --- Map header fields from pairs ---
-		keywords = self.FIELD_KEYWORDS.get(target_doctype, {})
+		keywords = self._resolve_keywords(target_doctype, source_lang)
 		schema_fields = schema["fields"]
 
 		for label, value in pairs:
@@ -421,6 +431,38 @@ class FieldMapper:
 		self._resolve_links(result, schema, company)
 
 		return result
+
+	# ==================================================================
+	# Keyword resolution (Phase 22 multilingual)
+	# ==================================================================
+
+	def _resolve_keywords(
+		self,
+		target_doctype: str,
+		source_lang: str | None,
+	) -> dict[str, list[str]]:
+		"""Pick the keyword dict for *target_doctype*, possibly merging
+		multilingual aliases for *source_lang*.
+
+		* ``source_lang in (None, "", "en")`` → exact legacy behaviour
+		  (returns ``self.FIELD_KEYWORDS[doctype]``).
+		* Other languages → merged dict from
+		  :func:`merge_keywords_for_languages`, falling back to the
+		  English entry for any field the multilingual table doesn't
+		  cover yet.
+		"""
+
+		english = self.FIELD_KEYWORDS.get(target_doctype, {})
+		if not source_lang:
+			return english
+		lang = normalize_language(source_lang)
+		if lang == "en":
+			return english
+		return merge_keywords_for_languages(
+			target_doctype,
+			[lang],
+			english_fallback=english,
+		)
 
 	# ==================================================================
 	# Label-value parsing

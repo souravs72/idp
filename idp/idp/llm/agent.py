@@ -128,6 +128,7 @@ class IDPAgent:
 			company=conversation.get("company"),
 			output_language=conversation.get("output_language") or "English",
 			target_doctype=conversation.get("target_doctype"),
+			ocr_language=conversation.get("ocr_language") or None,
 		)
 
 		# Make sure the registry is loaded once per request.

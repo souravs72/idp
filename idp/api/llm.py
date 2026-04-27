@@ -94,15 +94,29 @@ def chat(messages: list | str, model: str | None = None, **extra: Any) -> dict:
 
 
 @frappe.whitelist()
-def hybrid_map(file_url: str, target_doctype: str, company: str | None = None) -> dict:
+def hybrid_map(
+	file_url: str,
+	target_doctype: str,
+	company: str | None = None,
+	source_lang: str | None = None,
+	output_language: str | None = None,
+) -> dict:
 	"""Run hybrid (rule + LLM) mapping for an uploaded file.
 
 	Returns a serialisable view of :class:`MappedDocument` with provenance
 	in ``confidence_scores`` so the UI can show which fields the LLM
 	contributed.
+
+	Phase 22 additions
+	------------------
+	* ``source_lang`` — PaddleOCR language code of the document (or
+	  ``"auto"``).  When omitted the IDP Settings default is used.
+	* ``output_language`` — language for narrative-field translation and
+	  any LLM-facing prompts.  When omitted IDP Settings's default is
+	  used.
 	"""
 
-	from idp.idp.extractors import extract_from_file
+	from idp.idp.extractors import extract_content
 	from idp.idp.llm.client import LLMClient
 	from idp.idp.mappers import FieldMapper
 	from idp.idp.mappers.hybrid_mapper import HybridFieldMapper
@@ -112,7 +126,16 @@ def hybrid_map(file_url: str, target_doctype: str, company: str | None = None) -
 	if not target_doctype:
 		frappe.throw("target_doctype is required")
 
-	extracted = extract_from_file(file_url)
+	resolved_source, resolved_output = _resolve_language_settings(
+		source_lang=source_lang,
+		output_language=output_language,
+		file_url=file_url,
+	)
+
+	# Phase 22 — pass the resolved Paddle language to the extractor so
+	# downstream OCR / table extraction picks the matching model.
+	extract_lang = resolved_source if resolved_source and resolved_source != "auto" else "en"
+	extracted = extract_content(file_url, lang=extract_lang)
 
 	try:
 		llm_client = LLMClient.from_settings()
@@ -120,7 +143,12 @@ def hybrid_map(file_url: str, target_doctype: str, company: str | None = None) -
 		# Hybrid mapper disabled or LLM unavailable — fall back to rule-only
 		# rather than failing the request.
 		logger.info(f"hybrid_map falling back to rule-only mapping: {exc}")
-		mapped = FieldMapper().map_fields(extracted, target_doctype, company=company)
+		mapped = FieldMapper().map_fields(
+			extracted,
+			target_doctype,
+			company=company,
+			source_lang=resolved_source,
+		)
 		mapped.warnings.append(f"hybrid: llm unavailable ({exc}); rule-only mapping returned")
 	else:
 		mapper = HybridFieldMapper(FieldMapper(), llm_client)
@@ -129,14 +157,116 @@ def hybrid_map(file_url: str, target_doctype: str, company: str | None = None) -
 			target_doctype,
 			company=company,
 			user=frappe.session.user,
+			source_lang=resolved_source,
+			output_language=resolved_output,
 		)
 
 	return {
 		"doctype": mapped.doctype,
 		"header": mapped.header,
 		"items": mapped.items,
+		"taxes": getattr(mapped, "taxes", []),
 		"unmapped_fields": mapped.unmapped_fields,
 		"confidence_scores": mapped.confidence_scores,
 		"warnings": mapped.warnings,
 		"link_resolutions": mapped.link_resolutions,
+		"source_lang": resolved_source,
+		"output_language": resolved_output,
 	}
+
+
+def _resolve_language_settings(
+	*,
+	source_lang: str | None,
+	output_language: str | None,
+	file_url: str | None = None,
+) -> tuple[str | None, str]:
+	"""Resolve ``(source_lang, output_language)`` for a hybrid_map call.
+
+	Order of precedence:
+
+	1. Explicit kwargs.
+	2. IDP Settings defaults.
+	3. Built-in defaults (``"en"`` / ``"English"``).
+
+	When the resolved ``source_lang`` is ``"auto"`` and language
+	auto-detection is enabled in settings, we run
+	:func:`idp.idp.ocr_engine.detect_language` on *file_url* to pick a
+	concrete code so the rule mapper / hybrid LLM both see the right
+	language.
+	"""
+
+	settings: dict = {}
+	try:
+		single = frappe.db.get_singles_dict("IDP Settings") or {}
+		settings = dict(single)
+	except Exception:
+		settings = {}
+
+	resolved_source = (source_lang or settings.get("default_ocr_language") or "en").strip() or "en"
+	resolved_output = (
+		output_language or settings.get("default_output_language") or "English"
+	).strip() or "English"
+
+	auto_detect = bool(int(settings.get("enable_language_auto_detect") or 1))
+	if resolved_source.lower() == "auto" and auto_detect and file_url:
+		try:
+			from idp.idp.ocr_engine import detect_language
+
+			# detect_language expects a real path; ``extract_from_file``
+			# does the same kind of resolution.  We pass the URL through
+			# unchanged — the OCR layer accepts both file_url and path.
+			resolved_source = detect_language(file_url) or "en"
+		except Exception as exc:
+			logger.debug(f"hybrid_map language auto-detect failed ({exc}); falling back to 'en'")
+			resolved_source = "en"
+
+	return resolved_source, resolved_output
+
+
+@frappe.whitelist()
+def detect_file_language(file_url: str) -> dict:
+	"""Phase 22 — return PaddleOCR's best-guess language for *file_url*.
+
+	Used by the upload UI when the user picks ``ocr_language="auto"`` so
+	the conversation row can be persisted with a concrete code (and the
+	user can override on the spot).  Falls back to ``"en"`` rather than
+	raising on any detection error — the resulting confidence indicator
+	is therefore advisory only.
+	"""
+
+	from idp.idp.ocr_engine import detect_language
+
+	if not file_url:
+		frappe.throw("file_url is required")
+	try:
+		lang = detect_language(file_url) or "en"
+	except Exception as exc:
+		logger.debug(f"detect_file_language failed ({exc}); returning 'en'")
+		lang = "en"
+	return {"file_url": file_url, "language": lang}
+
+
+@frappe.whitelist()
+def translate(
+	text: str,
+	source_lang: str,
+	target_lang: str,
+) -> dict:
+	"""Phase 22 — whitelisted translation for ad-hoc UI use.
+
+	Returns ``{"translated": str, "was_translated": bool}``.  Mirrors
+	:func:`idp.idp.llm.translation.translate_text` so the chatbot
+	frontend can call it without going through the hybrid mapper.
+	"""
+
+	from idp.idp.llm.translation import translate_text
+
+	if not text:
+		return {"translated": "", "was_translated": False}
+	translated, ok = translate_text(
+		text,
+		source_lang=source_lang or "en",
+		target_lang=target_lang or "English",
+	)
+	return {"translated": translated, "was_translated": bool(ok)}

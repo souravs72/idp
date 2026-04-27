@@ -92,12 +92,14 @@
    "fieldtype": "Column Break"
   },
   {
+   "description": "PaddleOCR code (en, hi, ar, ch, ...). Use \"auto\" to detect on upload. Empty falls back to IDP Settings.default_ocr_language.",
    "fieldname": "ocr_language",
    "fieldtype": "Data",
    "label": "OCR Language"
   },
   {
    "default": "English",
+   "description": "Language used in chatbot replies, confirmation cards, and narrative-field translation.",
    "fieldname": "output_language",
    "fieldtype": "Data",
    "label": "Output Language"

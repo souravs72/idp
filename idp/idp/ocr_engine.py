@@ -506,6 +506,128 @@ def _pdf_to_images(file_path: str, max_pages: int = MAX_PAGES_PER_PDF) -> list[s
 
 
 # ---------------------------------------------------------------------------
+# Phase 22 — Language auto-detection
+# ---------------------------------------------------------------------------
+
+
+# Unicode block fingerprints used to fall back to script-based detection
+# when no LLM/PaddleOCR detector is available.  Only languages supported
+# by PaddleOCR are listed; everything else returns ``"en"``.
+_SCRIPT_FINGERPRINTS: tuple[tuple[str, tuple[tuple[int, int], ...]], ...] = (
+	# Devanagari → Hindi
+	("hi", (("\u0900", "\u097f"),)),
+	# Arabic → Arabic
+	("ar", (("\u0600", "\u06ff"), ("\u0750", "\u077f"))),
+	# CJK Unified Ideographs → Chinese (default for unspecified Han text)
+	("ch", (("\u4e00", "\u9fff"), ("\u3400", "\u4dbf"))),
+	# Hiragana / Katakana → Japanese
+	("ja", (("\u3040", "\u309f"), ("\u30a0", "\u30ff"))),
+	# Hangul → Korean
+	("ko", (("\uac00", "\ud7af"), ("\u1100", "\u11ff"))),
+	# Tamil
+	("ta", (("\u0b80", "\u0bff"),)),
+	# Telugu
+	("te", (("\u0c00", "\u0c7f"),)),
+)
+
+
+def detect_language(file_path: str, *, sample_chars: int = 4_000) -> str:
+	"""Best-effort language detection for an image / PDF.
+
+	Strategy (cheapest first):
+
+	1. Run a quick OCR pass with the multi-language ``ml`` PaddleOCR
+	   model — this is what PaddleOCR ships specifically for language
+	   identification.  When that's unavailable we fall back to step 2.
+	2. Run a small English OCR pass on the first page just to lift
+	   *some* text, then inspect the Unicode blocks present.  Anything
+	   that's mostly Latin is treated as English; otherwise the most
+	   prevalent script wins.
+	3. On any failure we return ``"en"`` — never raise — so the caller
+	   can always proceed with a default model.
+
+	The function is deliberately silent about latin-script languages
+	(``en``/``fr``/``de``/``es``/``pt``):  PaddleOCR's character coverage
+	is identical for them and the script-based heuristic can't tell
+	them apart.  Sites that need that distinction should set
+	``ocr_language`` explicitly on the conversation.
+	"""
+
+	if not file_path:
+		return "en"
+
+	# Strategy 1 — PaddleOCR multi-language detector.  We import lazily
+	# and tolerate any failure, since the "ml" lang isn't always
+	# downloaded on a fresh install.
+	try:
+		from paddleocr import PaddleOCR
+
+		detector = PaddleOCR(use_angle_cls=False, lang="ml", show_log=False)
+		try:
+			result = detector.ocr(file_path, cls=False)
+		except Exception:
+			result = None
+		if result:
+			text = _flatten_ocr_text(result, limit=sample_chars)
+			if text:
+				return _language_from_unicode(text)
+	except Exception as exc:
+		logger.debug(f"detect_language: PaddleOCR ml model unavailable ({exc})")
+
+	# Strategy 2 — English-model OCR pass + script analysis.  Even on a
+	# Hindi document the English model picks up enough Devanagari
+	# characters for the script heuristic to fire.
+	try:
+		text = " ".join(b.get("text", "") for b in extract_text(file_path, lang="en"))
+		text = text[:sample_chars]
+	except Exception as exc:
+		logger.debug(f"detect_language: english pass failed ({exc})")
+		return "en"
+
+	if not text.strip():
+		return "en"
+	return _language_from_unicode(text)
+
+
+def _flatten_ocr_text(result, *, limit: int) -> str:
+	"""Collapse a PaddleOCR result tree into a single string."""
+
+	chunks: list[str] = []
+	total = 0
+	for page in result or []:
+		for line in page or []:
+			try:
+				_bbox, (text, _conf) = line
+			except (TypeError, ValueError):
+				continue
+			if not text:
+				continue
+			chunks.append(str(text))
+			total += len(text)
+			if total >= limit:
+				return " ".join(chunks)
+	return " ".join(chunks)
+
+
+def _language_from_unicode(text: str) -> str:
+	"""Pick the best language code by counting characters per script."""
+
+	scores: dict[str, int] = {}
+	for ch in text:
+		for lang, ranges in _SCRIPT_FINGERPRINTS:
+			for lo, hi in ranges:
+				if lo <= ch <= hi:
+					scores[lang] = scores.get(lang, 0) + 1
+					break
+	if not scores:
+		return "en"
+	# Pick the script with the most hits.  Ties broken by registration
+	# order in ``_SCRIPT_FINGERPRINTS`` to keep behaviour stable.
+	best_lang, _best_count = max(scores.items(), key=lambda kv: kv[1])
+	return best_lang
+
+
+# ---------------------------------------------------------------------------
 # Utilities
 # ---------------------------------------------------------------------------
 

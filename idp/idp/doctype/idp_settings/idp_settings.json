@@ -7,8 +7,11 @@
   "enabled",
   "ocr_section",
   "default_ocr_language",
+  "default_output_language",
   "confidence_threshold",
   "column_break_ocr",
+  "enable_language_auto_detect",
+  "enable_translation",
   "enable_table_extraction",
   "enable_layout_analysis",
   "max_file_size_mb",
@@ -63,10 +66,18 @@
   },
   {
    "default": "en",
+   "description": "PaddleOCR language code applied when a conversation does not pin its own. Use \"auto\" to detect on upload.",
    "fieldname": "default_ocr_language",
    "fieldtype": "Select",
    "label": "Default OCR Language",
-   "options": "en\nch\nhi\nar\nfr\nde\nja\nko\nes\nta\nte\npt"
+   "options": "auto\nen\nch\nhi\nar\nfr\nde\nja\nko\nes\nta\nte\npt"
+  },
+  {
+   "default": "English",
+   "description": "Language used for confirmation cards, narrative fields, and chatbot replies.",
+   "fieldname": "default_output_language",
+   "fieldtype": "Data",
+   "label": "Default Output Language"
   },
   {
    "default": "0.70",
@@ -79,6 +90,20 @@
   {
    "fieldname": "column_break_ocr",
    "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "description": "When the conversation's OCR language is set to \"auto\", run a fast detector pass on each upload to pick the right Paddle model.",
+   "fieldname": "enable_language_auto_detect",
+   "fieldtype": "Check",
+   "label": "Enable Language Auto-Detect"
+  },
+  {
+   "default": "1",
+   "description": "Translate narrative fields (remarks, terms, descriptions) into the conversation's output language via the configured LLM provider.",
+   "fieldname": "enable_translation",
+   "fieldtype": "Check",
+   "label": "Enable Output Translation"
   },
   {
    "default": "1",

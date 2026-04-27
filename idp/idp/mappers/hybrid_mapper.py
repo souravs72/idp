@@ -58,9 +58,18 @@ class HybridFieldMapper:
 		output_language: str = "English",
 		industry: str | None = None,
 		user: str | None = None,
+		source_lang: str | None = None,
 	) -> MappedDocument:
 		# --- 1. Rule-based pass --------------------------------------------------
-		rule_result = self.rule_mapper.map_fields(extracted, target_doctype, company=company)
+		rule_kwargs: dict[str, Any] = {"company": company}
+		if source_lang:
+			rule_kwargs["source_lang"] = source_lang
+		try:
+			rule_result = self.rule_mapper.map_fields(extracted, target_doctype, **rule_kwargs)
+		except TypeError:
+			# Backwards compatible with older mappers that don't accept
+			# the ``source_lang`` keyword (e.g. tests with stub mappers).
+			rule_result = self.rule_mapper.map_fields(extracted, target_doctype, company=company)
 		_tag_provenance(rule_result, source="rule")
 
 		# --- 2. Decide whether to invoke the LLM --------------------------------
@@ -86,12 +95,28 @@ class HybridFieldMapper:
 		except LLMError as exc:
 			logger.warning(f"LLM fallback failed; returning rule-only mapping: {exc}")
 			rule_result.warnings.append(f"hybrid: llm unavailable ({exc}); rule-only mapping returned")
+			# Even when the mapping LLM call fails we still try the
+			# narrative translator — it has its own retry / cache and is
+			# typically a different prompt that can succeed independently.
+			_translate_narrative(
+				rule_result,
+				source_lang=source_lang,
+				output_language=output_language,
+				llm_client=self.llm_client,
+			)
 			return rule_result
 
 		# --- 4. Merge ------------------------------------------------------------
 		merged = self._merge(rule_result, llm_payload)
 		merged.warnings.append(
 			f"hybrid: llm fallback applied (rule_avg={avg_conf:.2f}, missing_required={len(missing)})"
+		)
+		# --- 5. Phase 22 — translate narrative fields ---------------------------
+		_translate_narrative(
+			merged,
+			source_lang=source_lang,
+			output_language=output_language,
+			llm_client=self.llm_client,
 		)
 		return merged
 
@@ -227,6 +252,68 @@ def _extracted_to_dict(extracted: Any) -> dict:
 			if val is not None:
 				out[attr] = val
 	return out or {"text": str(extracted)}
+
+
+def _translate_narrative(
+	mapped: MappedDocument,
+	*,
+	source_lang: str | None,
+	output_language: str,
+	llm_client: Any,
+) -> None:
+	"""Translate narrative header fields in *mapped* in place.
+
+	No-op when:
+	* ``source_lang`` is missing or already matches ``output_language``.
+	* The translation module isn't importable.
+	* The LLM client is None or throws — see :mod:`translation` for the
+	  graceful-degradation contract.
+	"""
+
+	if not source_lang or not output_language:
+		return
+	try:
+		from idp.idp.llm.translation import translate_mapping
+		from idp.idp.mappers.keywords_ml import normalize_language
+	except Exception as exc:  # pragma: no cover - defensive
+		logger.debug(f"translation skipped: import failed ({exc})")
+		return
+
+	src = normalize_language(source_lang)
+	tgt = normalize_language(output_language)
+	if not src or not tgt or src == tgt:
+		return
+
+	try:
+		swaps = translate_mapping(
+			mapped.header,
+			source_lang=src,
+			target_lang=tgt,
+			llm_client=llm_client,
+		)
+	except Exception as exc:  # pragma: no cover - defensive
+		logger.debug(f"translation aborted in hybrid mapper: {exc}")
+		return
+
+	if not swaps:
+		return
+	for fieldname, payload in swaps.items():
+		# Mark provenance so the ConfirmationCard UI can flag the
+		# translated copy and offer "show original".
+		entry = mapped.confidence_scores.get(fieldname)
+		if isinstance(entry, dict):
+			entry["translated_from"] = src
+			entry["translated_to"] = tgt
+			entry["original_text"] = payload.get("original")
+		else:
+			mapped.confidence_scores[fieldname] = {
+				"score": _score_of(entry),
+				"source": "translation",
+				"translated_from": src,
+				"translated_to": tgt,
+				"original_text": payload.get("original"),
+			}
+	mapped.warnings.append(f"hybrid: translated {len(swaps)} narrative field(s) {src} → {tgt}")
 
 
 __all__ = ["HybridFieldMapper"]

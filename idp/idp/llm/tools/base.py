@@ -100,6 +100,12 @@ class ToolContext:
 	company: str | None = None
 	output_language: str = "English"
 	target_doctype: str | None = None
+	# Phase 22 — PaddleOCR language code applied to the source document
+	# (``"en"``, ``"hi"``, ``"ar"``, ...).  ``None`` means "fall back to
+	# IDP Settings.default_ocr_language".  Tools that map fields use this
+	# to pull multilingual keyword aliases from
+	# :mod:`idp.idp.mappers.keywords_ml`.
+	ocr_language: str | None = None
 	# Free-form bag for caller hints (e.g. force_llm_review=True).
 	extras: dict = field(default_factory=dict)
 
