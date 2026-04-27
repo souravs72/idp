@@ -58,7 +58,7 @@ class HybridFieldMapper:
 		output_language: str = "English",
 		industry: str | None = None,
 		user: str | None = None,
-		source_lang: str | None = None,
+		source_lang: str | list[str] | tuple[str, ...] | None = None,
 	) -> MappedDocument:
 		# --- 1. Rule-based pass --------------------------------------------------
 		rule_kwargs: dict[str, Any] = {"company": company}
@@ -257,14 +257,17 @@ def _extracted_to_dict(extracted: Any) -> dict:
 def _translate_narrative(
 	mapped: MappedDocument,
 	*,
-	source_lang: str | None,
+	source_lang: str | list[str] | tuple[str, ...] | None,
 	output_language: str,
 	llm_client: Any,
 ) -> None:
 	"""Translate narrative header fields in *mapped* in place.
 
 	No-op when:
-	* ``source_lang`` is missing or already matches ``output_language``.
+	* ``source_lang`` is missing, ambiguous (list with >1 entry,
+	  ``"auto"``), or already matches ``output_language``.  We can't
+	  honestly translate without knowing the source language; the
+	  caller should detect a single source first.
 	* The translation module isn't importable.
 	* The LLM client is None or throws — see :mod:`translation` for the
 	  graceful-degradation contract.
@@ -272,6 +275,20 @@ def _translate_narrative(
 
 	if not source_lang or not output_language:
 		return
+
+	# Collapse list/tuple input to a single code if unambiguous.
+	# Multiple distinct codes or ``"auto"`` → skip translation; the
+	# rule mapper still benefited from the multilingual keyword merge.
+	if isinstance(source_lang, str):
+		if source_lang.strip().lower() == "auto":
+			return
+		single_lang: str | None = source_lang
+	else:
+		distinct = {str(s).strip().lower() for s in source_lang if s}
+		if "auto" in distinct or len(distinct) != 1:
+			return
+		single_lang = next(iter(distinct))
+
 	try:
 		from idp.idp.llm.translation import translate_mapping
 		from idp.idp.mappers.keywords_ml import normalize_language
@@ -279,7 +296,7 @@ def _translate_narrative(
 		logger.debug(f"translation skipped: import failed ({exc})")
 		return
 
-	src = normalize_language(source_lang)
+	src = normalize_language(single_lang)
 	tgt = normalize_language(output_language)
 	if not src or not tgt or src == tgt:
 		return

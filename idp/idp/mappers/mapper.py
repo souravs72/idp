@@ -17,6 +17,7 @@ from idp.core.logger import get_logger
 from idp.idp.extractors.base import ExtractionResult
 from idp.idp.mappers.base import MappedDocument, get_doctype_schema
 from idp.idp.mappers.keywords_ml import (
+	SUPPORTED_LANGUAGES,
 	merge_keywords_for_languages,
 	normalize_language,
 )
@@ -371,7 +372,7 @@ class FieldMapper:
 		target_doctype: str,
 		company: str | None = None,
 		*,
-		source_lang: str | None = None,
+		source_lang: str | list[str] | tuple[str, ...] | None = None,
 	) -> MappedDocument:
 		"""Map extracted content to *target_doctype* fields.
 
@@ -385,9 +386,15 @@ class FieldMapper:
 		7. Normalise values (dates, numbers, currencies).
 		8. Resolve Link fields against the database.
 
-		``source_lang`` (Phase 22) tells the mapper to merge in the
-		multilingual keyword aliases for that language alongside English.
-		``None`` keeps the legacy English-only behaviour.
+		``source_lang`` (Phase 22) tells the mapper which multilingual
+		keyword aliases to merge alongside English:
+
+		* ``None`` / ``""`` / ``"auto"`` — fan out to **all** supported
+		  languages so the mapper can recognise labels in any of them
+		  (best for auto-detect or unknown documents).
+		* Single string code (e.g. ``"hi"``) — English + that one
+		  language only (cheap, recommended when the language is known).
+		* List/tuple of codes (e.g. ``["hi", "ar"]``) — English + each.
 		"""
 		schema = get_doctype_schema(target_doctype)
 		result = MappedDocument(doctype=target_doctype)
@@ -439,30 +446,83 @@ class FieldMapper:
 	def _resolve_keywords(
 		self,
 		target_doctype: str,
-		source_lang: str | None,
+		source_lang: str | list[str] | tuple[str, ...] | None,
 	) -> dict[str, list[str]]:
-		"""Pick the keyword dict for *target_doctype*, possibly merging
-		multilingual aliases for *source_lang*.
+		"""Pick the keyword dict for *target_doctype*, merging
+		multilingual aliases according to *source_lang*.
 
-		* ``source_lang in (None, "", "en")`` → exact legacy behaviour
-		  (returns ``self.FIELD_KEYWORDS[doctype]``).
-		* Other languages → merged dict from
-		  :func:`merge_keywords_for_languages`, falling back to the
-		  English entry for any field the multilingual table doesn't
-		  cover yet.
+		Resolution rules:
+
+		* ``source_lang`` falsy / ``"auto"`` → fan out across **all**
+		  :data:`SUPPORTED_LANGUAGES`.  This costs nothing at runtime
+		  (the merge is a small in-memory dict build) and lets the
+		  rule mapper match labels in any shipped language without
+		  the caller having to commit to one upfront.
+		* Single ``"en"`` (after normalisation) → legacy English-only
+		  behaviour (returns ``self.FIELD_KEYWORDS[doctype]``).
+		* Single non-English string code → English + that one language.
+		* Iterable of codes → English + each (de-duplicated).
+
+		English is always included as a baseline so existing English
+		documents see zero regression regardless of the value passed.
 		"""
 
 		english = self.FIELD_KEYWORDS.get(target_doctype, {})
-		if not source_lang:
+		langs = self._coerce_language_list(source_lang)
+
+		# Filter to non-English (English is auto-prepended by
+		# merge_keywords_for_languages).  If nothing is left, the
+		# caller asked for English-only — return the legacy dict
+		# directly to keep the fast path zero-cost.
+		non_english = [lang for lang in langs if lang != "en"]
+		if not non_english:
 			return english
-		lang = normalize_language(source_lang)
-		if lang == "en":
-			return english
+
 		return merge_keywords_for_languages(
 			target_doctype,
-			[lang],
+			non_english,
 			english_fallback=english,
 		)
+
+	@staticmethod
+	def _coerce_language_list(
+		source_lang: str | list[str] | tuple[str, ...] | None,
+	) -> list[str]:
+		"""Normalise *source_lang* into a deduplicated list of codes.
+
+		Returns a list (never ``None``).  Falsy / ``"auto"`` inputs
+		expand to the full :data:`SUPPORTED_LANGUAGES` list.
+		"""
+
+		# Falsy → fan out to all supported languages.
+		if not source_lang:
+			return list(SUPPORTED_LANGUAGES)
+
+		# Treat scalar string + list/tuple uniformly.
+		if isinstance(source_lang, str):
+			if source_lang.strip().lower() == "auto":
+				return list(SUPPORTED_LANGUAGES)
+			candidates = [source_lang]
+		else:
+			candidates = list(source_lang)
+
+		seen: set[str] = set()
+		out: list[str] = []
+		for raw in candidates:
+			if not raw:
+				continue
+			if isinstance(raw, str) and raw.strip().lower() == "auto":
+				# An explicit ``auto`` inside a list still triggers
+				# the full fan-out — easier than asking the caller
+				# to special-case it.
+				return list(SUPPORTED_LANGUAGES)
+			lang = normalize_language(raw)
+			if lang in seen:
+				continue
+			seen.add(lang)
+			out.append(lang)
+
+		return out or list(SUPPORTED_LANGUAGES)
 
 	# ==================================================================
 	# Label-value parsing
