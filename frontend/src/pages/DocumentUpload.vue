@@ -15,6 +15,12 @@
       </div>
       <div class="flex items-center gap-4">
         <router-link
+          to="/chat"
+          class="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400"
+        >
+          Chat Assistant
+        </router-link>
+        <router-link
           to="/bank-statement"
           class="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400"
         >

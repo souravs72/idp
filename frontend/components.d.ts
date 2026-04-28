@@ -9,18 +9,24 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     BankReconciliation: typeof import('./src/components/BankReconciliation.vue')['default']
+    ChatInput: typeof import('./src/components/chat/ChatInput.vue')['default']
     ComparisonTable: typeof import('./src/components/ComparisonTable.vue')['default']
     ConfirmationCard: typeof import('./src/components/ConfirmationCard.vue')['default']
+    ConfirmationCardUI: typeof import('./src/components/chat/ConfirmationCardUI.vue')['default']
+    ConversationList: typeof import('./src/components/chat/ConversationList.vue')['default']
     DocumentThumbnail: typeof import('./src/components/DocumentThumbnail.vue')['default']
     ExtractionForm: typeof import('./src/components/ExtractionForm.vue')['default']
     ExtractionPreview: typeof import('./src/components/ExtractionPreview.vue')['default']
     FileDropzone: typeof import('./src/components/FileDropzone.vue')['default']
+    MessageBubble: typeof import('./src/components/chat/MessageBubble.vue')['default']
     MissingMastersDialog: typeof import('./src/components/MissingMastersDialog.vue')['default']
+    NewConversationDialog: typeof import('./src/components/chat/NewConversationDialog.vue')['default']
     ProcessingStatus: typeof import('./src/components/ProcessingStatus.vue')['default']
     ReconciliationGroup: typeof import('./src/components/ReconciliationGroup.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SettingsPanel: typeof import('./src/components/SettingsPanel.vue')['default']
     StatusBadge: typeof import('./src/components/StatusBadge.vue')['default']
+    ThinkingIndicator: typeof import('./src/components/chat/ThinkingIndicator.vue')['default']
   }
 }

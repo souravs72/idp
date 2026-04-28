@@ -157,3 +157,143 @@ export function reconcileBankStatement({
     },
   })
 }
+
+// ---------------------------------------------------------------------------
+// Conversation / Chatbot (Phase 17+)
+// ---------------------------------------------------------------------------
+
+export function createConversation({
+  title,
+  targetDoctype,
+  company,
+  llmProvider,
+  llmModel,
+  ocrLanguage,
+  outputLanguage,
+} = {}) {
+  return frappeRequest({
+    url: '/api/method/idp.api.conversation.create_conversation',
+    method: 'POST',
+    params: {
+      title: title || undefined,
+      target_doctype: targetDoctype || undefined,
+      company: company || undefined,
+      llm_provider: llmProvider || undefined,
+      llm_model: llmModel || undefined,
+      ocr_language: ocrLanguage || undefined,
+      output_language: outputLanguage || undefined,
+    },
+  })
+}
+
+export function listConversations({ status = 'Active', limit = 50 } = {}) {
+  return frappeRequest({
+    url: '/api/method/idp.api.conversation.list_conversations',
+    params: {
+      status: status || undefined,
+      limit: limit || 50,
+    },
+  })
+}
+
+export function getConversation(conversationId) {
+  return frappeRequest({
+    url: '/api/method/idp.api.conversation.get_conversation',
+    params: { conversation_id: conversationId },
+  })
+}
+
+export function postMessage({
+  conversationId,
+  content = '',
+  attachments = [],
+  role = 'user',
+}) {
+  return frappeRequest({
+    url: '/api/method/idp.api.conversation.post_message',
+    method: 'POST',
+    params: {
+      conversation_id: conversationId,
+      content,
+      attachments: JSON.stringify(attachments || []),
+      role,
+    },
+  })
+}
+
+export function runAgent({
+  conversationId,
+  content = '',
+  attachments = [],
+  userConfirmedAction = null,
+}) {
+  return frappeRequest({
+    url: '/api/method/idp.api.conversation.run_agent',
+    method: 'POST',
+    params: {
+      conversation_id: conversationId,
+      content,
+      attachments: JSON.stringify(attachments || []),
+      user_confirmed_action: userConfirmedAction
+        ? JSON.stringify(userConfirmedAction)
+        : undefined,
+    },
+  })
+}
+
+export function confirmCard({
+  conversationId,
+  messageId,
+  action,
+  editedPayload = null,
+}) {
+  return frappeRequest({
+    url: '/api/method/idp.api.conversation.confirm_card',
+    method: 'POST',
+    params: {
+      conversation_id: conversationId,
+      message_id: messageId,
+      action,
+      edited_payload: editedPayload
+        ? JSON.stringify(editedPayload)
+        : undefined,
+    },
+  })
+}
+
+export function getCardItemsPage({
+  conversationId,
+  messageId,
+  page = 1,
+  pageSize = 10,
+}) {
+  return frappeRequest({
+    url: '/api/method/idp.api.conversation.get_card_items_page',
+    params: {
+      conversation_id: conversationId,
+      message_id: messageId,
+      page,
+      page_size: pageSize,
+    },
+  })
+}
+
+export function archiveConversation(conversationId) {
+  return frappeRequest({
+    url: '/api/method/idp.api.conversation.archive_conversation',
+    method: 'POST',
+    params: { conversation_id: conversationId },
+  })
+}
+
+export function listAgentTools() {
+  return frappeRequest({
+    url: '/api/method/idp.api.conversation.list_agent_tools',
+  })
+}
+
+export function listLLMProviders() {
+  return frappeRequest({
+    url: '/api/method/idp.api.llm.list_providers',
+  })
+}

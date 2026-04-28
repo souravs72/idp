@@ -29,6 +29,17 @@ const routes = [
     name: 'BankStatementView',
     component: () => import('@/pages/BankStatementView.vue'),
   },
+  {
+    path: '/chat',
+    name: 'ChatHome',
+    component: () => import('@/pages/ChatView.vue'),
+  },
+  {
+    path: '/chat/:id',
+    name: 'ChatConversation',
+    component: () => import('@/pages/ChatView.vue'),
+    props: true,
+  },
 ]
 
 const router = createRouter({
