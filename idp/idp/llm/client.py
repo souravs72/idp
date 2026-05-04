@@ -86,7 +86,7 @@ class LLMClient:
 			# Sensible default per provider so admins don't *have* to set both.
 			model = {
 				"openai": "gpt-4o-mini",
-				"anthropic": "claude-haiku-4-5-20251101",
+				"anthropic": "claude-haiku-4-5-20251001",
 				"ollama": "llama3.1:8b",
 			}.get(provider_name, "")
 

@@ -68,8 +68,8 @@ _BASELINE: dict[str, ModelInfo] = {
 		input_cost_per_1k=0.015,
 		output_cost_per_1k=0.075,
 	),
-	"claude-haiku-4-5-20251101": ModelInfo(
-		model_id="claude-haiku-4-5-20251101",
+	"claude-haiku-4-5-20251001": ModelInfo(
+		model_id="claude-haiku-4-5-20251001",
 		provider="anthropic",
 		context_window=200_000,
 		supports_vision=True,

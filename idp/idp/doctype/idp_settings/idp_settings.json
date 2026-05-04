@@ -286,7 +286,7 @@
    "options": "openai\nanthropic\nollama"
   },
   {
-   "description": "Model id, e.g. gpt-4o-mini, claude-haiku-4-5-20251101, llama3.1:8b",
+   "description": "Model id, e.g. gpt-4o-mini, claude-haiku-4-5-20251001, llama3.1:8b",
    "fieldname": "llm_model",
    "fieldtype": "Data",
    "label": "LLM Model"

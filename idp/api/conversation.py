@@ -796,34 +796,64 @@ def get_chat_defaults() -> dict:
 	"""Return defaults used to seed a fresh chatbot conversation.
 
 	Pulled from IDP Settings (provider/model/languages/target doctype)
-	plus the user's default company.  The frontend uses this to skip
-	the "New Conversation" modal when every required field is filled.
+	plus the user's default company.  Any field not yet configured in
+	IDP Settings falls back to a hard-coded constant from
+	``idp.core.constants`` so the frontend can always quick-start a
+	conversation without showing the New Conversation modal.
+
+	The ``defaults_source`` map tells the frontend which fields came
+	from IDP Settings vs. the in-code fallbacks, in case the UI wants
+	to nudge the admin to set them explicitly.
 	"""
 
 	_require_login()
 
 	from idp.core.config import get_default_company, get_idp_settings
+	from idp.core.constants import (
+		DEFAULT_CHAT_LLM_MODEL,
+		DEFAULT_CHAT_LLM_PROVIDER,
+		DEFAULT_CHAT_OCR_LANGUAGE,
+		DEFAULT_CHAT_OUTPUT_LANGUAGE,
+		DEFAULT_CHAT_TARGET_DOCTYPE,
+	)
 
 	settings = get_idp_settings()
+
+	def _pick(setting_key: str, fallback: str) -> tuple[str, str]:
+		value = (settings.get(setting_key) or "").strip()
+		if value:
+			return value, "settings"
+		return fallback, "fallback"
+
+	provider, provider_src = _pick("llm_provider", DEFAULT_CHAT_LLM_PROVIDER)
+	model, model_src = _pick("llm_model", DEFAULT_CHAT_LLM_MODEL)
+	target, target_src = _pick("default_target_doctype", DEFAULT_CHAT_TARGET_DOCTYPE)
+	ocr_lang, ocr_src = _pick("default_ocr_language", DEFAULT_CHAT_OCR_LANGUAGE)
+	out_lang, out_src = _pick("default_output_language", DEFAULT_CHAT_OUTPUT_LANGUAGE)
+
 	defaults = {
-		"llm_provider": settings.get("llm_provider") or "",
-		"llm_model": settings.get("llm_model") or "",
-		"target_doctype": settings.get("default_target_doctype") or "",
-		"ocr_language": settings.get("default_ocr_language") or "en",
-		"output_language": settings.get("default_output_language") or "English",
+		"llm_provider": provider,
+		"llm_model": model,
+		"target_doctype": target,
+		"ocr_language": ocr_lang,
+		"output_language": out_lang,
 		"company": get_default_company() or "",
+		"defaults_source": {
+			"llm_provider": provider_src,
+			"llm_model": model_src,
+			"target_doctype": target_src,
+			"ocr_language": ocr_src,
+			"output_language": out_src,
+		},
 	}
-	# A conversation is "ready" if we have at least a provider+model and
-	# a target doctype; the company can usually be resolved per request.
-	defaults["ready"] = bool(
-		defaults["llm_provider"]
-		and defaults["llm_model"]
-		and defaults["target_doctype"]
-	)
+	# Always ready — fallbacks fill any gap in IDP Settings.
+	defaults["ready"] = True
+	# ``missing`` lists fields that came from the fallback (not from
+	# IDP Settings) so the admin can be nudged to configure them.
 	defaults["missing"] = [
 		key
 		for key in ("llm_provider", "llm_model", "target_doctype")
-		if not defaults[key]
+		if defaults["defaults_source"][key] == "fallback"
 	]
 	return defaults
 

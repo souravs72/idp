@@ -77,9 +77,19 @@ def list_missing_masters(arguments: dict, ctx: ToolContext) -> ToolResult:
 		)
 
 	header_links = _link_fields(schema.get("fields") or [])
-	child_links: dict[str, dict[str, str]] = {
-		ct["fieldname"]: _link_fields(ct.get("fields") or []) for ct in (schema.get("child_tables") or [])
-	}
+	# ``child_tables`` is a dict keyed by parent fieldname (e.g. "items"):
+	#   {"items": {"doctype": "Purchase Invoice Item", "fields": [...]}, ...}
+	# Be defensive and accept the (legacy) list-of-dicts shape too.
+	raw_child_tables = schema.get("child_tables") or {}
+	child_links: dict[str, dict[str, str]] = {}
+	if isinstance(raw_child_tables, dict):
+		for parent_field, ct in raw_child_tables.items():
+			if isinstance(ct, dict):
+				child_links[parent_field] = _link_fields(ct.get("fields") or [])
+	elif isinstance(raw_child_tables, list):
+		for ct in raw_child_tables:
+			if isinstance(ct, dict) and ct.get("fieldname"):
+				child_links[ct["fieldname"]] = _link_fields(ct.get("fields") or [])
 
 	missing: list[dict] = []
 	seen: set[tuple[str, str]] = set()

@@ -73,6 +73,17 @@ OCR_LANGUAGES: dict[str, str] = {
 }
 
 # ---------------------------------------------------------------------------
+# Chatbot conversation fallbacks
+# ---------------------------------------------------------------------------
+# Used by ``idp.api.conversation.get_chat_defaults`` so the SPA can quick-start
+# a conversation even when an admin hasn't filled every field of IDP Settings.
+DEFAULT_CHAT_LLM_PROVIDER: str = "anthropic"
+DEFAULT_CHAT_LLM_MODEL: str = "claude-haiku-4-5-20251001"
+DEFAULT_CHAT_TARGET_DOCTYPE: str = "Purchase Invoice"
+DEFAULT_CHAT_OCR_LANGUAGE: str = "en"
+DEFAULT_CHAT_OUTPUT_LANGUAGE: str = "English"
+
+# ---------------------------------------------------------------------------
 # File size limits
 # ---------------------------------------------------------------------------
 MAX_FILE_SIZE_MB: int = 25

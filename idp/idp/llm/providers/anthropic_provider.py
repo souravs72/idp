@@ -11,6 +11,7 @@ blocks back into :class:`ToolCall` objects.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from idp.core.exceptions import LLMProviderUnavailableError, LLMResponseParseError
@@ -55,6 +56,109 @@ def split_system_and_messages(messages: list[dict]) -> tuple[str, list[dict]]:
 	return "\n\n".join(system_parts), chat
 
 
+def _stringify_tool_result(content: Any) -> str:
+	"""Serialise a tool result payload to a string for Anthropic's
+	``tool_result.content`` field, which only accepts a string or
+	a list of text/image blocks."""
+
+	if content is None:
+		return ""
+	if isinstance(content, str):
+		return content
+	try:
+		return json.dumps(content, default=str)
+	except (TypeError, ValueError):
+		return str(content)
+
+
+def translate_messages_openai_to_anthropic(messages: list[dict]) -> list[dict]:
+	"""Convert OpenAI-style chat history to Anthropic's Messages-API shape.
+
+	Anthropic rejects ``role: "tool"`` outright and expects:
+
+	* assistant tool calls as ``{"type":"tool_use", ...}`` blocks inside
+	  an ``assistant`` message.
+	* tool results as ``{"type":"tool_result", "tool_use_id": ..., ...}``
+	  blocks inside a ``user`` message (consecutive results may be
+	  merged into a single user message).
+
+	System messages are expected to have already been split out by
+	:func:`split_system_and_messages` before this is called.
+	"""
+
+	out: list[dict] = []
+	for m in messages:
+		role = m.get("role")
+		content = m.get("content")
+
+		if role == "tool":
+			# OpenAI shape: {"role":"tool", "tool_call_id":..., "content":...}
+			# Anthropic shape: a user message with a tool_result block.
+			block = {
+				"type": "tool_result",
+				"tool_use_id": m.get("tool_call_id") or "",
+				"content": _stringify_tool_result(content),
+			}
+			# Merge with the previous user message if it already contains
+			# tool_result blocks — Anthropic prefers consecutive results
+			# bundled together.
+			if (
+				out
+				and out[-1].get("role") == "user"
+				and isinstance(out[-1].get("content"), list)
+				and out[-1]["content"]
+				and isinstance(out[-1]["content"][0], dict)
+				and out[-1]["content"][0].get("type") == "tool_result"
+			):
+				out[-1]["content"].append(block)
+			else:
+				out.append({"role": "user", "content": [block]})
+			continue
+
+		if role == "assistant":
+			tool_calls = m.get("tool_calls") or []
+			if not tool_calls:
+				# Plain text assistant message — pass through.
+				out.append({"role": "assistant", "content": content or ""})
+				continue
+
+			blocks: list[dict] = []
+			text = content if isinstance(content, str) else ""
+			if text:
+				blocks.append({"type": "text", "text": text})
+			for call in tool_calls:
+				fn = call.get("function") or {}
+				args_raw = fn.get("arguments")
+				# OpenAI sends arguments as a JSON-encoded string; Anthropic
+				# wants a parsed object under ``input``.
+				if isinstance(args_raw, str):
+					try:
+						args_obj = json.loads(args_raw) if args_raw.strip() else {}
+					except json.JSONDecodeError:
+						args_obj = {"_raw": args_raw}
+				elif isinstance(args_raw, dict):
+					args_obj = args_raw
+				else:
+					args_obj = {}
+				blocks.append(
+					{
+						"type": "tool_use",
+						"id": call.get("id") or "",
+						"name": fn.get("name") or "",
+						"input": args_obj,
+					}
+				)
+			out.append({"role": "assistant", "content": blocks})
+			continue
+
+		# user / fallback — pass through unchanged.  ``content`` may be a
+		# string or a list of multimodal blocks (text/image), both of
+		# which Anthropic accepts on a user message.
+		out.append({"role": role or "user", "content": content if content is not None else ""})
+
+	return out
+
+
 @register_provider("anthropic")
 class AnthropicProvider(LLMProvider):
 	"""Adapter for Anthropic's Messages API."""
@@ -63,7 +167,7 @@ class AnthropicProvider(LLMProvider):
 		self,
 		*,
 		api_key: str | None = None,
-		default_model: str = "claude-haiku-4-5-20251101",
+		default_model: str = "claude-haiku-4-5-20251001",
 		**_: Any,
 	) -> None:
 		self.api_key = api_key
@@ -88,6 +192,7 @@ class AnthropicProvider(LLMProvider):
 
 		client = self._get_client()
 		system, chat = split_system_and_messages(messages)
+		chat = translate_messages_openai_to_anthropic(chat)
 		payload: dict[str, Any] = {
 			"model": model or self.default_model,
 			"messages": chat,
