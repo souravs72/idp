@@ -13,10 +13,11 @@
       </div>
       <button
         type="button"
-        class="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700"
+        class="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        :disabled="starting"
         @click="$emit('new')"
       >
-        + New
+        {{ starting ? 'Starting…' : '+ New' }}
       </button>
     </header>
 
@@ -88,6 +89,7 @@ defineProps({
   activeId: { type: String, default: null },
   loading: { type: Boolean, default: false },
   currentStatus: { type: String, default: 'Active' },
+  starting: { type: Boolean, default: false },
 })
 
 defineEmits(['select', 'new', 'status-change'])

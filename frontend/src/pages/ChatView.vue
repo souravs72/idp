@@ -8,8 +8,9 @@
       :active-id="store.currentId"
       :loading="store.sessionsLoading"
       :current-status="status"
+      :starting="startingConversation"
       @select="onSelect"
-      @new="dialogOpen = true"
+      @new="startNewConversation"
       @status-change="onStatusChange"
     />
 
@@ -48,21 +49,28 @@
 
       <div
         v-if="!store.currentId"
-        class="flex flex-1 items-center justify-center text-sm text-gray-500"
+        class="flex flex-1 items-center justify-center bg-gray-50 p-6 text-sm text-gray-500 dark:bg-gray-950"
       >
-        <div class="text-center">
-          <div class="text-lg font-medium text-gray-700 dark:text-gray-200">
+        <div class="max-w-md text-center">
+          <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-2xl dark:bg-blue-950">
+            💬
+          </div>
+          <div class="text-lg font-semibold text-gray-800 dark:text-gray-100">
             Welcome to the IDP Assistant
           </div>
-          <div class="mt-1 text-xs text-gray-500">
-            Pick a conversation on the left, or
-            <button
-              class="font-medium text-blue-700 hover:underline dark:text-blue-300"
-              @click="dialogOpen = true"
-            >
-              start a new one
-            </button>
-            .
+          <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Upload a document or ask a question — I can extract data, draft
+            ERPNext records, and walk you through confirmations.
+          </div>
+          <button
+            class="mt-4 rounded bg-blue-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            :disabled="startingConversation"
+            @click="startNewConversation"
+          >
+            {{ startingConversation ? 'Starting…' : 'Start a new conversation' }}
+          </button>
+          <div class="mt-3 text-[11px] text-gray-400">
+            Or pick an existing one from the sidebar.
           </div>
         </div>
       </div>
@@ -70,8 +78,23 @@
       <div
         v-else
         ref="scrollEl"
-        class="flex-1 space-y-4 overflow-y-auto bg-gray-100 p-4 dark:bg-gray-950"
+        class="relative flex-1 space-y-4 overflow-y-auto bg-gray-100 p-4 dark:bg-gray-950"
+        @scroll="onScroll"
       >
+        <div
+          v-if="!store.visibleMessages.length && !store.agentState.running"
+          class="mx-auto max-w-md rounded-lg border border-dashed border-gray-300 bg-white p-4 text-center text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-900"
+        >
+          <div class="mb-1 text-sm font-medium text-gray-700 dark:text-gray-200">
+            New conversation ready
+          </div>
+          <div>
+            Drop a document into the box below or type a question — for
+            example,
+            <em>“extract data and create a Purchase Invoice from this PDF.”</em>
+          </div>
+        </div>
+
         <MessageBubble
           v-for="msg in store.visibleMessages"
           :key="msg.name"
@@ -85,6 +108,15 @@
         >
           {{ store.agentState.lastError }}
         </div>
+
+        <button
+          v-if="showScrollButton"
+          type="button"
+          class="sticky bottom-4 ml-auto block rounded-full bg-gray-900 px-3 py-1 text-[11px] font-medium text-white shadow-md hover:bg-gray-800"
+          @click="scrollToBottom(true)"
+        >
+          ↓ Jump to latest
+        </button>
       </div>
 
       <ChatInput
@@ -103,6 +135,7 @@
 
     <NewConversationDialog
       :open="dialogOpen"
+      :prefill="dialogPrefill"
       @close="dialogOpen = false"
       @created="onCreated"
     />
@@ -127,13 +160,22 @@ import { useConversationRealtime } from '@/composables/useRealtimeEvents'
 const store = useConversationStore()
 const route = useRoute()
 const router = useRouter()
-const { refreshSessions, loadConversation, archiveConversation } =
-  useConversation()
+const {
+  refreshSessions,
+  loadConversation,
+  archiveConversation,
+  quickStart,
+} = useConversation()
 const { send } = useAgent()
+
+const dialogPrefill = ref(null)
+const startingConversation = ref(false)
 
 const status = ref('Active')
 const dialogOpen = ref(false)
 const scrollEl = ref(null)
+const showScrollButton = ref(false)
+const SCROLL_PINNED_THRESHOLD = 80
 
 const headerTitle = computed(() => {
   const d = store.currentDetail
@@ -218,10 +260,27 @@ watch(
   },
 )
 
-function scrollToBottom() {
+function scrollToBottom(force = false) {
   const el = scrollEl.value
   if (!el) return
+  if (!force) {
+    // Only auto-scroll when the user is already near the bottom; this
+    // prevents yanking them away while they're reading older messages.
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+    if (distance > SCROLL_PINNED_THRESHOLD) {
+      showScrollButton.value = true
+      return
+    }
+  }
   el.scrollTop = el.scrollHeight
+  showScrollButton.value = false
+}
+
+function onScroll() {
+  const el = scrollEl.value
+  if (!el) return
+  const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+  showScrollButton.value = distance > SCROLL_PINNED_THRESHOLD
 }
 
 async function onSelect(id) {
@@ -269,6 +328,39 @@ async function onCreated(out) {
       name: 'ChatConversation',
       params: { id: out.conversation_id },
     })
+  }
+}
+
+/**
+ * Start a new conversation.  Prefer the IDP Settings defaults so the
+ * user never sees the picker; only fall back to the modal when the
+ * settings are incomplete.
+ */
+async function startNewConversation() {
+  if (startingConversation.value) return
+  startingConversation.value = true
+  try {
+    const out = await quickStart()
+    if (out?.needsModal) {
+      dialogPrefill.value = out.defaults || null
+      dialogOpen.value = true
+      return
+    }
+    if (out?.conversation_id) {
+      await refreshSessions({ status: status.value })
+      router.push({
+        name: 'ChatConversation',
+        params: { id: out.conversation_id },
+      })
+    }
+  } catch (err) {
+    // Fallback: open the picker so the user can supply values manually.
+    // eslint-disable-next-line no-console
+    console.warn('[ChatView] quickStart failed, opening picker', err)
+    dialogPrefill.value = null
+    dialogOpen.value = true
+  } finally {
+    startingConversation.value = false
   }
 }
 

@@ -62,13 +62,27 @@ export function useAgent() {
         userConfirmedAction,
       })
       store.setAgentSummary(summary)
+      // Server returned an error envelope (LLM unavailable, OCR failed,
+      // etc.).  Surface the friendly message — never the raw exception
+      // class name or URL.
+      if (summary && summary.error && summary.error.friendly_message) {
+        const friendly = summary.error.friendly_message
+        lastError.value = friendly
+        store.setAgentError(friendly)
+      }
       // Authoritative sync (covers cases where realtime is offline).
       await syncConversation(conversationId)
       return summary
     } catch (err) {
-      const msg = err?.message || String(err)
-      lastError.value = msg
-      store.setAgentError(msg)
+      // Network / transport failure.  Show a generic, friendly message
+      // — never the raw URL or exception name.
+      const friendly =
+        'We couldn\'t reach the assistant right now. Please check your connection and try again.'
+      lastError.value = friendly
+      store.setAgentError(friendly)
+      // Keep the original error for console diagnostics only.
+      // eslint-disable-next-line no-console
+      console.warn('[useAgent] run_agent transport error', err)
       throw err
     } finally {
       busy.value = false
@@ -114,7 +128,12 @@ export function useAgent() {
       }
       return out
     } catch (err) {
-      lastError.value = err?.message || String(err)
+      const friendly =
+        'We couldn\'t process your confirmation. Please reload the conversation and try again.'
+      lastError.value = friendly
+      store.setAgentError(friendly)
+      // eslint-disable-next-line no-console
+      console.warn('[useAgent] confirm_card error', err)
       throw err
     } finally {
       busy.value = false

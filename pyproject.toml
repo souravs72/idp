@@ -14,11 +14,18 @@ dependencies = [
     "python-docx>=1.1",
     "Pillow",
     "paddleocr",
+    # LLM provider SDKs — promoted to core deps so `bench setup
+    # requirements` always installs them. Each provider remains
+    # opt-in at runtime via IDP Settings; the SDK import is lazy
+    # so missing one only matters if you actually pick that provider.
+    "openai>=1.40",
+    "tiktoken>=0.7",
+    "anthropic>=0.34",
 ]
 
 [project.optional-dependencies]
-# Phase 16: pick the extras matching your active LLM provider. Ollama
-# uses httpx (already shipped with Frappe) so no extra is required.
+# Kept for users who still want to opt-into individual providers.
+# Ollama uses httpx (already shipped with Frappe).
 llm-openai = ["openai>=1.40", "tiktoken>=0.7"]
 llm-anthropic = ["anthropic>=0.34"]
 

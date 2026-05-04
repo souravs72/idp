@@ -13,6 +13,7 @@ import { useConversationStore } from '@/stores/conversation'
 import {
   archiveConversation as apiArchive,
   createConversation as apiCreate,
+  getChatDefaults as apiGetDefaults,
   getConversation as apiGet,
   listConversations as apiList,
 } from '@/utils/api'
@@ -81,11 +82,63 @@ export function useConversation() {
     return out
   }
 
+  /**
+   * Fetch chat defaults from IDP Settings.  Returns a snapshot like:
+   *   {
+   *     llm_provider, llm_model, target_doctype, ocr_language,
+   *     output_language, company,
+   *     ready: bool,                     // true => can quick-start
+   *     missing: ['llm_provider', ...],  // fields that are still empty
+   *   }
+   */
+  async function getDefaults() {
+    try {
+      return await apiGetDefaults()
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[useConversation] get_chat_defaults failed', err)
+      return {
+        llm_provider: '',
+        llm_model: '',
+        target_doctype: '',
+        ocr_language: 'en',
+        output_language: 'English',
+        company: '',
+        ready: false,
+        missing: ['llm_provider', 'llm_model', 'target_doctype'],
+      }
+    }
+  }
+
+  /**
+   * Quick-start a new conversation using IDP Settings defaults.
+   * Returns the create_conversation response on success, or
+   * ``{ needsModal: true, defaults }`` when required fields are missing
+   * so the caller can fall back to the full picker.
+   */
+  async function quickStart() {
+    const defaults = await getDefaults()
+    if (!defaults.ready) {
+      return { needsModal: true, defaults }
+    }
+    const out = await createConversation({
+      targetDoctype: defaults.target_doctype,
+      company: defaults.company || undefined,
+      llmProvider: defaults.llm_provider,
+      llmModel: defaults.llm_model,
+      ocrLanguage: defaults.ocr_language,
+      outputLanguage: defaults.output_language,
+    })
+    return { ...out, defaults }
+  }
+
   return {
     lastError,
     refreshSessions,
     loadConversation,
     createConversation,
     archiveConversation,
+    getDefaults,
+    quickStart,
   }
 }

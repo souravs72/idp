@@ -39,19 +39,33 @@ class IDPConversation(Document):
 
 		Called after messages are appended to keep the parent row in sync
 		for list-view rendering without an expensive join.
+
+		Uses :mod:`frappe.qb` because modern Frappe rejects raw SQL
+		aggregate strings (``count(...)``, ``sum(...)``) passed via the
+		``fields`` argument of :func:`frappe.get_all`.
 		"""
-		rows = frappe.get_all(
-			"IDP Message",
-			filters={"conversation": self.name},
-			fields=["count(name) as count", "max(created_on) as last_on",
-			        "sum(tokens_in) as tokens_in", "sum(tokens_out) as tokens_out"],
-		)
-		if not rows:
+		from frappe.query_builder.functions import Count, Max, Sum
+
+		Message = frappe.qb.DocType("IDP Message")
+		row = (
+			frappe.qb.from_(Message)
+			.select(
+				Count(Message.name).as_("count"),
+				Max(Message.created_on).as_("last_on"),
+				Sum(Message.tokens_in).as_("tokens_in"),
+				Sum(Message.tokens_out).as_("tokens_out"),
+			)
+			.where(Message.conversation == self.name)
+		).run(as_dict=True)
+
+		if not row:
 			return
-		row = rows[0]
-		self.message_count = int(row.get("count") or 0)
-		self.last_message_on = row.get("last_on")
-		self.total_tokens_used = int((row.get("tokens_in") or 0) + (row.get("tokens_out") or 0))
+		stats = row[0] or {}
+		self.message_count = int(stats.get("count") or 0)
+		self.last_message_on = stats.get("last_on")
+		self.total_tokens_used = int(
+			(stats.get("tokens_in") or 0) + (stats.get("tokens_out") or 0)
+		)
 		self.db_update()
 
 	def add_attachment(

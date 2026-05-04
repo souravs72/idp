@@ -292,6 +292,12 @@ export function listAgentTools() {
   })
 }
 
+export function getChatDefaults() {
+  return frappeRequest({
+    url: '/api/method/idp.api.conversation.get_chat_defaults',
+  })
+}
+
 export function listLLMProviders() {
   return frappeRequest({
     url: '/api/method/idp.api.llm.list_providers',

@@ -10,8 +10,16 @@
     <div
       class="w-full max-w-md rounded-lg bg-white p-5 shadow-lg dark:bg-gray-900"
     >
-      <div class="mb-4 text-base font-semibold text-gray-900 dark:text-gray-100">
+      <div class="mb-1 text-base font-semibold text-gray-900 dark:text-gray-100">
         New conversation
+      </div>
+      <div
+        v-if="missingFields.length"
+        class="mb-3 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
+      >
+        Please pick a value for: {{ missingFields.join(', ') }}.
+        Set defaults in <strong>IDP Settings</strong> to skip this dialog
+        next time.
       </div>
 
       <form class="space-y-3" @submit.prevent="onSubmit">
@@ -129,6 +137,21 @@ import { listLLMProviders } from '@/utils/api'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
+  // Optional snapshot of IDP Settings defaults; used to pre-populate the
+  // form so the user only needs to fill in fields that are still empty.
+  prefill: { type: Object, default: null },
+})
+
+const FIELD_LABELS = {
+  llm_provider: 'LLM provider',
+  llm_model: 'LLM model',
+  target_doctype: 'Target DocType',
+}
+
+const missingFields = computed(() => {
+  const arr = props.prefill?.missing
+  if (!Array.isArray(arr) || !arr.length) return []
+  return arr.map((k) => FIELD_LABELS[k] || k)
 })
 
 const emit = defineEmits(['close', 'created'])
@@ -170,13 +193,14 @@ watch(
   () => props.open,
   (val) => {
     if (val) {
+      const p = props.prefill || {}
       form.title = ''
-      form.targetDoctype = ''
-      form.company = ''
-      form.llmProvider = ''
-      form.llmModel = ''
-      form.ocrLanguage = ''
-      form.outputLanguage = ''
+      form.targetDoctype = p.target_doctype || ''
+      form.company = p.company || ''
+      form.llmProvider = p.llm_provider || ''
+      form.llmModel = p.llm_model || ''
+      form.ocrLanguage = p.ocr_language || ''
+      form.outputLanguage = p.output_language || ''
       lastError.value = null
       if (!providers.value.length && !models.value.length) {
         loadProviders()

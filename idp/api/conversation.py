@@ -288,6 +288,13 @@ def run_agent(
 	frontend when the user clicks Submit on a ConfirmationCard — it
 	signals to the agent that the next ``create_document`` call
 	carrying matching ``user_confirmed=True`` is authorised.
+
+	Errors raised by the agent (LLM unavailable, OCR failed, missing
+	masters, etc.) are caught here and translated into friendly
+	envelopes so the UI never has to display raw exception names or
+	URLs.  The original exception text is logged to the server log and
+	tucked into ``details_for_admin`` (only included for users with the
+	``System Manager`` role) for debugging.
 	"""
 
 	_require_login()
@@ -305,11 +312,53 @@ def run_agent(
 	from idp.idp.llm.agent import IDPAgent
 
 	agent = IDPAgent(doc.name)
-	result = agent.run(
-		user_message=content or "",
-		attachments=parsed_attachments,
-		user_confirmed_action=confirmed,
-	)
+	try:
+		result = agent.run(
+			user_message=content or "",
+			attachments=parsed_attachments,
+			user_confirmed_action=confirmed,
+		)
+	except Exception as exc:  # noqa: BLE001 — wide net by design
+		envelope = _build_friendly_error(exc)
+		logger.exception(
+			"agent run failed conv=%s code=%s exc=%s",
+			doc.name,
+			envelope["error_code"],
+			type(exc).__name__,
+		)
+		# Persist an assistant-side error message so the user sees
+		# something in the transcript (and the chat doesn't go silent).
+		try:
+			err_msg = _persist_error_message(doc.name, envelope)
+		except Exception:  # noqa: BLE001
+			err_msg = None
+
+		# Publish a realtime error event so any open client surfaces
+		# the friendly text without polling.
+		try:
+			frappe.publish_realtime(
+				event="idp_conversation_error",
+				message={
+					"conversation_id": doc.name,
+					"error_code": envelope["error_code"],
+					"error": envelope["friendly_message"],
+				},
+				user=frappe.session.user,
+				after_commit=False,
+			)
+		except Exception:  # noqa: BLE001
+			pass
+
+		return {
+			"conversation_id": doc.name,
+			"iterations": 0,
+			"stop_reason": "error",
+			"tokens_in": 0,
+			"tokens_out": 0,
+			"cost_usd": 0.0,
+			"new_messages": [err_msg] if err_msg else [],
+			"error": envelope,
+		}
 
 	# Auto-generate title on first user message if not set yet.
 	if (not doc.title or doc.title.startswith("Conversation —")) and (content or "").strip():
@@ -337,6 +386,174 @@ def run_agent(
 		"tokens_out": result.tokens_out,
 		"cost_usd": result.cost_usd,
 		"new_messages": result.new_messages,
+	}
+
+
+# ---------------------------------------------------------------------------
+# Friendly error mapping
+# ---------------------------------------------------------------------------
+
+
+# (exception class name → (error_code, friendly_message)).  We key by
+# class name rather than the class object so the table stays import-cheap
+# even before optional modules load.
+_FRIENDLY_ERROR_TABLE: dict[str, tuple[str, str]] = {
+	"LLMProviderUnavailableError": (
+		"LLM_UNAVAILABLE",
+		"The selected AI provider is not configured. Please pick a different "
+		"provider in IDP Settings or contact your administrator.",
+	),
+	"LLMBudgetExceededError": (
+		"LLM_BUDGET_EXCEEDED",
+		"The AI usage budget for today has been reached. Please try again "
+		"later or ask your administrator to raise the limit.",
+	),
+	"LLMResponseParseError": (
+		"LLM_PARSE_ERROR",
+		"The AI returned an unreadable response. Please try rephrasing your "
+		"request or attach the document again.",
+	),
+	"LLMError": (
+		"LLM_ERROR",
+		"The AI service ran into a problem while handling your request. "
+		"Please try again in a moment.",
+	),
+	"OCRError": (
+		"OCR_FAILED",
+		"We couldn't read text from one of the attached documents. Please "
+		"upload a clearer scan or a digital PDF.",
+	),
+	"ExtractionError": (
+		"EXTRACTION_FAILED",
+		"We couldn't extract structured data from the document. Please "
+		"check the file format and try again.",
+	),
+	"UnsupportedFormatError": (
+		"UNSUPPORTED_FORMAT",
+		"This file format isn't supported. Please upload a PDF, image, "
+		"DOCX, or XLSX file.",
+	),
+	"FileTooLargeError": (
+		"FILE_TOO_LARGE",
+		"The attached file is too large. Please upload a smaller file or "
+		"split it into pages.",
+	),
+	"FileAliasNotFoundError": (
+		"UNKNOWN_FILE",
+		"The assistant referenced a file that isn't attached to this "
+		"conversation. Please re-upload the document.",
+	),
+	"MissingMasterError": (
+		"MISSING_MASTER",
+		"A required master record (Supplier, Customer, or Item) was not "
+		"found. Please create it first or pick an existing one.",
+	),
+	"MappingError": (
+		"MAPPING_FAILED",
+		"We couldn't match the extracted fields to an ERPNext document. "
+		"Please review the extracted values and try again.",
+	),
+	"ValidationError": (
+		"VALIDATION_FAILED",
+		"The extracted data didn't pass validation. Please check the "
+		"highlighted fields and resubmit.",
+	),
+	"RateLimitExceededError": (
+		"RATE_LIMITED",
+		"You've hit the rate limit for IDP processing. Please wait a moment "
+		"before trying again.",
+	),
+	"SecurityError": (
+		"SECURITY_BLOCKED",
+		"This request was blocked by a security check. Please contact your "
+		"administrator if you believe this is in error.",
+	),
+	"ConfirmationCardError": (
+		"CONFIRMATION_CARD_ERROR",
+		"Something went wrong while validating your edits to the "
+		"confirmation card. Please reload the conversation and try again.",
+	),
+	"PermissionError": (
+		"PERMISSION_DENIED",
+		"You don't have permission to perform this action.",
+	),
+	"AuthenticationError": (
+		"AUTH_REQUIRED",
+		"Your session has expired. Please log in again.",
+	),
+}
+
+
+def _build_friendly_error(exc: Exception) -> dict:
+	"""Translate *exc* into a JSON-safe envelope for the chat UI.
+
+	Returns a dict containing ``error_code``, ``friendly_message`` and,
+	for System Managers / Administrator only, ``details_for_admin``
+	carrying the raw exception class + message.
+	"""
+
+	cls_name = type(exc).__name__
+	code, friendly = _FRIENDLY_ERROR_TABLE.get(
+		cls_name,
+		(
+			"INTERNAL_ERROR",
+			"Something went wrong while processing your request. Please try "
+			"again. If the problem persists, contact your administrator.",
+		),
+	)
+
+	envelope: dict = {
+		"error_code": code,
+		"friendly_message": friendly,
+	}
+
+	# Show raw details only to privileged users so end users never see
+	# stack-trace-y strings, but admins can still debug from the UI.
+	try:
+		roles = set(frappe.get_roles(frappe.session.user))
+	except Exception:  # noqa: BLE001
+		roles = set()
+	if "System Manager" in roles or frappe.session.user == "Administrator":
+		envelope["details_for_admin"] = {
+			"exception": cls_name,
+			"message": str(exc)[:1000],
+		}
+
+	return envelope
+
+
+def _persist_error_message(conversation_id: str, envelope: dict) -> dict | None:
+	"""Append an assistant-side error message to the conversation.
+
+	Stored as ``role=assistant`` with ``error=<friendly>`` and
+	``rendered_card_type='error'`` so the frontend can render a
+	distinct error bubble.  Sequence is auto-assigned by
+	:meth:`IDPMessage.validate`.
+	"""
+
+	try:
+		message = frappe.new_doc("IDP Message")
+		message.conversation = conversation_id
+		message.role = "assistant"
+		message.content = envelope.get("friendly_message") or ""
+		message.error = envelope.get("error_code") or "INTERNAL_ERROR"
+		message.rendered_card_type = "ErrorCard"
+		message.rendered_card_payload = json.dumps(envelope)
+		message.created_on = frappe.utils.now_datetime()
+		message.insert(ignore_permissions=True)
+	except Exception:  # noqa: BLE001
+		logger.exception("failed to persist error message conv=%s", conversation_id)
+		return None
+
+	return {
+		"name": message.name,
+		"sequence": message.sequence,
+		"role": message.role,
+		"content": message.content,
+		"error": message.error,
+		"rendered_card_type": message.rendered_card_type,
+		"rendered_card_payload": message.rendered_card_payload,
+		"created_on": message.created_on,
 	}
 
 
@@ -572,6 +789,43 @@ def _revalidate_card(card: dict, edited: dict | None) -> list[str]:
 		return validate_business_rules(mapped, card.get("company") or "")
 	except Exception:
 		return []
+
+
+@frappe.whitelist()
+def get_chat_defaults() -> dict:
+	"""Return defaults used to seed a fresh chatbot conversation.
+
+	Pulled from IDP Settings (provider/model/languages/target doctype)
+	plus the user's default company.  The frontend uses this to skip
+	the "New Conversation" modal when every required field is filled.
+	"""
+
+	_require_login()
+
+	from idp.core.config import get_default_company, get_idp_settings
+
+	settings = get_idp_settings()
+	defaults = {
+		"llm_provider": settings.get("llm_provider") or "",
+		"llm_model": settings.get("llm_model") or "",
+		"target_doctype": settings.get("default_target_doctype") or "",
+		"ocr_language": settings.get("default_ocr_language") or "en",
+		"output_language": settings.get("default_output_language") or "English",
+		"company": get_default_company() or "",
+	}
+	# A conversation is "ready" if we have at least a provider+model and
+	# a target doctype; the company can usually be resolved per request.
+	defaults["ready"] = bool(
+		defaults["llm_provider"]
+		and defaults["llm_model"]
+		and defaults["target_doctype"]
+	)
+	defaults["missing"] = [
+		key
+		for key in ("llm_provider", "llm_model", "target_doctype")
+		if not defaults[key]
+	]
+	return defaults
 
 
 @frappe.whitelist()

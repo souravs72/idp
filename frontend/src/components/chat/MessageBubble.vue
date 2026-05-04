@@ -75,7 +75,7 @@
 
       <!-- Plain text content -->
       <div
-        v-if="hasText"
+        v-if="hasText && !isErrorCard"
         class="rounded-lg px-4 py-3 text-sm leading-relaxed shadow-sm"
         :class="bubbleClass"
       >
@@ -90,9 +90,39 @@
         >{{ message.content }}</pre>
       </div>
 
+      <!-- Friendly error card -->
+      <div
+        v-if="isErrorCard"
+        class="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm dark:border-red-900 dark:bg-red-950"
+      >
+        <div class="flex items-start gap-2">
+          <span aria-hidden="true" class="text-base leading-none">⚠️</span>
+          <div class="flex-1">
+            <div class="font-medium text-red-800 dark:text-red-200">
+              {{ errorPayload?.friendly_message || message.content }}
+            </div>
+            <div
+              v-if="errorPayload?.error_code"
+              class="mt-1 text-[11px] font-mono text-red-700 dark:text-red-300"
+            >
+              {{ errorPayload.error_code }}
+            </div>
+            <details
+              v-if="errorPayload?.details_for_admin"
+              class="mt-2 text-[11px] text-red-700 dark:text-red-300"
+            >
+              <summary class="cursor-pointer">Admin details</summary>
+              <pre
+                class="mt-1 overflow-x-auto whitespace-pre-wrap rounded bg-red-100 p-2 dark:bg-red-900"
+              >{{ formatJson(errorPayload.details_for_admin) }}</pre>
+            </details>
+          </div>
+        </div>
+      </div>
+
       <!-- Card payload (Phase 20) -->
       <ConfirmationCardUI
-        v-if="hasCard"
+        v-if="hasCard && !isErrorCard"
         :message="message"
         @confirmed="$emit('confirmed', $event)"
       />
@@ -111,9 +141,9 @@
         </a>
       </div>
 
-      <!-- Error -->
+      <!-- Error (legacy / non-card error rows) -->
       <div
-        v-if="message.error"
+        v-if="message.error && !isErrorCard"
         class="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
       >
         {{ message.error }}
@@ -212,6 +242,15 @@ const hasCard = computed(() => {
     props.message.rendered_card_type !== 'None' &&
     !!props.message.rendered_card_payload
   )
+})
+
+const isErrorCard = computed(
+  () => props.message.rendered_card_type === 'ErrorCard',
+)
+
+const errorPayload = computed(() => {
+  if (!isErrorCard.value) return null
+  return safeJson(props.message.rendered_card_payload) || null
 })
 
 function safeJson(value) {

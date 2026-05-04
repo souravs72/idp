@@ -3,9 +3,22 @@
 
 <template>
   <form
-    class="border-t border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900"
+    class="relative border-t border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900"
+    :class="{ 'ring-2 ring-blue-400 ring-inset': dragOver }"
     @submit.prevent="onSubmit"
+    @dragenter.prevent="onDragEnter"
+    @dragover.prevent="onDragOver"
+    @dragleave.prevent="onDragLeave"
+    @drop.prevent="onDrop"
   >
+    <!-- Drag overlay -->
+    <div
+      v-if="dragOver"
+      class="pointer-events-none absolute inset-0 flex items-center justify-center rounded bg-blue-50/80 text-sm font-medium text-blue-700 dark:bg-blue-950/70 dark:text-blue-200"
+    >
+      Drop files to attach
+    </div>
+
     <!-- Pending attachments -->
     <div v-if="pending.length" class="mb-2 flex flex-wrap gap-2">
       <span
@@ -32,6 +45,7 @@
       <label
         class="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded border border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
         :class="{ 'opacity-50': uploading }"
+        title="Attach file (or drag and drop into this box)"
       >
         <input
           ref="fileInput"
@@ -58,8 +72,21 @@
         :disabled="!canSubmit"
         class="h-9 rounded bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
       >
-        {{ disabled ? 'Working…' : 'Send' }}
+        {{ uploading ? 'Uploading…' : disabled ? 'Working…' : 'Send' }}
       </button>
+    </div>
+
+    <div class="mt-1.5 flex items-center justify-between">
+      <span class="text-[11px] text-gray-400">
+        Enter to send · Shift+Enter for newline · drag &amp; drop files anywhere
+        in this box
+      </span>
+      <span
+        v-if="uploading"
+        class="text-[11px] font-medium text-blue-700 dark:text-blue-300"
+      >
+        Uploading…
+      </span>
     </div>
 
     <div
@@ -90,6 +117,8 @@ const pending = ref([])
 const uploading = ref(false)
 const lastError = ref(null)
 const fileInput = ref(null)
+const dragDepth = ref(0)
+const dragOver = computed(() => dragDepth.value > 0)
 
 const canSubmit = computed(() => {
   if (props.disabled) return false
@@ -106,33 +135,82 @@ function onKeydown(e) {
   }
 }
 
-async function onFileChange(event) {
-  const files = Array.from(event.target.files || [])
+async function uploadFiles(fileList) {
+  const files = Array.from(fileList || [])
   if (!files.length) return
   uploading.value = true
   lastError.value = null
   try {
     for (const file of files) {
-      const res = await uploadDocument(file)
-      // frappeRequest returns the unwrapped message; raw fetch gives { message: ... }
-      const data = res?.message || res?.data || res
-      if (data?.file_url) {
-        pending.value.push({
-          file_url: data.file_url,
-          file_id: data.file_id || data.name,
-          file_name: data.file_name || file.name,
-          mime_type: data.mime_type || file.type,
-        })
-      } else if (data?.error) {
-        lastError.value = String(data.error)
+      try {
+        const res = await uploadDocument(file)
+        // frappeRequest returns the unwrapped message; raw fetch gives { message: ... }
+        const data = res?.message || res?.data || res
+        if (data?.file_url) {
+          pending.value.push({
+            file_url: data.file_url,
+            file_id: data.file_id || data.name,
+            file_name: data.file_name || file.name,
+            mime_type: data.mime_type || file.type,
+          })
+        } else if (data?.error) {
+          lastError.value = friendlyUploadError(data.error, file.name)
+        }
+      } catch (err) {
+        lastError.value = friendlyUploadError(err, file.name)
       }
     }
-  } catch (err) {
-    lastError.value = err?.message || String(err)
   } finally {
     uploading.value = false
     if (fileInput.value) fileInput.value.value = ''
   }
+}
+
+function friendlyUploadError(err, fileName) {
+  const base = `Couldn't upload ${fileName || 'this file'}.`
+  // Don't surface raw URLs / exception classes; just give the user a hint.
+  return `${base} Please try a different file or check your connection.`
+}
+
+async function onFileChange(event) {
+  await uploadFiles(event.target.files)
+}
+
+function onDragEnter(event) {
+  if (props.disabled) return
+  if (!hasFiles(event)) return
+  dragDepth.value += 1
+}
+
+function onDragOver(event) {
+  if (props.disabled) return
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'copy'
+  }
+}
+
+function onDragLeave() {
+  if (dragDepth.value > 0) dragDepth.value -= 1
+}
+
+async function onDrop(event) {
+  dragDepth.value = 0
+  if (props.disabled) return
+  const files = event.dataTransfer?.files
+  if (!files || !files.length) return
+  await uploadFiles(files)
+}
+
+function hasFiles(event) {
+  const types = event.dataTransfer?.types
+  if (!types) return false
+  // Some browsers expose a DOMStringList, others an array; both have
+  // .includes / .contains semantics for "Files".
+  if (typeof types.includes === 'function') return types.includes('Files')
+  for (let i = 0; i < types.length; i += 1) {
+    if (types[i] === 'Files') return true
+  }
+  return false
 }
 
 function remove(idx) {
