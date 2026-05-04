@@ -64,6 +64,8 @@ package-lock.json
 docs/TEST*.md
 docs/ENHANCEMENT_ROADMAP*.md
 docs/ERPNEXT_REPORTS.md
+docs/*analysis.md
+
 
 # Claude
 .ruff_cache/
