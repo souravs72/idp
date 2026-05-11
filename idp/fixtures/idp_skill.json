@@ -1,0 +1,22 @@
+[
+ {
+  "doctype": "IDP Skill",
+  "name": "Bill of Lading Fields",
+  "skill_name": "Bill of Lading Fields",
+  "target_doctype": null,
+  "language": null,
+  "enabled": 1,
+  "description": "Default extraction rules for ocean Bills of Lading.",
+  "markdown_content": "When extracting a Bill of Lading, capture the following fields exactly as printed:\n\n- **Shipper** (sender / consignor) \u2014 name, address, country.\n- **Consignee** \u2014 name, address, country.\n- **Notify Party** (if different from Consignee).\n- **Vessel / Voyage No.** \u2014 keep both halves; the LLM should not invent a voyage.\n- **Port of Loading** and **Port of Discharge** \u2014 UN/LOCODE preferred.\n- **HS Code(s)** \u2014 6-digit minimum, capture full 10-digit when shown.\n- **Container No.** and **Seal No.** \u2014 keep ISO 6346 formatting.\n- **Gross Weight (kg)** and **Volume (m\u00b3)**.\n\nIf any of these fields are missing, prefer `ask_user` over guessing."
+ },
+ {
+  "doctype": "IDP Skill",
+  "name": "VAT Tax Rounding",
+  "skill_name": "VAT Tax Rounding",
+  "target_doctype": null,
+  "language": null,
+  "enabled": 1,
+  "description": "Common rounding pitfalls when extracting tax-inclusive invoices.",
+  "markdown_content": "For tax-inclusive documents:\n\n1. Use the per-line **net amount** as the primary value; derive tax by multiplying net \u00d7 rate.\n2. Sum line tax amounts \u2014 do not just take the document's stated tax total.  Flag a `tax_total_mismatch` when the two differ by more than 0.05 in the document currency.\n3. Half-up rounding to the currency's display precision (2 decimals for most, 0 for JPY/KRW).\n4. When a VAT number is shown, normalise to ISO 3166 alpha-2 + digits (e.g. `DE123456789`)."
+ }
+]

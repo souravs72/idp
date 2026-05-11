@@ -93,11 +93,19 @@ def list_tools() -> list[ToolSpec]:
 	return list(_REGISTRY.values())
 
 
-def get_provider_schemas(*, names: list[str] | None = None) -> list[dict]:
+def get_provider_schemas(
+	*,
+	names: list[str] | None = None,
+	user: str | None = None,
+) -> list[dict]:
 	"""Return the OpenAI-style tool schema list to ship to the LLM.
 
 	If *names* is provided, only those tools are included (preserving
 	registration order otherwise).
+
+	When *user* is supplied (Phase 26 §26.2), tools the user is not
+	permitted to invoke (via ``IDP Tool Configuration``) are filtered
+	out so the LLM never even sees them in ``tools/list``.
 	"""
 
 	load_tool_registry()
@@ -106,6 +114,14 @@ def get_provider_schemas(*, names: list[str] | None = None) -> list[dict]:
 		if names is not None
 		else list(_REGISTRY.values())
 	)
+	if user is not None:
+		from idp.idp.llm.tools.access import check_tool_access
+
+		specs = [
+			s
+			for s in specs
+			if check_tool_access(s.name, user, requires_role=s.requires_role).allowed
+		]
 	return [s.to_provider_schema() for s in specs]
 
 
@@ -132,13 +148,29 @@ def dispatch(name: str, arguments: dict | None, ctx: ToolContext) -> ToolResult:
 			stop_processing=True,
 		)
 
-	# Role gate — when running outside Frappe (tests) we skip silently.
-	if spec.requires_role and not _user_has_role(ctx.user, spec.requires_role):
-		return ToolResult.fail(
-			f"caller is not authorised to invoke {name!r}",
-			error_code="PERMISSION_DENIED",
-			stop_processing=True,
-		)
+	# Role gate — Phase 26 §26.2 layers ``IDP Tool Configuration`` on
+	# top of the in-code ``ToolSpec.requires_role`` default.  When
+	# Frappe is unavailable (pure unit tests) the access check falls
+	# back to allowing the call.
+	try:
+		from idp.idp.llm.tools.access import check_tool_access
+
+		decision = check_tool_access(name, ctx.user, requires_role=spec.requires_role)
+		if not decision.allowed:
+			return ToolResult.fail(
+				decision.reason or f"caller is not authorised to invoke {name!r}",
+				error_code="PERMISSION_DENIED",
+				stop_processing=True,
+			)
+	except Exception:
+		# Fall back to legacy in-code check if the access layer blows
+		# up (defensive — never block dispatch on a cache bug).
+		if spec.requires_role and not _user_has_role(ctx.user, spec.requires_role):
+			return ToolResult.fail(
+				f"caller is not authorised to invoke {name!r}",
+				error_code="PERMISSION_DENIED",
+				stop_processing=True,
+			)
 
 	args = arguments or {}
 	try:
@@ -246,8 +278,74 @@ def _translate_exception(tool_name: str, exc: Exception) -> ToolResult:
 	)
 
 
+def get_cached_provider_schemas(
+	*,
+	names: list[str] | None = None,
+	user: str | None = None,
+) -> list[dict]:
+	"""TTL-cached variant of :func:`get_provider_schemas` (Phase 26 §26.3).
+
+	Caches by ``(enabled_plugin_set, enabled_tool_set, role_set,
+	name_filter)``.  Falls back to :func:`get_provider_schemas` on
+	cache miss or when Frappe is unavailable.
+	"""
+
+	# Resolve current context.
+	try:
+		from idp.plugins.loader import enabled_plugins as _enabled_plugins
+	except Exception:
+		_enabled_plugins = None  # type: ignore[assignment]
+	try:
+		from idp.idp.llm.tools.registry_cache import (
+			get_cached_schemas,
+			set_cached_schemas,
+		)
+	except Exception:
+		return get_provider_schemas(names=names, user=user)
+
+	enabled_plugin_names: list[str] = []
+	if _enabled_plugins is not None:
+		try:
+			enabled_plugin_names = [p.name for p in _enabled_plugins()]
+		except Exception:
+			enabled_plugin_names = []
+
+	# Enabled tool set = current registry contents.
+	load_tool_registry()
+	enabled_tool_names = sorted(_REGISTRY.keys())
+
+	user_roles: list[str] = []
+	if user:
+		try:
+			import frappe
+
+			user_roles = list(frappe.get_roles(user))
+		except Exception:
+			user_roles = []
+
+	cached = get_cached_schemas(
+		enabled_plugins=enabled_plugin_names,
+		enabled_tools=enabled_tool_names,
+		user_roles=user_roles,
+		name_filter=names,
+	)
+	if cached is not None:
+		return cached
+
+	fresh = get_provider_schemas(names=names, user=user)
+	set_cached_schemas(
+		fresh,
+		enabled_plugins=enabled_plugin_names,
+		enabled_tools=enabled_tool_names,
+		user_roles=user_roles,
+		name_filter=names,
+	)
+	return fresh
+
+
 __all__ = [
 	"dispatch",
+	"get_cached_provider_schemas",
 	"get_provider_schemas",
 	"get_tool",
 	"list_tools",

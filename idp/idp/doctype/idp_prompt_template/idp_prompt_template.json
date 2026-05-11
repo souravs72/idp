@@ -1,0 +1,126 @@
+{
+ "actions": [],
+ "autoname": "field:template_name",
+ "creation": "2026-05-11 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "template_name",
+  "enabled",
+  "column_break_main",
+  "target_doctype",
+  "language",
+  "description_section",
+  "description",
+  "prompt_section",
+  "system_prompt",
+  "arguments_section",
+  "arguments"
+ ],
+ "fields": [
+  {
+   "fieldname": "template_name",
+   "fieldtype": "Data",
+   "label": "Template Name",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "target_doctype",
+   "fieldtype": "Link",
+   "label": "Target DocType",
+   "options": "DocType",
+   "in_list_view": 1,
+   "description": "Match the conversation's target DocType. Empty = applies to any DocType."
+  },
+  {
+   "fieldname": "language",
+   "fieldtype": "Data",
+   "label": "Output Language",
+   "in_list_view": 1,
+   "description": "Match the conversation's output language (e.g. 'English'). Empty = any language."
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "description_section",
+   "fieldtype": "Section Break",
+   "label": "Description"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "prompt_section",
+   "fieldtype": "Section Break",
+   "label": "System Prompt (Jinja-templated)"
+  },
+  {
+   "fieldname": "system_prompt",
+   "fieldtype": "Long Text",
+   "label": "System Prompt",
+   "reqd": 1,
+   "description": "Jinja-templated system prompt. Variables: {{ doctype }}, {{ language }}, {{ company }}, plus any custom argument."
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "arguments_section",
+   "fieldtype": "Section Break",
+   "label": "Arguments"
+  },
+  {
+   "fieldname": "arguments",
+   "fieldtype": "Table",
+   "label": "Arguments",
+   "options": "IDP Prompt Template Argument"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-05-11 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "IDP",
+ "name": "IDP Prompt Template",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 0,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "IDP User",
+   "share": 1,
+   "write": 0
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

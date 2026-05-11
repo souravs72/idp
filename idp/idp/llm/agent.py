@@ -131,8 +131,16 @@ class IDPAgent:
 			ocr_language=conversation.get("ocr_language") or None,
 		)
 
-		# Make sure the registry is loaded once per request.
+		# Make sure the registry is loaded once per request.  Phase 26
+		# §26.1: also register tools contributed by enabled plugins
+		# (third-party ``idp_tools`` / ``idp_plugins`` hooks).
 		load_tool_registry()
+		try:
+			from idp.plugins.loader import register_plugin_tools
+
+			register_plugin_tools()
+		except Exception:
+			logger.debug("plugin tool registration skipped", exc_info=True)
 		registry = get_registry(self.conversation_id)
 
 		new_messages: list[dict] = []
@@ -187,7 +195,13 @@ class IDPAgent:
 			new_messages.append(ack)
 
 		# 2. Loop -------------------------------------------------------------
-		schemas = get_provider_schemas(names=[t for t in self._tool_names_for_llm()] or None)
+		# Phase 26 §26.2 — filter the schema list by the caller's
+		# ``IDP Tool Configuration`` permissions so the LLM never sees
+		# tools it cannot invoke.
+		schemas = get_provider_schemas(
+			names=[t for t in self._tool_names_for_llm()] or None,
+			user=ctx.user,
+		)
 		system_prompt = build_chat_system_prompt(
 			target_doctype=ctx.target_doctype,
 			company=ctx.company,
@@ -316,6 +330,28 @@ class IDPAgent:
 					"idp_conversation_message",
 					{"conversation": self.conversation_id, "message": tool_msg},
 				)
+
+				# Phase 26 §26.5 — sanitised audit row tied back to the
+				# persisted ``IDP Message`` row.  Failures are swallowed
+				# inside log_tool_call so the agent loop never breaks.
+				try:
+					from idp.idp.llm.tools.audit import log_tool_call
+
+					log_tool_call(
+						conversation_id=self.conversation_id,
+						message_id=tool_msg.get("name") if isinstance(tool_msg, dict) else None,
+						user=ctx.user,
+						tool_name=tool_name,
+						plugin_name=None,
+						arguments=args,
+						result=result.to_dict(),
+						success=bool(result.success),
+						error_code=result.error_code,
+						error_message=result.error,
+						latency_ms=duration_ms,
+					)
+				except Exception:
+					logger.debug("audit log insert failed", exc_info=True)
 
 				if result.stop_processing:
 					stop_reason = (

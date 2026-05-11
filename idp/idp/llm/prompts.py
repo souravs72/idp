@@ -150,11 +150,50 @@ def build_chat_system_prompt(
 
 	Lays out the tool-calling rules, the alias contract, and the
 	stop-on-error semantics in a form every provider tolerates.
+
+	Phase 26 §26.4: if an ``IDP Prompt Template`` matches the
+	conversation's ``(target_doctype, output_language)`` it supersedes
+	the hard-coded template.  Skills (§26.6) are concatenated after.
 	"""
 
 	doctype = target_doctype or "(any supported DocType)"
 	company_str = company or "(none — ask the user if needed)"
-	return _CHAT_SYSTEM_TEMPLATE.format(doctype=doctype, company=company_str, language=output_language)
+	ctx = {
+		"doctype": doctype,
+		"target_doctype": doctype,
+		"company": company_str,
+		"language": output_language,
+		"output_language": output_language,
+	}
+
+	prompt: str | None = None
+	try:
+		from idp.idp.llm.prompt_templates import render_match
+
+		prompt = render_match(
+			target_doctype=target_doctype,
+			language=output_language,
+			context=ctx,
+		)
+	except Exception:
+		logger.exception("prompt_templates.render_match failed — using default")
+
+	if not prompt:
+		prompt = _CHAT_SYSTEM_TEMPLATE.format(
+			doctype=doctype, company=company_str, language=output_language
+		)
+
+	# Append matching skills (§26.6) — best-effort, never raise.
+	try:
+		from idp.idp.llm.skills import get_skills_block
+
+		extra = get_skills_block(target_doctype=target_doctype, language=output_language)
+		if extra:
+			prompt = f"{prompt}\n\n{extra}"
+	except Exception:
+		logger.exception("skills.get_skills_block failed — skipping")
+
+	return prompt
 
 
 __all__ = [

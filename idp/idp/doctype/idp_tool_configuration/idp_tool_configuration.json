@@ -1,0 +1,119 @@
+{
+ "actions": [],
+ "autoname": "field:tool_name",
+ "creation": "2026-05-11 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "tool_name",
+  "plugin_name",
+  "enabled",
+  "column_break_main",
+  "requires_confirmation",
+  "mutating",
+  "roles_section",
+  "allowed_roles",
+  "denied_roles",
+  "notes_section",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "tool_name",
+   "fieldtype": "Data",
+   "label": "Tool Name",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "description": "Slug matching ToolSpec.name (e.g. 'extract_document', 'create_document')."
+  },
+  {
+   "fieldname": "plugin_name",
+   "fieldtype": "Data",
+   "label": "Plugin",
+   "in_list_view": 1,
+   "description": "Declaring plugin namespace (for filtering only)."
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "requires_confirmation",
+   "fieldtype": "Check",
+   "label": "Requires User Confirmation",
+   "description": "When 1, the tool result must carry user_confirmed=True (e.g. create_document)."
+  },
+  {
+   "default": "0",
+   "fieldname": "mutating",
+   "fieldtype": "Check",
+   "label": "Mutating",
+   "read_only": 1,
+   "description": "Mirrors ToolSpec.mutating for filtering."
+  },
+  {
+   "fieldname": "roles_section",
+   "fieldtype": "Section Break",
+   "label": "Role Access Control"
+  },
+  {
+   "fieldname": "allowed_roles",
+   "fieldtype": "Table",
+   "label": "Allowed Roles",
+   "options": "IDP Tool Role",
+   "description": "Caller must hold at least one of these roles. Empty = inherit ToolSpec.requires_role / open to all IDP users."
+  },
+  {
+   "fieldname": "denied_roles",
+   "fieldtype": "Table",
+   "label": "Denied Roles",
+   "options": "IDP Tool Role",
+   "description": "Caller holding any of these roles is rejected regardless of allowed_roles."
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "notes_section",
+   "fieldtype": "Section Break",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Admin Notes"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-05-11 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "IDP",
+ "name": "IDP Tool Configuration",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "tool_name",
+ "sort_order": "ASC",
+ "states": [],
+ "track_changes": 1
+}

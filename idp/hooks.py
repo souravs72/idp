@@ -144,13 +144,14 @@ has_permission = {
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+# Phase 26 §26.3 — invalidate tool-registry / plugin caches when a
+# user's role set changes, so per-tool access decisions stay fresh.
+doc_events = {
+	"Has Role": {
+		"after_insert": "idp.plugins.loader.invalidate_plugin_cache",
+		"on_trash": "idp.plugins.loader.invalidate_plugin_cache",
+	},
+}
 
 # Scheduled Tasks
 # ---------------
@@ -247,6 +248,25 @@ scheduler_events = {
 # default_log_clearing_doctypes = {
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
+
+# Fixtures
+# --------
+# Phase 26 §26.7 — ship sensible defaults for prompt templates / skills /
+# the built-in plugin configuration row.  Site admins can override or
+# delete these freely; they are re-applied on ``bench migrate`` only
+# when the row is missing.
+fixtures = [
+	{"doctype": "IDP Plugin Configuration", "filters": [["plugin_name", "in", ["core"]]]},
+	{"doctype": "IDP Prompt Template", "filters": [["template_name", "in", [
+		"Generic Document Extraction",
+		"Sales Invoice Extraction",
+		"Purchase Invoice Extraction",
+	]]]},
+	{"doctype": "IDP Skill", "filters": [["skill_name", "in", [
+		"Bill of Lading Fields",
+		"VAT Tax Rounding",
+	]]]},
+]
 
 # Translation
 # ------------

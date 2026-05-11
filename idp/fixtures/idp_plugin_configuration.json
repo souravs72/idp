@@ -1,0 +1,12 @@
+[
+ {
+  "doctype": "IDP Plugin Configuration",
+  "name": "core",
+  "plugin_name": "core",
+  "display_name": "IDP Core",
+  "enabled": 1,
+  "priority": 10,
+  "version": "1.0.0",
+  "description": "Built-in extraction / mapping / creation tool set shipped with the IDP app."
+ }
+]

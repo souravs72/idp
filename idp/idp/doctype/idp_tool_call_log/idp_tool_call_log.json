@@ -1,0 +1,164 @@
+{
+ "actions": [],
+ "autoname": "IDPTCL-.YYYY.-.#####",
+ "creation": "2026-05-11 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "context_section",
+  "conversation",
+  "message",
+  "user",
+  "column_break_context",
+  "tool_name",
+  "plugin_name",
+  "success",
+  "result_section",
+  "tool_call_args",
+  "tool_result_excerpt",
+  "column_break_result",
+  "error_code",
+  "error_message",
+  "latency_ms",
+  "confirmation_section",
+  "user_confirmed_at",
+  "user_edits"
+ ],
+ "fields": [
+  {
+   "fieldname": "context_section",
+   "fieldtype": "Section Break",
+   "label": "Context"
+  },
+  {
+   "fieldname": "conversation",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Conversation",
+   "options": "IDP Conversation"
+  },
+  {
+   "fieldname": "message",
+   "fieldtype": "Link",
+   "label": "Message",
+   "options": "IDP Message",
+   "description": "Ties this call back to the persisted IDP Message row."
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "options": "User",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_context",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "tool_name",
+   "fieldtype": "Data",
+   "label": "Tool",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "plugin_name",
+   "fieldtype": "Data",
+   "label": "Plugin"
+  },
+  {
+   "default": "0",
+   "fieldname": "success",
+   "fieldtype": "Check",
+   "label": "Success",
+   "in_list_view": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "result_section",
+   "fieldtype": "Section Break",
+   "label": "Result"
+  },
+  {
+   "fieldname": "tool_call_args",
+   "fieldtype": "Long Text",
+   "label": "Arguments (JSON, sanitised)"
+  },
+  {
+   "fieldname": "tool_result_excerpt",
+   "fieldtype": "Long Text",
+   "label": "Result Excerpt (first 2 KB)"
+  },
+  {
+   "fieldname": "column_break_result",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "error_code",
+   "fieldtype": "Data",
+   "label": "Error Code"
+  },
+  {
+   "fieldname": "error_message",
+   "fieldtype": "Small Text",
+   "label": "Error Message"
+  },
+  {
+   "fieldname": "latency_ms",
+   "fieldtype": "Int",
+   "label": "Latency (ms)"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "confirmation_section",
+   "fieldtype": "Section Break",
+   "label": "User Confirmation"
+  },
+  {
+   "fieldname": "user_confirmed_at",
+   "fieldtype": "Datetime",
+   "label": "User Confirmed At"
+  },
+  {
+   "fieldname": "user_edits",
+   "fieldtype": "Long Text",
+   "label": "User Edits (JSON diff)"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-05-11 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "IDP",
+ "name": "IDP Tool Call Log",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 0,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "IDP User",
+   "share": 1,
+   "write": 0
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0,
+ "title_field": "tool_name"
+}
