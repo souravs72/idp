@@ -30,9 +30,11 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from typing import Any
+
 import frappe
 
-from idp.core.exceptions import SecurityError
+from idp.core.exceptions import IDPPermissionError, SecurityError
 from idp.core.logger import get_logger
 
 logger = get_logger("idp.security")
@@ -226,6 +228,113 @@ def assert_user_can_read(doctype: str, user: str | None = None) -> None:
 		raise SecurityError(
 			f"User lacks read permission on {doctype}.",
 			details={"doctype": doctype, "user": user or getattr(frappe.session, "user", "?")},
+		)
+
+
+# ---------------------------------------------------------------------------
+# Phase 27 — File-level permission gating
+# ---------------------------------------------------------------------------
+
+
+def check_file_access(file_doc: Any, user: str | None = None) -> None:
+	"""Enforce read access on a File **and its attached parent** (Phase 27 §27.3).
+
+	The default Frappe ``has_permission("File", ...)`` check only
+	guarantees the caller can see the File row itself — not whatever
+	business document the file is attached to.  Without this gate a low-
+	privilege user who happens to know (or guess) a File alias can
+	exfiltrate parent data through OCR / extraction.
+
+	The order matters:
+
+	1. Read on ``File`` (cheap, deterministic).
+	2. If ``attached_to_doctype`` + ``attached_to_name`` are populated
+	   on the File row, also require read on that record.  Failure
+	   raises :class:`IDPPermissionError` with code
+	   ``PARENT_DOCTYPE_FORBIDDEN`` so the Phase 23 envelope mapper can
+	   tell the user *why* the call failed.
+
+	Args:
+		file_doc: A Frappe ``File`` doc or a duck-typed object with the
+			same attribute names.
+		user: Optional username; defaults to ``frappe.session.user``.
+	"""
+
+	if file_doc is None:
+		raise IDPPermissionError("File document is required", code="FILE_FORBIDDEN")
+
+	target_user = user or getattr(frappe.session, "user", None)
+	file_name = getattr(file_doc, "name", None)
+
+	# Step 1 — read permission on the File row itself.
+	try:
+		allowed = frappe.has_permission(
+			doctype="File",
+			ptype="read",
+			doc=file_doc if file_name else None,
+			user=target_user,
+			throw=False,
+		)
+	except Exception as exc:  # pragma: no cover — defensive
+		raise IDPPermissionError(
+			f"File permission check failed: {exc}",
+			code="FILE_FORBIDDEN",
+			details={"file_name": file_name, "user": target_user},
+		) from exc
+
+	if not allowed:
+		raise IDPPermissionError(
+			"User lacks read permission on the underlying File.",
+			code="FILE_FORBIDDEN",
+			details={"file_name": file_name, "user": target_user},
+		)
+
+	# Step 2 — read permission on the attached parent record, if any.
+	parent_doctype = getattr(file_doc, "attached_to_doctype", None) or ""
+	parent_name = getattr(file_doc, "attached_to_name", None) or ""
+
+	if not (parent_doctype and parent_name):
+		return
+
+	try:
+		parent_allowed = frappe.has_permission(
+			doctype=parent_doctype,
+			ptype="read",
+			doc=parent_name,
+			user=target_user,
+			throw=False,
+		)
+	except Exception as exc:  # pragma: no cover — defensive
+		raise IDPPermissionError(
+			f"Parent permission check failed for {parent_doctype}: {exc}",
+			code="PARENT_DOCTYPE_FORBIDDEN",
+			details={
+				"parent_doctype": parent_doctype,
+				"parent_name": parent_name,
+				"user": target_user,
+			},
+		) from exc
+
+	if not parent_allowed:
+		logger.info(
+			"check_file_access: blocked %s on %s/%s (file=%s)",
+			target_user,
+			parent_doctype,
+			parent_name,
+			file_name,
+		)
+		raise IDPPermissionError(
+			(
+				f"User lacks read permission on {parent_doctype} "
+				f"that owns this attachment."
+			),
+			code="PARENT_DOCTYPE_FORBIDDEN",
+			details={
+				"parent_doctype": parent_doctype,
+				"parent_name": parent_name,
+				"file_name": file_name,
+				"user": target_user,
+			},
 		)
 
 

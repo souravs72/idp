@@ -151,9 +151,21 @@ class FileAliasRegistry:
 	# ---- resolution ---------------------------------------------------------
 
 	def resolve(self, alias: str) -> AttachmentRecord | None:
-		"""Return the record for *alias*, or ``None`` if unknown."""
+		"""Return the record for *alias*, or ``None`` if unknown.
 
-		return self._by_alias.get(alias)
+		Phase 27 §27.3 — also enforces file-level and parent-DocType
+		permission checks via :func:`idp.core.security.check_file_access`
+		so a user who can read a File row but not its attached parent
+		(e.g. the underlying Sales Invoice) cannot exfiltrate parent
+		data through OCR.  Permission failures raise
+		:class:`IDPPermissionError`; callers that want to silently miss
+		on permission denial should catch it explicitly.
+		"""
+
+		record = self._by_alias.get(alias)
+		if record is not None:
+			_enforce_file_access(record)
+		return record
 
 	def resolve_or_stop(self, alias: str) -> AttachmentRecord:
 		"""Like :meth:`resolve` but raises :class:`FileAliasNotFoundError`.
@@ -161,11 +173,15 @@ class FileAliasRegistry:
 		Tool wrappers should call this at the very start of every
 		tool that takes a file alias so a stop-on-error response is
 		emitted whenever the LLM hallucinates an alias.
+
+		Phase 27 §27.3 — also runs :func:`check_file_access` to close
+		the parent-DocType exfiltration gap (see :meth:`resolve`).
 		"""
 
 		record = self._by_alias.get(alias)
 		if record is None:
 			raise FileAliasNotFoundError(alias, conversation_id=self.conversation_id)
+		_enforce_file_access(record)
 		return record
 
 	def url_for(self, alias: str) -> str | None:
@@ -335,6 +351,73 @@ def clear_request_cache() -> None:
 			delattr(frappe.flags, "file_alias_registry")
 		except Exception:
 			frappe.flags.file_alias_registry = None
+
+
+def _enforce_file_access(record: AttachmentRecord) -> None:
+	"""Phase 27 §27.3 — run :func:`check_file_access` for *record*.
+
+	Skipped silently when ``frappe`` is unavailable (pure-mode tests)
+	or when no backing File row can be located — in that case the
+	existing path-level guards remain the only line of defence.
+	"""
+
+	try:
+		import frappe
+	except ImportError:
+		return
+
+	# Phase 23 envelope flag — administrators / scheduled jobs run with
+	# ignore_permissions when needed; respect that here so background
+	# extractions are not blocked by the new check.
+	if getattr(frappe.flags, "ignore_permissions", False):
+		return
+
+	try:
+		from idp.core.security import check_file_access
+	except Exception as exc:  # pragma: no cover — defensive
+		logger.debug(f"_enforce_file_access: import failed ({exc})")
+		return
+
+	file_doc = _locate_file_doc(record)
+	if file_doc is None:
+		# Without a backing File row we can only fall back to the URL
+		# guard which has already run by this point.  Log and continue.
+		logger.debug(
+			f"_enforce_file_access: no File doc for alias {record.alias!r} "
+			f"(tabfile={record.tabfile_name!r}, url={record.file_url!r})"
+		)
+		return
+
+	check_file_access(file_doc)
+
+
+def _locate_file_doc(record: AttachmentRecord):
+	"""Best-effort lookup of the ``tabFile`` doc behind *record*.
+
+	Tries the persisted ``tabfile_name`` first (always unique), then
+	falls back to a ``file_url`` lookup.  Returns ``None`` when neither
+	hits — common during tests that build a registry by hand.
+	"""
+
+	try:
+		import frappe
+	except ImportError:
+		return None
+
+	if record.tabfile_name:
+		try:
+			return frappe.get_doc("File", record.tabfile_name)
+		except Exception:
+			pass
+
+	if record.file_url:
+		try:
+			name = frappe.db.get_value("File", {"file_url": record.file_url}, "name")
+			if name:
+				return frappe.get_doc("File", name)
+		except Exception:
+			return None
+	return None
 
 
 def _alias_sort_key(alias: str) -> tuple[int, str]:

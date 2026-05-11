@@ -93,3 +93,75 @@ class ConfirmationCardError(IDPError):
 	payload is malformed, the action is not in the card's allowed
 	list, or the user-edited values fail re-validation.
 	"""
+
+
+# ---------------------------------------------------------------------------
+# Phase 27 — Extraction hardening
+# ---------------------------------------------------------------------------
+
+
+class IDPPermissionError(SecurityError):
+	"""User lacks permission to access a file or its attached parent
+	DocType (Phase 27 §27.3).
+
+	Raised as a subclass of :class:`SecurityError` so existing
+	permission-handling code keeps working, but with a more specific
+	type for the file-level case.  Always raised with the
+	``PARENT_DOCTYPE_FORBIDDEN`` or ``FILE_FORBIDDEN`` error code in
+	``details`` so the Phase 23 envelope mapper can show a friendly
+	card.
+	"""
+
+	def __init__(
+		self,
+		message: str = "",
+		*,
+		code: str = "FILE_FORBIDDEN",
+		details: dict | None = None,
+	):
+		merged: dict = {"error_code": code}
+		if details:
+			merged.update(details)
+		super().__init__(message, details=merged)
+		self.code = code
+
+
+class OCRTimeoutError(OCRError):
+	"""PaddleOCR subprocess exceeded the configured timeout (Phase 27 §27.1)."""
+
+	def __init__(self, message: str = "OCR processing timed out", *, timeout_seconds: float | None = None):
+		details: dict = {"error_code": "OCR_TIMEOUT"}
+		if timeout_seconds is not None:
+			details["timeout_seconds"] = timeout_seconds
+		super().__init__(message, details=details)
+
+
+class InsufficientMemoryError(OCRError):
+	"""Pre-flight check found insufficient available memory for OCR
+	(Phase 27 §27.1)."""
+
+	def __init__(
+		self,
+		message: str = "Insufficient memory for OCR processing",
+		*,
+		available_mb: float | None = None,
+		required_mb: float | None = None,
+	):
+		details: dict = {"error_code": "INSUFFICIENT_MEMORY"}
+		if available_mb is not None:
+			details["available_mb"] = available_mb
+		if required_mb is not None:
+			details["required_mb"] = required_mb
+		super().__init__(message, details=details)
+
+
+class PDFTooManyPagesError(ExtractionError):
+	"""PDF page count exceeds the configured cap (Phase 27 §27.5)."""
+
+	def __init__(self, message: str = "PDF has too many pages", *, pages: int | None = None, max_pages: int | None = None):
+		details: dict = {"error_code": "PDF_TOO_MANY_PAGES"}
+		if pages is not None:
+			details["pages"] = pages
+		if max_pages is not None:
+			details["max_pages"] = max_pages
+		super().__init__(message, details=details)

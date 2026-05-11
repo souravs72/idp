@@ -687,6 +687,40 @@ def _language_from_unicode(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Phase 27 — Subprocess-isolated entry point
+# ---------------------------------------------------------------------------
+
+
+def extract_text_isolated(file_path: str, lang: str = "en") -> list[dict]:
+	"""Run :func:`extract_text` inside an isolated subprocess (Phase 27 §27.1).
+
+	Small files (< 1 MiB) bypass the subprocess overhead and run
+	in-process; larger files are fork-isolated so an OOM / segfault in
+	PaddleOCR cannot bring the Frappe worker down.  Subprocess timeout
+	and the memory pre-flight are read from IDP Settings.
+
+	Returns the same shape as :func:`extract_text` so callers can swap
+	without code changes.
+	"""
+
+	# Lazy imports: keep the small-file path free of subprocess machinery.
+	from idp.core.config import get_ocr_timeout_seconds
+	from idp.idp.ocr_subprocess import run_in_subprocess, should_use_subprocess
+
+	if not should_use_subprocess(file_path):
+		return extract_text(file_path, lang=lang)
+
+	result = run_in_subprocess(
+		"extract_text",
+		file_path=file_path,
+		lang=lang,
+		timeout=float(get_ocr_timeout_seconds()),
+	)
+	data = result.data or {}
+	return list(data.get("blocks") or [])
+
+
+# ---------------------------------------------------------------------------
 # Utilities
 # ---------------------------------------------------------------------------
 

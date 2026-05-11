@@ -27,7 +27,20 @@ from idp.idp.llm.tools.base import ToolContext, ToolResult, tool
 
 logger = get_logger("idp.llm.tools.extract_document")
 
-INLINE_TEXT_BUDGET = 15_000
+# Hard fallback used when IDP Settings has no value yet (Phase 27 §27.5
+# surfaces ``inline_text_budget_chars`` as a configurable cap).
+_DEFAULT_INLINE_TEXT_BUDGET = 15_000
+
+
+def _inline_text_budget() -> int:
+	"""Read the configured budget; fall back to the legacy hard-coded value."""
+
+	try:
+		from idp.core.config import get_inline_text_budget_chars
+
+		return get_inline_text_budget_chars()
+	except Exception:
+		return _DEFAULT_INLINE_TEXT_BUDGET
 SHORT_TYPE_BY_MIME = {
 	"application/pdf": "pdf",
 	"image/png": "image",
@@ -89,7 +102,22 @@ def extract_document(arguments: dict, ctx: ToolContext) -> ToolResult:
 	lang = (arguments.get("language") or "en").strip() or "en"
 
 	registry = get_registry(ctx.conversation_id)
-	record = registry.resolve(alias)
+	try:
+		record = registry.resolve(alias)
+	except Exception as exc:
+		# Phase 27 §27.3 — IDPPermissionError carries an error_code in
+		# its ``code`` attribute; surface it as a stop_processing envelope
+		# so the agent loop halts cleanly instead of speculatively
+		# retrying with a different alias.
+		from idp.core.exceptions import IDPPermissionError
+
+		if isinstance(exc, IDPPermissionError):
+			return ToolResult.fail(
+				str(exc) or "Permission denied for this attachment.",
+				error_code=exc.code,
+				stop_processing=True,
+			)
+		raise
 	if record is None:
 		return ToolResult.fail(
 			f"unknown file alias: {alias!r}",
@@ -115,9 +143,10 @@ def extract_document(arguments: dict, ctx: ToolContext) -> ToolResult:
 
 	body = (result.text or "").strip()
 	full_len = len(body)
-	truncated = full_len > INLINE_TEXT_BUDGET
+	budget = _inline_text_budget()
+	truncated = full_len > budget
 	if truncated:
-		body = _truncate_to_page_boundary(body, INLINE_TEXT_BUDGET)
+		body = _truncate_to_page_boundary(body, budget)
 
 	# Refresh the registry preview so future tools see the larger sample.
 	registry.register(

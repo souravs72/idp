@@ -10,7 +10,11 @@ default so the rest of the codebase can import freely without errors.
 
 import frappe
 
-from idp.core.constants import DEFAULT_CONFIDENCE_THRESHOLD
+from idp.core.constants import (
+	DEFAULT_CONFIDENCE_THRESHOLD,
+	MAX_FILE_SIZE_MB,
+	MAX_PAGES_PER_PDF,
+)
 
 
 def get_idp_settings() -> dict:
@@ -81,6 +85,90 @@ def get_confidence_threshold() -> float:
 
 
 # ---------------------------------------------------------------------------
+# Phase 27 — Configurable extraction caps
+# ---------------------------------------------------------------------------
+
+
+# Defaults applied when the corresponding IDP Settings field is unset or
+# non-positive.  Constants in ``idp.core.constants`` remain the static
+# defaults; the values below mirror them so the module reads cleanly.
+_DEFAULT_INLINE_TEXT_BUDGET_CHARS: int = 12_000
+_DEFAULT_VISION_IMAGE_MAX_DIM_PX: int = 1_568
+_DEFAULT_OCR_TIMEOUT_SECONDS: int = 300
+
+
+def _positive_int(value, fallback: int) -> int:
+	"""Coerce *value* to a positive int, falling back to *fallback*."""
+
+	try:
+		ivalue = int(value)
+	except (TypeError, ValueError):
+		return fallback
+	return ivalue if ivalue > 0 else fallback
+
+
+def get_max_file_size_mb() -> int:
+	"""Configured max upload size (MiB) — falls back to the constant."""
+
+	settings = get_idp_settings()
+	return _positive_int(settings.get("max_file_size_mb"), MAX_FILE_SIZE_MB)
+
+
+def get_max_file_size_bytes() -> int:
+	"""Configured max upload size in bytes."""
+
+	return get_max_file_size_mb() * 1024 * 1024
+
+
+def get_max_pdf_pages() -> int:
+	"""Configured cap on PDF pages processed by OCR."""
+
+	settings = get_idp_settings()
+	return _positive_int(settings.get("max_pages_per_pdf"), MAX_PAGES_PER_PDF)
+
+
+def get_ocr_timeout_seconds() -> int:
+	"""Subprocess OCR timeout (seconds) — Phase 27 §27.1."""
+
+	settings = get_idp_settings()
+	return _positive_int(settings.get("ocr_timeout_seconds"), _DEFAULT_OCR_TIMEOUT_SECONDS)
+
+
+def get_inline_text_budget_chars() -> int:
+	"""Maximum characters of OCR text inlined in tool results (§27.5)."""
+
+	settings = get_idp_settings()
+	return _positive_int(
+		settings.get("inline_text_budget_chars"),
+		_DEFAULT_INLINE_TEXT_BUDGET_CHARS,
+	)
+
+
+def get_vision_image_max_dim_px() -> int:
+	"""Maximum image dimension fed to the Ollama vision OCR fallback."""
+
+	settings = get_idp_settings()
+	return _positive_int(
+		settings.get("vision_image_max_dim_px"),
+		_DEFAULT_VISION_IMAGE_MAX_DIM_PX,
+	)
+
+
+def get_ocr_engine_preference() -> str:
+	"""Active OCR engine: ``paddle`` | ``ollama_vision`` | ``auto``.
+
+	The default is ``auto`` which means the extractor uses PaddleOCR
+	first and falls back to Ollama vision on :class:`OCRError`.
+	"""
+
+	settings = get_idp_settings()
+	raw = (settings.get("ocr_engine") or "auto").strip().lower()
+	if raw not in {"paddle", "ollama_vision", "auto"}:
+		return "auto"
+	return raw
+
+
+# ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
 
@@ -103,6 +191,9 @@ def _default_settings() -> dict:
 		"enable_excel": 1,
 		"enable_csv": 1,
 		"enable_docx": 1,
-		"ocr_timeout_seconds": 60,
-		"max_pages_per_pdf": 50,
+		"ocr_timeout_seconds": _DEFAULT_OCR_TIMEOUT_SECONDS,
+		"max_pages_per_pdf": MAX_PAGES_PER_PDF,
+		"inline_text_budget_chars": _DEFAULT_INLINE_TEXT_BUDGET_CHARS,
+		"vision_image_max_dim_px": _DEFAULT_VISION_IMAGE_MAX_DIM_PX,
+		"ocr_engine": "auto",
 	}

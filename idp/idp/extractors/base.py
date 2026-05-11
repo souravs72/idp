@@ -164,15 +164,79 @@ def extract_content(file_url: str, lang: str = "en") -> ExtractionResult:
 	2. Detect MIME type.
 	3. Dispatch to the first matching extractor.
 	4. Return a unified :class:`ExtractionResult`.
+
+	Phase 27 §27.2 — the ``IDP Settings.ocr_engine`` field selects between
+	``paddle`` (the default Paddle-backed extractors), ``ollama_vision``
+	(LLaVA / minicpm-v fallback), or ``auto`` which tries Paddle first
+	and retries with Ollama on :class:`OCRError`.
 	"""
 	abs_path, mime_type = resolve_file(file_url)
+
+	# Phase 27: honour the configured OCR engine preference for the
+	# image / PDF MIME types where it actually matters.  Spreadsheet,
+	# CSV, and DOCX extractors are untouched.
+	preference = _ocr_engine_preference()
+	if preference == "ollama_vision" and mime_type in _OCR_RELEVANT_MIMES:
+		return _run_ollama_vision(abs_path, mime_type, file_url)
 
 	for extractor in _get_extractors():
 		if extractor.supports_mime_type(mime_type):
 			logger.info(f"Dispatching {mime_type} to {extractor.__class__.__name__} | file={file_url}")
-			return extractor.extract(abs_path, lang=lang, mime_type=mime_type, file_url=file_url)
+			try:
+				return extractor.extract(abs_path, lang=lang, mime_type=mime_type, file_url=file_url)
+			except Exception as exc:
+				if preference == "auto" and mime_type in _OCR_RELEVANT_MIMES and _is_ocr_failure(exc):
+					logger.warning(
+						"PaddleOCR failed on %s; falling back to Ollama vision: %s",
+						file_url,
+						exc,
+					)
+					return _run_ollama_vision(abs_path, mime_type, file_url)
+				raise
 
 	raise UnsupportedFormatError(
 		f"No extractor found for MIME type: {mime_type}",
 		details={"file_url": file_url, "mime_type": mime_type},
 	)
+
+
+# ---------------------------------------------------------------------------
+# Phase 27 — OCR engine preference helpers
+# ---------------------------------------------------------------------------
+
+_OCR_RELEVANT_MIMES = {
+	"application/pdf",
+	"image/png",
+	"image/jpeg",
+	"image/webp",
+	"image/tiff",
+	"image/bmp",
+}
+
+
+def _ocr_engine_preference() -> str:
+	"""Read the configured engine preference; safe before settings exist."""
+
+	try:
+		from idp.core.config import get_ocr_engine_preference
+
+		return get_ocr_engine_preference()
+	except Exception:
+		return "auto"
+
+
+def _is_ocr_failure(exc: BaseException) -> bool:
+	"""Heuristic — should this exception trigger the vision fallback?"""
+
+	from idp.core.exceptions import OCRError
+
+	return isinstance(exc, OCRError)
+
+
+def _run_ollama_vision(abs_path: str, mime_type: str, file_url: str) -> ExtractionResult:
+	"""Lazily import & run the vision extractor."""
+
+	from idp.idp.extractors.ollama_vision import OllamaVisionExtractor
+
+	logger.info(f"Dispatching {mime_type} to OllamaVisionExtractor | file={file_url}")
+	return OllamaVisionExtractor().extract(abs_path, mime_type=mime_type, file_url=file_url)

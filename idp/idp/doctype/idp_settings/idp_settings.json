@@ -32,6 +32,11 @@
   "ocr_timeout_seconds",
   "max_pages_per_pdf",
   "confirmation_page_size",
+  "phase27_section",
+  "ocr_engine",
+  "inline_text_budget_chars",
+  "column_break_phase27",
+  "vision_image_max_dim_px",
   "phase15_section",
   "enable_templates",
   "enable_batch_processing",
@@ -205,13 +210,15 @@
    "label": "Advanced"
   },
   {
-   "default": "60",
+   "default": "300",
+   "description": "Phase 27 \u2014 wall-clock timeout for the PaddleOCR subprocess. On expiry the request fails with OCR_TIMEOUT.",
    "fieldname": "ocr_timeout_seconds",
    "fieldtype": "Int",
    "label": "OCR Timeout (seconds)"
   },
   {
-   "default": "50",
+   "default": "100",
+   "description": "Phase 27 \u2014 stop OCR after N pages. Files exceeding this cap raise PDF_TOO_MANY_PAGES.",
    "fieldname": "max_pages_per_pdf",
    "fieldtype": "Int",
    "label": "Max Pages per PDF"
@@ -222,6 +229,37 @@
    "fieldname": "confirmation_page_size",
    "fieldtype": "Int",
    "label": "Confirmation Card Page Size"
+  },
+  {
+   "fieldname": "phase27_section",
+   "fieldtype": "Section Break",
+   "label": "Phase 27 - Extraction Hardening"
+  },
+  {
+   "default": "auto",
+   "description": "OCR engine preference: paddle uses PaddleOCR, ollama_vision uses the local LLaVA / minicpm-v fallback, auto tries paddle and falls back to ollama on OCRError.",
+   "fieldname": "ocr_engine",
+   "fieldtype": "Select",
+   "label": "OCR Engine",
+   "options": "auto\npaddle\nollama_vision"
+  },
+  {
+   "default": "12000",
+   "description": "Maximum characters of OCR text inlined in tool results before truncation kicks in.",
+   "fieldname": "inline_text_budget_chars",
+   "fieldtype": "Int",
+   "label": "Inline Text Budget (chars)"
+  },
+  {
+   "fieldname": "column_break_phase27",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1568",
+   "description": "Vision OCR resizes images down to this maximum dimension (px) before sending to Ollama to control token cost.",
+   "fieldname": "vision_image_max_dim_px",
+   "fieldtype": "Int",
+   "label": "Vision Image Max Dim (px)"
   },
   {
    "fieldname": "phase15_section",

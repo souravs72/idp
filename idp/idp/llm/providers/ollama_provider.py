@@ -92,6 +92,99 @@ class OllamaProvider(LLMProvider):
 		text = "\n".join(str(m.get("content", "")) for m in messages)
 		return max(1, len(text) // 4)
 
+	# ------------------------------------------------------------------
+	# Phase 27 §27.2 — Vision OCR fallback
+	# ------------------------------------------------------------------
+
+	def vision_ocr(
+		self,
+		image_path: str,
+		*,
+		model: str | None = None,
+		prompt: str | None = None,
+		max_tokens: int = 4_096,
+		timeout: float | None = None,
+	) -> dict:
+		"""OCR an image with a local LLaVA / minicpm-v vision model.
+
+		Posts a base64-encoded image plus an OCR prompt to ``/api/chat``
+		on the configured Ollama host and returns the recognised text.
+		``confidence`` is synthesised because vision LLMs do not emit
+		per-token scores; ``synthetic=True`` flags this for downstream
+		consumers (e.g. the Phase 23 confidence chip).
+
+		Returns a dict shaped:
+
+		    {
+		      "text": "...",
+		      "confidence": 0.85,
+		      "synthetic": True,
+		      "model": "llava:13b",
+		    }
+		"""
+
+		import base64
+
+		try:
+			import httpx
+		except ImportError as exc:  # pragma: no cover — httpx ships with Frappe
+			raise LLMProviderUnavailableError("httpx is required for the Ollama provider") from exc
+
+		try:
+			with open(image_path, "rb") as fh:
+				image_b64 = base64.b64encode(fh.read()).decode("ascii")
+		except OSError as exc:
+			raise LLMProviderUnavailableError(
+				f"Cannot read image for vision OCR: {exc}"
+			) from exc
+
+		target_model = model or "llava:13b"
+		ocr_prompt = prompt or (
+			"You are an OCR engine. Extract all visible text from the image "
+			"verbatim, preserving line breaks. Do not add commentary, "
+			"summarisation, or translation."
+		)
+
+		payload: dict[str, Any] = {
+			"model": target_model,
+			"messages": [
+				{
+					"role": "user",
+					"content": ocr_prompt,
+					"images": [image_b64],
+				}
+			],
+			"stream": False,
+			"options": {
+				"temperature": 0.0,
+				"num_predict": max_tokens,
+			},
+		}
+
+		try:
+			resp = httpx.post(
+				f"{self.host_url}/api/chat",
+				json=payload,
+				timeout=timeout if timeout is not None else self.timeout,
+			)
+			resp.raise_for_status()
+			data = resp.json()
+		except httpx.HTTPError as exc:
+			raise LLMProviderUnavailableError(
+				f"Ollama vision request failed at {self.host_url}: {exc}"
+			) from exc
+		except ValueError as exc:
+			raise LLMResponseParseError(f"Ollama returned non-JSON: {exc}") from exc
+
+		message = data.get("message") or {}
+		text = (message.get("content") or "").strip()
+		return {
+			"text": text,
+			"confidence": 0.85,
+			"synthetic": True,
+			"model": target_model,
+		}
+
 	def _normalise(self, data: dict, model: str) -> LLMResponse:
 		message = data.get("message") or {}
 		content = message.get("content")
