@@ -209,7 +209,7 @@ print("Image preprocessing tests passed")
 ### Test 3.1 — ExtractionResult and base imports
 
 ```python
-from idp.idp.extractors.base import ExtractionResult, BaseExtractor
+from idp.extractors.base import ExtractionResult, BaseExtractor
 
 er = ExtractionResult(
     content_type="text",
@@ -228,7 +228,7 @@ print("Base extractor tests passed")
 
 ```python
 import tempfile, os
-from idp.idp.extractors.extractor import CSVExtractor
+from idp.extractors.extractor import CSVExtractor
 
 # Create a test CSV
 csv_content = "Item,Qty,Rate,Amount\nWidget A,10,500.00,5000.00\nWidget B,5,300.00,1500.00\n"
@@ -258,7 +258,7 @@ print("CSV extractor tests passed")
 ```python
 import tempfile, os
 from openpyxl import Workbook
-from idp.idp.extractors.extractor import ExcelExtractor
+from idp.extractors.extractor import ExcelExtractor
 
 # Create a test Excel file
 wb = Workbook()
@@ -287,7 +287,7 @@ print("Excel extractor tests passed")
 ```python
 import tempfile, os
 from docx import Document
-from idp.idp.extractors.extractor import DocxExtractor
+from idp.extractors.extractor import DocxExtractor
 
 # Create a test DOCX file
 doc = Document()
@@ -323,7 +323,7 @@ print("DOCX extractor tests passed")
 ### Test 3.5 — File resolution error handling
 
 ```python
-from idp.idp.extractors.base import resolve_file
+from idp.extractors.base import resolve_file
 from idp.core.exceptions import ExtractionError, UnsupportedFormatError
 
 # Non-existent file
@@ -339,7 +339,7 @@ print("File resolution tests passed")
 ### Test 3.6 — Factory dispatcher (MIME detection)
 
 ```python
-from idp.idp.extractors.base import _detect_mime_type
+from idp.extractors.base import _detect_mime_type
 
 print(_detect_mime_type("/path/to/file.pdf"))   # Expected: application/pdf
 print(_detect_mime_type("/path/to/file.xlsx"))  # Expected: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
@@ -357,7 +357,7 @@ print("MIME detection tests passed")
 ### Test 4.1 — Schema discovery
 
 ```python
-from idp.idp.mappers.base import get_doctype_schema, get_extractable_fields
+from idp.mappers.base import get_doctype_schema, get_extractable_fields
 
 schema = get_doctype_schema("Purchase Invoice")
 print(f"DocType: {schema['doctype']}")               # Expected: Purchase Invoice
@@ -384,7 +384,7 @@ print("Schema discovery tests passed")
 ### Test 4.2 — Date normalization
 
 ```python
-from idp.idp.mappers.mapper import FieldMapper
+from idp.mappers.mapper import FieldMapper
 
 fm = FieldMapper()
 
@@ -409,7 +409,7 @@ print("Date normalization tests passed")
 ### Test 4.3 — Number normalization
 
 ```python
-from idp.idp.mappers.mapper import FieldMapper
+from idp.mappers.mapper import FieldMapper
 
 fm = FieldMapper()
 
@@ -434,7 +434,7 @@ print("Number normalization tests passed")
 ### Test 4.4 — Label-value pair parsing
 
 ```python
-from idp.idp.mappers.mapper import FieldMapper
+from idp.mappers.mapper import FieldMapper
 
 fm = FieldMapper()
 
@@ -461,7 +461,7 @@ print("Label-value parsing tests passed")
 ### Test 4.5 — Header field matching
 
 ```python
-from idp.idp.mappers.mapper import FieldMapper
+from idp.mappers.mapper import FieldMapper
 
 fm = FieldMapper()
 keywords = fm.FIELD_KEYWORDS["Purchase Invoice"]
@@ -492,7 +492,7 @@ print("Header field matching tests passed")
 ### Test 4.6 — Column header matching for items
 
 ```python
-from idp.idp.mappers.mapper import FieldMapper
+from idp.mappers.mapper import FieldMapper
 
 fm = FieldMapper()
 child_fields = [
@@ -514,8 +514,8 @@ print("Column matching tests passed")
 ### Test 4.7 — Full mapping pipeline (end-to-end with mock data)
 
 ```python
-from idp.idp.extractors.base import ExtractionResult
-from idp.idp.mappers.mapper import FieldMapper
+from idp.extractors.base import ExtractionResult
+from idp.mappers.mapper import FieldMapper
 
 fm = FieldMapper()
 
@@ -556,7 +556,7 @@ print("Full mapping pipeline test passed")
 ### Test 5.1 — Data model imports
 
 ```python
-from idp.idp.validators import (
+from idp.validators import (
     ValidationIssue, ValidationResult,
     validate_schema, resolve_links, validate_business_rules,
 )
@@ -581,8 +581,8 @@ print("Data model import tests passed")
 ### Test 5.2 — Business rules: date ordering
 
 ```python
-from idp.idp.mappers.base import MappedDocument
-from idp.idp.validators.business_rules import validate_business_rules
+from idp.mappers.base import MappedDocument
+from idp.validators.business_rules import validate_business_rules
 
 # PASS: due_date after posting_date
 doc = MappedDocument(
@@ -614,8 +614,8 @@ print("Date ordering tests passed")
 ### Test 5.3 — Business rules: line item presence
 
 ```python
-from idp.idp.mappers.base import MappedDocument
-from idp.idp.validators.business_rules import validate_business_rules
+from idp.mappers.base import MappedDocument
+from idp.validators.business_rules import validate_business_rules
 
 # FAIL: Purchase Invoice with no items
 doc = MappedDocument(
@@ -648,8 +648,8 @@ print("Line item presence tests passed")
 ### Test 5.4 — Business rules: qty, rate, amount checks
 
 ```python
-from idp.idp.mappers.base import MappedDocument
-from idp.idp.validators.business_rules import validate_business_rules
+from idp.mappers.base import MappedDocument
+from idp.validators.business_rules import validate_business_rules
 
 # FAIL: qty=0, negative rate, mismatched amount
 doc = MappedDocument(
@@ -684,8 +684,8 @@ print("Qty/rate/amount tests passed")
 ### Test 5.5 — Business rules: total checks
 
 ```python
-from idp.idp.mappers.base import MappedDocument
-from idp.idp.validators.business_rules import validate_business_rules
+from idp.mappers.base import MappedDocument
+from idp.validators.business_rules import validate_business_rules
 
 # PASS: totals match
 doc = MappedDocument(
@@ -735,8 +735,8 @@ print("Total check tests passed")
 ### Test 5.6 — Business rules: currency validation
 
 ```python
-from idp.idp.mappers.base import MappedDocument
-from idp.idp.validators.business_rules import validate_business_rules
+from idp.mappers.base import MappedDocument
+from idp.validators.business_rules import validate_business_rules
 
 # PASS: valid currency
 doc = MappedDocument(
@@ -768,8 +768,8 @@ print("Currency validation tests passed")
 ### Test 5.7 — Schema validation: required fields and type checks
 
 ```python
-from idp.idp.mappers.base import MappedDocument
-from idp.idp.validators.schema_validator import validate_schema
+from idp.mappers.base import MappedDocument
+from idp.validators.schema_validator import validate_schema
 
 # Test with a mostly-empty header — should report missing required fields
 doc = MappedDocument(
@@ -800,7 +800,7 @@ print("Schema validation tests passed")
 ### Test 5.8 — Schema validation: Select options and Data length
 
 ```python
-from idp.idp.validators.schema_validator import (
+from idp.validators.schema_validator import (
     ValidationResult, _check_select_options, _check_data_lengths,
 )
 
@@ -838,8 +838,8 @@ print("Select and Data length tests passed")
 ### Test 5.9 — Link resolution
 
 ```python
-from idp.idp.mappers.base import MappedDocument
-from idp.idp.validators.schema_validator import resolve_links
+from idp.mappers.base import MappedDocument
+from idp.validators.schema_validator import resolve_links
 
 # Test with known values — requires existing master data
 # Using a supplier that likely exists in your test.local site
@@ -871,8 +871,8 @@ print("Link resolution tests passed")
 ### Test 5.10 — Full validation pipeline (combined)
 
 ```python
-from idp.idp.mappers.base import MappedDocument
-from idp.idp.validators import validate_schema, validate_business_rules
+from idp.mappers.base import MappedDocument
+from idp.validators import validate_schema, validate_business_rules
 
 # A well-formed Purchase Invoice
 doc = MappedDocument(
@@ -930,8 +930,8 @@ print("Full validation pipeline test passed")
 ### Test 6.1 — Imports
 
 ```python
-from idp.idp.mappers import create_document, auto_create_missing_masters
-from idp.idp.mappers.document_creator import (
+from idp.mappers import create_document, auto_create_missing_masters
+from idp.mappers.document_creator import (
     _find_missing_masters, _build_doc_dict, _preserve_text_fields,
     _get_primary_child_fieldname,
 )
@@ -948,8 +948,8 @@ print("Imports OK")
 ### Test 6.2 — Build doc dict (no DB operations)
 
 ```python
-from idp.idp.mappers.base import MappedDocument
-from idp.idp.mappers.document_creator import _build_doc_dict
+from idp.mappers.base import MappedDocument
+from idp.mappers.document_creator import _build_doc_dict
 
 doc = MappedDocument(
     doctype="Purchase Invoice",
@@ -991,8 +991,8 @@ print("Build doc dict test passed")
 ### Test 6.3 — Find missing masters
 
 ```python
-from idp.idp.mappers.base import MappedDocument
-from idp.idp.mappers.document_creator import _find_missing_masters
+from idp.mappers.base import MappedDocument
+from idp.mappers.document_creator import _find_missing_masters
 
 # Use a supplier name that does NOT exist in your site
 doc = MappedDocument(
@@ -1023,7 +1023,7 @@ print("Find missing masters test passed")
 
 ```python
 import frappe
-from idp.idp.mappers.document_creator import auto_create_missing_masters
+from idp.mappers.document_creator import auto_create_missing_masters
 
 # Create a unique supplier name for testing
 test_supplier = "IDP-Test-Supplier-AutoCreate"
@@ -1067,8 +1067,8 @@ print("Cleanup done")
 ### Test 6.5 — create_document: validation error path
 
 ```python
-from idp.idp.mappers.base import MappedDocument
-from idp.idp.mappers.document_creator import create_document
+from idp.mappers.base import MappedDocument
+from idp.mappers.document_creator import create_document
 from idp.core.exceptions import ValidationError
 
 # Empty header should fail schema validation
@@ -1094,8 +1094,8 @@ except ValidationError as e:
 ### Test 6.6 — create_document: missing master error path
 
 ```python
-from idp.idp.mappers.base import MappedDocument
-from idp.idp.mappers.document_creator import create_document
+from idp.mappers.base import MappedDocument
+from idp.mappers.document_creator import create_document
 from idp.core.exceptions import MissingMasterError
 
 doc = MappedDocument(
@@ -1127,8 +1127,8 @@ except MissingMasterError as e:
 
 ```python
 import frappe
-from idp.idp.mappers.base import MappedDocument
-from idp.idp.mappers.document_creator import create_document
+from idp.mappers.base import MappedDocument
+from idp.mappers.document_creator import create_document
 
 # Ensure the supplier exists (use one from your site or create one)
 test_supplier = "Wind Power LLC"
@@ -1200,8 +1200,8 @@ print("Cleanup done")
 
 ```python
 import frappe
-from idp.idp.mappers.base import MappedDocument
-from idp.idp.mappers.document_creator import create_document
+from idp.mappers.base import MappedDocument
+from idp.mappers.document_creator import create_document
 
 # Use names that definitely don't exist
 test_supplier = "IDP-AutoTest-Supplier-Phase6"
@@ -1260,8 +1260,8 @@ print("Cleanup done")
 
 ```python
 import frappe
-from idp.idp.mappers.base import MappedDocument
-from idp.idp.mappers.document_creator import create_document
+from idp.mappers.base import MappedDocument
+from idp.mappers.document_creator import create_document
 
 test_supplier = "Wind Power LLC"
 if not frappe.db.exists("Supplier", test_supplier):
@@ -1418,7 +1418,7 @@ print("String comparison tests passed")
 ### Test 7.5 — compare_with_record: non-existent record
 
 ```python
-from idp.idp.mappers.base import MappedDocument
+from idp.mappers.base import MappedDocument
 from idp.idp.comparison import compare_with_record
 
 doc = MappedDocument(
@@ -1440,7 +1440,7 @@ print("Non-existent record test passed")
 
 ```python
 import frappe
-from idp.idp.mappers.base import MappedDocument
+from idp.mappers.base import MappedDocument
 from idp.idp.comparison import compare_with_record
 
 # Create a test Purchase Invoice to compare against
@@ -1517,7 +1517,7 @@ print("Cleanup done")
 
 ```python
 import frappe
-from idp.idp.mappers.base import MappedDocument
+from idp.mappers.base import MappedDocument
 from idp.idp.comparison import find_matching_record
 
 # Create a PO to match against
@@ -1563,7 +1563,7 @@ print("Cleanup done")
 
 ```python
 import frappe
-from idp.idp.mappers.base import MappedDocument
+from idp.mappers.base import MappedDocument
 from idp.idp.comparison import find_matching_record
 
 test_supplier = "Wind Power LLC"
@@ -2867,7 +2867,7 @@ print("has_conversation_permission ownership test passed")
 ## Phase 12: Bank Statement Processing
 
 > **Note:** Phase 12 adds a specialised bank-statement extractor
-> (`idp.idp.extractors.bank_statement`) and a reconciliation engine
+> (`idp.extractors.bank_statement`) and a reconciliation engine
 > (`idp.idp.bank_reconciliation`) plus two whitelisted API endpoints
 > in `idp.api.extract`. The tests below cover the pure-Python helpers,
 > the reconciliation matching logic, the API wrappers, and the
@@ -2876,7 +2876,7 @@ print("has_conversation_permission ownership test passed")
 ### Test 12.1 — Module imports
 
 ```python
-from idp.idp.extractors.bank_statement import (
+from idp.extractors.bank_statement import (
     BankStatement, BankStatementIssue, BankTransaction,
     extract_bank_statement, parse_bank_statement,
     statement_to_dict, transactions_from_dicts,
@@ -2897,7 +2897,7 @@ print("Phase 12 imports OK")
 ### Test 12.2 — Amount parsing (CR/DR, parens, grouping)
 
 ```python
-from idp.idp.extractors.bank_statement import _parse_amount
+from idp.extractors.bank_statement import _parse_amount
 
 assert _parse_amount("1,234.56") == 1234.56
 assert _parse_amount("1,23,456.78") == 123456.78   # Indian grouping
@@ -2917,7 +2917,7 @@ print("Amount parsing test passed")
 ### Test 12.3 — Date parsing (multiple formats, 2-digit years)
 
 ```python
-from idp.idp.extractors.bank_statement import _parse_date
+from idp.extractors.bank_statement import _parse_date
 
 assert _parse_date("2026-01-15") == "2026-01-15"
 assert _parse_date("15-01-2026") == "2026-01-15"
@@ -2935,7 +2935,7 @@ print("Date parsing test passed")
 ### Test 12.4 — Header matching (English + substring)
 
 ```python
-from idp.idp.extractors.bank_statement import (
+from idp.extractors.bank_statement import (
     _match_header, _DATE_KEYWORDS, _DEBIT_KEYWORDS,
     _CREDIT_KEYWORDS, _BALANCE_KEYWORDS, _REFERENCE_KEYWORDS,
 )
@@ -2958,8 +2958,8 @@ print("Header matching test passed")
 ### Test 12.5 — parse_bank_statement on synthetic ExtractionResult
 
 ```python
-from idp.idp.extractors.base import ExtractionResult
-from idp.idp.extractors.bank_statement import parse_bank_statement
+from idp.extractors.base import ExtractionResult
+from idp.extractors.bank_statement import parse_bank_statement
 
 table = [
     ["Date", "Narration", "Debit", "Credit", "Balance"],
@@ -2990,8 +2990,8 @@ print(f"parse_bank_statement OK | txns={len(stmt.transactions)} "
 ### Test 12.6 — parse_bank_statement flags running-balance mismatch
 
 ```python
-from idp.idp.extractors.base import ExtractionResult
-from idp.idp.extractors.bank_statement import parse_bank_statement
+from idp.extractors.base import ExtractionResult
+from idp.extractors.bank_statement import parse_bank_statement
 
 # Balance walk is broken: 1000 - 200 should be 800 but statement says 900
 table = [
@@ -3012,8 +3012,8 @@ print(f"Balance mismatch flagged | {warns[0].message}")
 ### Test 12.7 — parse_bank_statement raises when no table present
 
 ```python
-from idp.idp.extractors.base import ExtractionResult
-from idp.idp.extractors.bank_statement import parse_bank_statement
+from idp.extractors.base import ExtractionResult
+from idp.extractors.bank_statement import parse_bank_statement
 from idp.core.exceptions import ExtractionError
 
 er = ExtractionResult(text="No tables here", tables=[], metadata={})
@@ -3030,8 +3030,8 @@ except ExtractionError as exc:
 ### Test 12.8 — statement_to_dict + transactions_from_dicts round-trip
 
 ```python
-from idp.idp.extractors.base import ExtractionResult
-from idp.idp.extractors.bank_statement import (
+from idp.extractors.base import ExtractionResult
+from idp.extractors.bank_statement import (
     parse_bank_statement, statement_to_dict, transactions_from_dicts,
 )
 
@@ -3058,7 +3058,7 @@ print("Round-trip test passed")
 ### Test 12.9 — reconcile_bank_statement with injected candidates (exact match)
 
 ```python
-from idp.idp.extractors.bank_statement import BankTransaction
+from idp.extractors.bank_statement import BankTransaction
 from idp.idp.bank_reconciliation import (
     ReconciliationMatch, reconcile_bank_statement,
 )
@@ -3096,7 +3096,7 @@ print(f"Exact match reconciliation OK | {result.summary}")
 ### Test 12.10 — reconcile flags partial and unmatched
 
 ```python
-from idp.idp.extractors.bank_statement import BankTransaction
+from idp.extractors.bank_statement import BankTransaction
 from idp.idp.bank_reconciliation import (
     ReconciliationMatch, reconcile_bank_statement,
 )
@@ -3130,7 +3130,7 @@ print(f"Partial/unmatched OK | {result.summary}")
 ### Test 12.11 — reconcile detects multiple_matches
 
 ```python
-from idp.idp.extractors.bank_statement import BankTransaction
+from idp.extractors.bank_statement import BankTransaction
 from idp.idp.bank_reconciliation import (
     ReconciliationMatch, reconcile_bank_statement,
 )
@@ -3162,7 +3162,7 @@ print(f"Multiple-matches detection OK | candidates="
 ### Test 12.12 — reconcile consumes each candidate only once
 
 ```python
-from idp.idp.extractors.bank_statement import BankTransaction
+from idp.extractors.bank_statement import BankTransaction
 from idp.idp.bank_reconciliation import (
     ReconciliationMatch, reconcile_bank_statement,
 )
@@ -3977,17 +3977,17 @@ Run every block in `bench --site test.local console`.
 ### Test 15.1 — Advanced package import
 
 ```python
-from idp.idp.advanced import templates, batch, feedback, tables, workflow, prompt_library, fine_tuning
+from idp.advanced import templates, batch, feedback, tables, workflow, prompt_library, fine_tuning
 for mod in (templates, batch, feedback, tables, workflow, prompt_library, fine_tuning):
     print("OK:", mod.__name__)
-# Expected: seven "OK: idp.idp.advanced.<module>" lines.
+# Expected: seven "OK: idp.advanced.<module>" lines.
 ```
 
 ### Test 15.2 — Template hydrate + specificity
 
 ```python
 import json, frappe
-from idp.idp.advanced.templates import load_templates
+from idp.advanced.templates import load_templates
 
 # Seed a template
 if not frappe.db.exists("IDP Extraction Template", "TEST-TMPL-ACME"):
@@ -4013,8 +4013,8 @@ print("specificity:", t.specificity)
 ### Test 15.3 — detect_template selects best match
 
 ```python
-from idp.idp.extractors.base import ExtractionResult
-from idp.idp.advanced.templates import detect_template
+from idp.extractors.base import ExtractionResult
+from idp.advanced.templates import detect_template
 
 extraction = ExtractionResult(
     content_type="text",
@@ -4037,8 +4037,8 @@ print("no match on empty text: OK")
 ### Test 15.4 — apply_template fills gaps
 
 ```python
-from idp.idp.advanced.templates import LoadedTemplate, apply_template
-from idp.idp.extractors.base import ExtractionResult
+from idp.advanced.templates import LoadedTemplate, apply_template
+from idp.extractors.base import ExtractionResult
 
 t = LoadedTemplate(
     name="inline-template",
@@ -4061,8 +4061,8 @@ print("provenance recorded")
 ### Test 15.5 — match_and_apply graceful fallback
 
 ```python
-from idp.idp.advanced.templates import match_and_apply
-from idp.idp.extractors.base import ExtractionResult
+from idp.advanced.templates import match_and_apply
+from idp.extractors.base import ExtractionResult
 
 # No matching template -- should still return a MappedDocument (template=None)
 extraction = ExtractionResult(content_type="text",
@@ -4078,7 +4078,7 @@ print("mapped fields:", list(mapped.header.keys()))
 
 ```python
 import frappe
-from idp.idp.advanced.batch import create_batch_job
+from idp.advanced.batch import create_batch_job
 
 # Use a deterministic existing file url or create a quick sentinel row.
 urls = ["/private/files/sentinel-a.pdf", "/private/files/sentinel-b.pdf"]
@@ -4101,7 +4101,7 @@ print("job:", job.name, job.status, job.total_files)
 # Simulate a job with URLs pointing to files that can't be extracted;
 # items should be marked Failed, the job should still Complete.
 import frappe
-from idp.idp.advanced.batch import create_batch_job, run_batch_job
+from idp.advanced.batch import create_batch_job, run_batch_job
 
 job = create_batch_job(
     user=frappe.session.user,
@@ -4130,7 +4130,7 @@ for it in doc.items:
 
 ```python
 # Skip this test interactively if no ZIP is available; smoke-test the guard instead:
-from idp.idp.advanced.batch import create_batch_from_zip
+from idp.advanced.batch import create_batch_from_zip
 try:
     create_batch_from_zip("admin", "Purchase Invoice", "/private/files/nope.zip")
 except Exception as exc:
@@ -4142,7 +4142,7 @@ except Exception as exc:
 
 ```python
 import frappe
-from idp.idp.advanced.feedback import record_correction
+from idp.advanced.feedback import record_correction
 
 # Happy path
 name = record_correction(
@@ -4173,7 +4173,7 @@ except ValueError as e:
 ### Test 15.11 — build_fewshot_bundle supplier match
 
 ```python
-from idp.idp.advanced.feedback import build_fewshot_bundle
+from idp.advanced.feedback import build_fewshot_bundle
 
 bundle = build_fewshot_bundle("Purchase Invoice", supplier_or_customer="Acme Corp", max_examples=3)
 print("count:", len(bundle.examples))
@@ -4184,11 +4184,11 @@ print("rendered:\n", bundle.render())
 ### Test 15.12 — rule_mapper_weak_spots aggregation
 
 ```python
-from idp.idp.advanced.feedback import rule_mapper_weak_spots
+from idp.advanced.feedback import rule_mapper_weak_spots
 
 # Seed a few corrections on a single field
 import frappe
-from idp.idp.advanced.feedback import record_correction
+from idp.advanced.feedback import record_correction
 for i in range(3):
     try:
         record_correction(
@@ -4206,7 +4206,7 @@ print(spots)
 ### Test 15.13 — accuracy_trend SQL shape
 
 ```python
-from idp.idp.advanced.feedback import accuracy_trend
+from idp.advanced.feedback import accuracy_trend
 
 rows = accuracy_trend("Purchase Invoice", days=30)
 assert isinstance(rows, list)
@@ -4219,7 +4219,7 @@ print("trend rows:", len(rows))
 ### Test 15.14 — merge_multipage_tables header match
 
 ```python
-from idp.idp.advanced.tables import merge_multipage_tables
+from idp.advanced.tables import merge_multipage_tables
 
 t1 = [["Item", "Qty", "Rate"], ["A", "1", "10"]]
 t2 = [["Item", "Qty", "Rate"], ["B", "2", "20"]]
@@ -4236,7 +4236,7 @@ print("merge OK:", [len(t) for t in merged])
 ### Test 15.15 — detect_borderless_table grids
 
 ```python
-from idp.idp.advanced.tables import detect_borderless_table
+from idp.advanced.tables import detect_borderless_table
 
 sample = (
     "Item        Qty   Rate   Amount\n"
@@ -4253,7 +4253,7 @@ print(grid[1])
 ### Test 15.16 — flatten_nested_cells fan-out
 
 ```python
-from idp.idp.advanced.tables import flatten_nested_cells
+from idp.advanced.tables import flatten_nested_cells
 
 t = [
     ["SKU", "Qty", "Note"],
@@ -4269,7 +4269,7 @@ assert len(flat) == 1 + 2 + 1
 ### Test 15.17 — ApproverRule threshold matching
 
 ```python
-from idp.idp.advanced.workflow import ApproverRule
+from idp.advanced.workflow import ApproverRule
 
 r1 = ApproverRule(doctype="Purchase Invoice", min_amount=0, max_amount=1000)
 r2 = ApproverRule(doctype="Purchase Invoice", min_amount=1000, max_amount=None)
@@ -4293,7 +4293,7 @@ frappe.db.set_single_value("IDP Settings", "approver_rules", json.dumps([
 ]))
 frappe.db.commit()
 
-from idp.idp.advanced.workflow import resolve_approver
+from idp.advanced.workflow import resolve_approver
 user, rule = resolve_approver("Purchase Invoice", 50)
 print("approver:", user, "| rule:", rule is not None)
 # Expected: approver is a System Manager email (or None if none exists); rule is True
@@ -4303,7 +4303,7 @@ print("approver:", user, "| rule:", rule is not None)
 
 ```python
 # Doesn't require a real workflow; routes approver + attempts ToDo creation.
-from idp.idp.advanced.workflow import route_created_document
+from idp.advanced.workflow import route_created_document
 # Use any existing document for reference_name or skip with a stub:
 res = route_created_document("Purchase Invoice", "NON-EXISTENT", amount=50)
 print(res.as_dict())
@@ -4313,7 +4313,7 @@ print(res.as_dict())
 ### Test 15.20 — seed_builtin_prompts idempotent
 
 ```python
-from idp.idp.advanced.prompt_library import seed_builtin_prompts
+from idp.advanced.prompt_library import seed_builtin_prompts
 
 s1 = seed_builtin_prompts()
 s2 = seed_builtin_prompts()
@@ -4326,7 +4326,7 @@ assert s2["created"] == 0
 ### Test 15.21 — load_prompt fallback order
 
 ```python
-from idp.idp.advanced.prompt_library import load_prompt
+from idp.advanced.prompt_library import load_prompt
 
 # Exact match
 p = load_prompt("Manufacturing", "Purchase Invoice")
@@ -4342,7 +4342,7 @@ print("fallback:", p2.name)
 
 ```python
 import tempfile, json, frappe
-from idp.idp.advanced.fine_tuning import export_dataset
+from idp.advanced.fine_tuning import export_dataset
 
 with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as fh:
     path = fh.name
@@ -4362,7 +4362,7 @@ print("row shape OK")
 
 ```python
 import tempfile, json
-from idp.idp.advanced.fine_tuning import export_dataset
+from idp.advanced.fine_tuning import export_dataset
 
 for fmt in ("anthropic", "plain"):
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as fh:
@@ -4383,7 +4383,7 @@ for fmt in ("anthropic", "plain"):
 ### Test 15.24 — weekly_export file creation
 
 ```python
-from idp.idp.advanced.fine_tuning import weekly_export
+from idp.advanced.fine_tuning import weekly_export
 import os
 
 summary = weekly_export()

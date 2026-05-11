@@ -19,9 +19,9 @@ from idp.core.exceptions import IDPError, RateLimitExceededError, SecurityError
 from idp.core.logger import get_logger
 from idp.core.rate_limit import check_and_consume
 from idp.core.security import assert_safe_file_url, assert_user_can_read
-from idp.idp.extractors import extract_content
-from idp.idp.mappers import FieldMapper, MappedDocument
-from idp.idp.validators import validate_business_rules, validate_schema
+from idp.extractors import extract_content
+from idp.mappers import FieldMapper, MappedDocument
+from idp.validators import validate_business_rules, validate_schema
 
 logger = get_logger("idp.api.extract")
 
@@ -230,7 +230,7 @@ def extract_bank_statement_api(file_url: str, language: str = "en") -> dict:
 		- ``processing_time_ms``: int
 		- ``error`` / ``error_type``: populated on failure
 	"""
-	from idp.idp.extractors.bank_statement import (
+	from idp.extractors.bank_statement import (
 		extract_bank_statement, statement_to_dict,
 	)
 
@@ -295,7 +295,7 @@ def reconcile_bank_statement_api(
 	import json
 
 	from idp.idp.bank_reconciliation import reconcile_bank_statement, result_to_dict
-	from idp.idp.extractors.bank_statement import transactions_from_dicts
+	from idp.extractors.bank_statement import transactions_from_dicts
 
 	if not bank_account:
 		frappe.throw("bank_account is required.", frappe.ValidationError)

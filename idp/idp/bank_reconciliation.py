@@ -29,7 +29,7 @@ import frappe
 from frappe.utils import flt, getdate
 
 from idp.core.logger import get_logger
-from idp.idp.extractors.bank_statement import BankTransaction
+from idp.extractors.bank_statement import BankTransaction
 
 logger = get_logger("idp.bank_reconciliation")
 

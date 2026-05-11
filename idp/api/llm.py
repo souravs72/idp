@@ -28,8 +28,8 @@ def list_providers() -> dict:
 	site-declared custom providers as a side effect.
 	"""
 
-	from idp.idp.llm.model_registry import as_dict, list_known_models
-	from idp.idp.llm.providers.registry import list_registered_providers
+	from idp.llm.model_registry import as_dict, list_known_models
+	from idp.llm.providers.registry import list_registered_providers
 
 	return {
 		"providers": list_registered_providers(),
@@ -41,8 +41,8 @@ def list_providers() -> dict:
 def estimate_chat_cost(model: str, prompt_tokens: int, completion_tokens: int) -> dict:
 	"""Estimate USD cost for a hypothetical chat completion."""
 
-	from idp.idp.llm.providers.base import TokenUsage
-	from idp.idp.llm.token_counter import estimate_cost
+	from idp.llm.providers.base import TokenUsage
+	from idp.llm.token_counter import estimate_cost
 
 	usage = TokenUsage(prompt=int(prompt_tokens), completion=int(completion_tokens))
 	return {
@@ -64,7 +64,7 @@ def chat(messages: list | str, model: str | None = None, **extra: Any) -> dict:
 
 	frappe.only_for("System Manager")
 
-	from idp.idp.llm.client import LLMClient
+	from idp.llm.client import LLMClient
 
 	if isinstance(messages, str):
 		import json as _json
@@ -116,10 +116,10 @@ def hybrid_map(
 	  used.
 	"""
 
-	from idp.idp.extractors import extract_content
-	from idp.idp.llm.client import LLMClient
-	from idp.idp.mappers import FieldMapper
-	from idp.idp.mappers.hybrid_mapper import HybridFieldMapper
+	from idp.extractors import extract_content
+	from idp.llm.client import LLMClient
+	from idp.mappers import FieldMapper
+	from idp.mappers.hybrid_mapper import HybridFieldMapper
 
 	if not file_url:
 		frappe.throw("file_url is required")
@@ -256,11 +256,11 @@ def translate(
 	"""Phase 22 — whitelisted translation for ad-hoc UI use.
 
 	Returns ``{"translated": str, "was_translated": bool}``.  Mirrors
-	:func:`idp.idp.llm.translation.translate_text` so the chatbot
+	:func:`idp.llm.translation.translate_text` so the chatbot
 	frontend can call it without going through the hybrid mapper.
 	"""
 
-	from idp.idp.llm.translation import translate_text
+	from idp.llm.translation import translate_text
 
 	if not text:
 		return {"translated": "", "was_translated": False}

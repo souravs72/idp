@@ -48,7 +48,7 @@ class IDPPromptTemplate(Document):
     @staticmethod
     def _invalidate_cache() -> None:
         try:
-            from idp.idp.llm.prompt_templates import invalidate_template_cache
+            from idp.llm.prompt_templates import invalidate_template_cache
 
             invalidate_template_cache()
         except Exception:

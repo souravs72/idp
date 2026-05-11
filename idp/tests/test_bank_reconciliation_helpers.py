@@ -21,7 +21,7 @@ from idp.idp.bank_reconciliation import (
 	_score_candidate,
 	reconcile_bank_statement,
 )
-from idp.idp.extractors.bank_statement import BankTransaction
+from idp.extractors.bank_statement import BankTransaction
 
 
 # ---------------------------------------------------------------------------

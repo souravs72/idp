@@ -24,7 +24,7 @@ def after_install() -> None:
 def _seed_prompt_library() -> None:
 	"""Install the shipped Phase 15 prompt gallery (idempotent)."""
 	try:
-		from idp.idp.advanced.prompt_library import seed_builtin_prompts
+		from idp.advanced.prompt_library import seed_builtin_prompts
 
 		seed_builtin_prompts(overwrite=False)
 	except Exception as exc:

@@ -161,7 +161,7 @@ scheduler_events = {
 		"idp.core.retention.daily",
 	],
 	"weekly": [
-		"idp.idp.advanced.fine_tuning.weekly_export",
+		"idp.advanced.fine_tuning.weekly_export",
 	],
 }
 

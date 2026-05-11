@@ -12,7 +12,7 @@ import frappe
 
 from idp.core.constants import MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB, SUPPORTED_MIME_TYPES
 from idp.core.logger import get_logger
-from idp.idp.extractors.base import resolve_file
+from idp.extractors.base import resolve_file
 
 logger = get_logger("idp.api.upload")
 

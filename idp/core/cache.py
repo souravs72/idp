@@ -5,7 +5,7 @@
 
 Phase 14 focuses on two hot paths:
 
-1. **DocType schemas** — :func:`idp.idp.mappers.base.get_doctype_schema`
+1. **DocType schemas** — :func:`idp.mappers.base.get_doctype_schema`
    queries ``frappe.get_meta`` and walks every field.  When a user
    extracts multiple invoices in rapid succession, this repeats for
    every request.  :func:`get_doctype_schema_cached` memoises the
@@ -107,13 +107,13 @@ SCHEMA_TTL_SECONDS: float = 300.0
 def get_doctype_schema_cached(doctype: str, ttl_seconds: float | None = None) -> dict:
 	"""Return the DocType schema dict, caching by doctype name.
 
-	Wraps :func:`idp.idp.mappers.base.get_doctype_schema` — the first
+	Wraps :func:`idp.mappers.base.get_doctype_schema` — the first
 	call populates the cache; subsequent calls return the cached copy
 	until the TTL expires.  On any unexpected error the underlying
 	loader is invoked directly so a cache bug never breaks extraction.
 	"""
 	# Local import avoids a circular dependency at module load time.
-	from idp.idp.mappers.base import get_doctype_schema
+	from idp.mappers.base import get_doctype_schema
 
 	key = f"idp:schema:{doctype}"
 	ttl = SCHEMA_TTL_SECONDS if ttl_seconds is None else float(ttl_seconds)

@@ -16,8 +16,8 @@ from idp.core.config import get_default_company
 from idp.core.constants import SUPPORTED_DOCTYPES
 from idp.core.exceptions import IDPError, MissingMasterError, ValidationError
 from idp.core.logger import get_logger
-from idp.idp.mappers import MappedDocument, create_document
-from idp.idp.mappers.document_creator import _find_missing_masters
+from idp.mappers import MappedDocument, create_document
+from idp.mappers.document_creator import _find_missing_masters
 
 logger = get_logger("idp.api.create")
 

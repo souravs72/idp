@@ -24,7 +24,7 @@ class IDPSkill(Document):
     @staticmethod
     def _invalidate_cache() -> None:
         try:
-            from idp.idp.llm.skills import invalidate_skills_cache
+            from idp.llm.skills import invalidate_skills_cache
 
             invalidate_skills_cache()
         except Exception:

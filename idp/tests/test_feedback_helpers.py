@@ -1,7 +1,7 @@
 # Copyright (c) 2026, Sanjay Kumar and contributors
 # For license information, please see license.txt
 
-"""Framework-light tests for :mod:`idp.idp.advanced.feedback`.
+"""Framework-light tests for :mod:`idp.advanced.feedback`.
 
 Exercises the pure dataclass helpers used to render few-shot prompt
 bundles.  Site-backed flows (``record_correction``,
@@ -17,7 +17,7 @@ from __future__ import annotations
 
 
 def test_fewshot_example_prompt_line_basic(frappe_stub):
-	from idp.idp.advanced.feedback import FewShotExample
+	from idp.advanced.feedback import FewShotExample
 
 	ex = FewShotExample(
 		fieldname="bill_no",
@@ -32,7 +32,7 @@ def test_fewshot_example_prompt_line_basic(frappe_stub):
 
 
 def test_fewshot_example_prompt_line_with_supplier(frappe_stub):
-	from idp.idp.advanced.feedback import FewShotExample
+	from idp.advanced.feedback import FewShotExample
 
 	ex = FewShotExample(
 		fieldname="posting_date",
@@ -45,7 +45,7 @@ def test_fewshot_example_prompt_line_with_supplier(frappe_stub):
 
 
 def test_fewshot_example_prompt_line_truncates_long_snippet(frappe_stub):
-	from idp.idp.advanced.feedback import FewShotExample
+	from idp.advanced.feedback import FewShotExample
 
 	long_snippet = "A " * 400  # 800 chars
 	ex = FewShotExample(fieldname="f", source_snippet=long_snippet, corrected_value="v")
@@ -60,14 +60,14 @@ def test_fewshot_example_prompt_line_truncates_long_snippet(frappe_stub):
 
 
 def test_fewshot_bundle_render_empty(frappe_stub):
-	from idp.idp.advanced.feedback import FewShotBundle
+	from idp.advanced.feedback import FewShotBundle
 
 	bundle = FewShotBundle(target_doctype="Purchase Invoice")
 	assert bundle.render() == ""
 
 
 def test_fewshot_bundle_render_caps_at_max_examples(frappe_stub):
-	from idp.idp.advanced.feedback import FewShotBundle, FewShotExample
+	from idp.advanced.feedback import FewShotBundle, FewShotExample
 
 	bundle = FewShotBundle(
 		target_doctype="Purchase Invoice",

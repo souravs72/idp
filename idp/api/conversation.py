@@ -311,7 +311,7 @@ def run_agent(
 	if confirmed is not None and not isinstance(confirmed, dict):
 		frappe.throw(_("user_confirmed_action must be a JSON object"))
 
-	from idp.idp.llm.agent import IDPAgent
+	from idp.llm.agent import IDPAgent
 
 	agent = IDPAgent(doc.name)
 	try:
@@ -586,7 +586,7 @@ def confirm_card(
 	"""
 
 	from idp.core.exceptions import ConfirmationCardError
-	from idp.idp.llm.schemas import CONFIRMATION_CARD_PAYLOAD_VERSION
+	from idp.llm.schemas import CONFIRMATION_CARD_PAYLOAD_VERSION
 
 	_require_login()
 	doc = _load_conversation(conversation_id)
@@ -786,8 +786,8 @@ def _create_erpnext_doc_from_card(card: dict, *, company: str, submit: bool) -> 
 		``{"doctype", "name", "url", "submitted", "warnings", "created_masters"}``.
 	"""
 
-	from idp.idp.mappers.base import MappedDocument
-	from idp.idp.mappers.document_creator import create_document as create_doc_fn
+	from idp.mappers.base import MappedDocument
+	from idp.mappers.document_creator import create_document as create_doc_fn
 
 	# Header values: prefer the (possibly user-edited) card field values.
 	header: dict[str, Any] = {}
@@ -1211,8 +1211,8 @@ def _revalidate_card(card: dict, edited: dict | None) -> list[str]:
 	"""
 
 	try:
-		from idp.idp.mappers.base import MappedDocument
-		from idp.idp.validators.business_rules import validate_business_rules
+		from idp.mappers.base import MappedDocument
+		from idp.validators.business_rules import validate_business_rules
 	except Exception:
 		return []
 
@@ -1344,7 +1344,7 @@ def list_agent_tools() -> list[dict]:
 	"""Return the registered Phase 19 tools (for diagnostics / UI hints)."""
 
 	_require_login()
-	from idp.idp.llm.tools.registry import list_tools
+	from idp.llm.tools.registry import list_tools
 
 	return [
 		{
@@ -1381,7 +1381,7 @@ def search_items(query: str, top_n: int = 10) -> list[dict]:
 	except (TypeError, ValueError):
 		top_n = 10
 
-	from idp.idp.mappers.item_matcher import match_single_item
+	from idp.mappers.item_matcher import match_single_item
 
 	# Use a deliberately low floor so even partial substrings show up
 	# in the search dropdown — the UI sorts and filters from there.
@@ -1407,7 +1407,7 @@ def search_accounts(query: str, company: str | None = None, top_n: int = 10) -> 
 	except (TypeError, ValueError):
 		top_n = 10
 
-	from idp.idp.mappers.tax_matcher import match_single_tax
+	from idp.mappers.tax_matcher import match_single_tax
 
 	result = match_single_tax(
 		{"account": query},
@@ -1550,7 +1550,7 @@ def create_item_from_row(
 	"""
 
 	from idp.core.exceptions import ConfirmationCardError
-	from idp.idp.mappers.document_creator import _create_item
+	from idp.mappers.document_creator import _create_item
 
 	user = _require_login()
 	doc = _load_conversation(conversation_id)
@@ -1699,7 +1699,7 @@ def bulk_match_items(
 			"skipped_reason": "non_item_doctype",
 		}
 
-	from idp.idp.mappers.item_matcher import match_items
+	from idp.mappers.item_matcher import match_items
 
 	tool_args = _parse_json_arg(message.tool_arguments, None) or {}
 	source_items: list[dict] = list(tool_args.get("items") or [])

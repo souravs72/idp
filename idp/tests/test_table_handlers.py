@@ -1,7 +1,7 @@
 # Copyright (c) 2026, Sanjay Kumar and contributors
 # For license information, please see license.txt
 
-"""Framework-light tests for :mod:`idp.idp.advanced.tables`.
+"""Framework-light tests for :mod:`idp.advanced.tables`.
 
 Covers the pure-Python post-processors that run after PP-Structure:
 multi-page continuation merging, borderless table detection, and
@@ -16,7 +16,7 @@ from __future__ import annotations
 
 
 def test_merge_multipage_tables_joins_matching_headers(frappe_stub):
-	from idp.idp.advanced.tables import merge_multipage_tables
+	from idp.advanced.tables import merge_multipage_tables
 
 	page1 = [["Item", "Qty", "Rate"], ["Bolts", "10", "5"]]
 	page2 = [["Item", "Qty", "Rate"], ["Nuts", "20", "3"]]
@@ -26,7 +26,7 @@ def test_merge_multipage_tables_joins_matching_headers(frappe_stub):
 
 
 def test_merge_multipage_tables_keeps_distinct_tables(frappe_stub):
-	from idp.idp.advanced.tables import merge_multipage_tables
+	from idp.advanced.tables import merge_multipage_tables
 
 	tbl_a = [["Item", "Qty"], ["Bolts", "10"]]
 	tbl_b = [["Date", "Amount"], ["2026-04-01", "1000"]]
@@ -35,7 +35,7 @@ def test_merge_multipage_tables_keeps_distinct_tables(frappe_stub):
 
 
 def test_merge_multipage_tables_single_table_passthrough(frappe_stub):
-	from idp.idp.advanced.tables import merge_multipage_tables
+	from idp.advanced.tables import merge_multipage_tables
 
 	tbl = [["A", "B"], ["1", "2"]]
 	assert merge_multipage_tables([tbl]) == [tbl]
@@ -47,7 +47,7 @@ def test_merge_multipage_tables_single_table_passthrough(frappe_stub):
 
 
 def test_detect_borderless_table_basic(frappe_stub):
-	from idp.idp.advanced.tables import detect_borderless_table
+	from idp.advanced.tables import detect_borderless_table
 
 	block = "Item        Qty   Rate\nBolts       10    5\nNuts        20    3\n"
 	grid = detect_borderless_table(block)
@@ -57,7 +57,7 @@ def test_detect_borderless_table_basic(frappe_stub):
 
 
 def test_detect_borderless_table_too_few_columns_returns_none(frappe_stub):
-	from idp.idp.advanced.tables import detect_borderless_table
+	from idp.advanced.tables import detect_borderless_table
 
 	block = "Item    Qty\nBolts   10\n"
 	# min_columns defaults to 3
@@ -65,7 +65,7 @@ def test_detect_borderless_table_too_few_columns_returns_none(frappe_stub):
 
 
 def test_detect_borderless_table_single_line_returns_none(frappe_stub):
-	from idp.idp.advanced.tables import detect_borderless_table
+	from idp.advanced.tables import detect_borderless_table
 
 	assert detect_borderless_table("Only one line here") is None
 
@@ -76,7 +76,7 @@ def test_detect_borderless_table_single_line_returns_none(frappe_stub):
 
 
 def test_flatten_nested_cells_fans_out_newline_separated_values(frappe_stub):
-	from idp.idp.advanced.tables import flatten_nested_cells
+	from idp.advanced.tables import flatten_nested_cells
 
 	tbl = [
 		["Item", "Batches"],
@@ -90,7 +90,7 @@ def test_flatten_nested_cells_fans_out_newline_separated_values(frappe_stub):
 
 
 def test_flatten_nested_cells_no_op_on_plain_rows(frappe_stub):
-	from idp.idp.advanced.tables import flatten_nested_cells
+	from idp.advanced.tables import flatten_nested_cells
 
 	tbl = [["Item", "Qty"], ["Bolts", "10"]]
 	assert flatten_nested_cells(tbl) == tbl
@@ -102,7 +102,7 @@ def test_flatten_nested_cells_no_op_on_plain_rows(frappe_stub):
 
 
 def test_postprocess_tables_pipeline(frappe_stub):
-	from idp.idp.advanced.tables import postprocess_tables
+	from idp.advanced.tables import postprocess_tables
 
 	page1 = [["Item", "Batches"], ["Bolts", "A1\nA2"]]
 	page2 = [["Item", "Batches"], ["Nuts", "B1"]]

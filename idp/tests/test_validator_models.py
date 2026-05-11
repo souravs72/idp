@@ -1,7 +1,7 @@
 # Copyright (c) 2026, Sanjay Kumar and contributors
 # For license information, please see license.txt
 
-"""Dataclass-level tests for :mod:`idp.idp.validators.schema_validator`.
+"""Dataclass-level tests for :mod:`idp.validators.schema_validator`.
 
 Full DocType validation requires a Frappe site, so here we restrict
 ourselves to the dataclass contracts and their defaults.  End-to-end
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 
 def test_validation_issue_defaults(frappe_stub):  # noqa: ARG001
-	from idp.idp.validators.schema_validator import ValidationIssue
+	from idp.validators.schema_validator import ValidationIssue
 
 	issue = ValidationIssue(field="supplier", message="missing")
 	assert issue.severity == "error"
@@ -20,7 +20,7 @@ def test_validation_issue_defaults(frappe_stub):  # noqa: ARG001
 
 
 def test_validation_result_defaults(frappe_stub):  # noqa: ARG001
-	from idp.idp.validators.schema_validator import ValidationResult
+	from idp.validators.schema_validator import ValidationResult
 
 	result = ValidationResult()
 	assert result.is_valid is True
@@ -31,7 +31,7 @@ def test_validation_result_defaults(frappe_stub):  # noqa: ARG001
 
 
 def test_validation_result_flags_errors(frappe_stub):  # noqa: ARG001
-	from idp.idp.validators.schema_validator import ValidationIssue, ValidationResult
+	from idp.validators.schema_validator import ValidationIssue, ValidationResult
 
 	result = ValidationResult()
 	result.errors.append(ValidationIssue(field="date", message="invalid"))

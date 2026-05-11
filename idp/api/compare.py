@@ -18,8 +18,8 @@ from idp.core.exceptions import IDPError
 from idp.core.logger import get_logger
 from idp.idp.comparison import compare_with_record
 from idp.idp.comparison import find_matching_record as _find_match
-from idp.idp.extractors import extract_content
-from idp.idp.mappers import FieldMapper, MappedDocument
+from idp.extractors import extract_content
+from idp.mappers import FieldMapper, MappedDocument
 
 logger = get_logger("idp.api.compare")
 

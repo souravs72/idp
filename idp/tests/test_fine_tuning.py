@@ -1,7 +1,7 @@
 # Copyright (c) 2026, Sanjay Kumar and contributors
 # For license information, please see license.txt
 
-"""Framework-light tests for :mod:`idp.idp.advanced.fine_tuning`.
+"""Framework-light tests for :mod:`idp.advanced.fine_tuning`.
 
 Covers the row formatters (OpenAI / Anthropic / plain) and the
 ``min_snippet_len`` drop-rule in :func:`export_dataset`.  The
@@ -38,7 +38,7 @@ def correction_row():
 
 
 def test_to_openai_shape(frappe_stub, correction_row):
-	from idp.idp.advanced.fine_tuning import _to_openai
+	from idp.advanced.fine_tuning import _to_openai
 
 	out = _to_openai(correction_row)
 	roles = [m["role"] for m in out["messages"]]
@@ -49,7 +49,7 @@ def test_to_openai_shape(frappe_stub, correction_row):
 
 
 def test_to_anthropic_shape(frappe_stub, correction_row):
-	from idp.idp.advanced.fine_tuning import _to_anthropic
+	from idp.advanced.fine_tuning import _to_anthropic
 
 	out = _to_anthropic(correction_row)
 	assert "system" in out
@@ -60,7 +60,7 @@ def test_to_anthropic_shape(frappe_stub, correction_row):
 
 
 def test_to_plain_shape(frappe_stub, correction_row):
-	from idp.idp.advanced.fine_tuning import _to_plain
+	from idp.advanced.fine_tuning import _to_plain
 
 	out = _to_plain(correction_row)
 	assert out["input"]["doctype"] == "Purchase Invoice"
@@ -70,7 +70,7 @@ def test_to_plain_shape(frappe_stub, correction_row):
 
 
 def test_to_plain_handles_missing_snippet(frappe_stub):
-	from idp.idp.advanced.fine_tuning import _to_plain
+	from idp.advanced.fine_tuning import _to_plain
 
 	row = {
 		"target_doctype": "Sales Invoice",
@@ -88,7 +88,7 @@ def test_to_plain_handles_missing_snippet(frappe_stub):
 
 
 def test_export_dataset_rejects_unknown_format(frappe_stub, tmp_path):
-	from idp.idp.advanced.fine_tuning import export_dataset
+	from idp.advanced.fine_tuning import export_dataset
 
 	with pytest.raises(ValueError, match="Unknown format"):
 		export_dataset(str(tmp_path / "out.jsonl"), format="pytorch")
@@ -96,7 +96,7 @@ def test_export_dataset_rejects_unknown_format(frappe_stub, tmp_path):
 
 def test_export_dataset_respects_min_snippet_len(frappe_stub, monkeypatch):
 	"""Rows with short snippets must be dropped."""
-	from idp.idp.advanced import fine_tuning as ft
+	from idp.advanced import fine_tuning as ft
 
 	rows = [
 		{

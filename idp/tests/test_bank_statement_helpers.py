@@ -1,7 +1,7 @@
 # Copyright (c) 2026, Sanjay Kumar and contributors
 # For license information, please see license.txt
 
-"""Framework-light tests for :mod:`idp.idp.extractors.bank_statement`.
+"""Framework-light tests for :mod:`idp.extractors.bank_statement`.
 
 Exercises the pure Python helpers (header matching, amount/date
 parsing, column map, round-trip serialisation) so Phase 12/13
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from idp.idp.extractors.bank_statement import (
+from idp.extractors.bank_statement import (
 	BankStatement,
 	BankTransaction,
 	_build_column_map,

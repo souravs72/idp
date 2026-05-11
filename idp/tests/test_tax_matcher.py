@@ -1,7 +1,7 @@
 # Copyright (c) 2026, Sanjay Kumar and contributors
 # For license information, please see license.txt
 
-"""Unit tests for :mod:`idp.idp.mappers.tax_matcher` (Phase 24)."""
+"""Unit tests for :mod:`idp.mappers.tax_matcher` (Phase 24)."""
 
 from __future__ import annotations
 
@@ -76,7 +76,7 @@ def tax_frappe(monkeypatch):
 
 
 def test_exact_account_name(tax_frappe):
-	from idp.idp.mappers.tax_matcher import match_single_tax
+	from idp.mappers.tax_matcher import match_single_tax
 
 	res = match_single_tax({"account": "IGST"}, company="ACME")
 	assert res.status == "Existing"
@@ -85,7 +85,7 @@ def test_exact_account_name(tax_frappe):
 
 
 def test_exact_full_name(tax_frappe):
-	from idp.idp.mappers.tax_matcher import match_single_tax
+	from idp.mappers.tax_matcher import match_single_tax
 
 	res = match_single_tax({"account": "IGST - ACME"}, company="ACME")
 	assert res.status == "Existing"
@@ -94,7 +94,7 @@ def test_exact_full_name(tax_frappe):
 
 
 def test_fuzzy_match(tax_frappe):
-	from idp.idp.mappers.tax_matcher import match_single_tax
+	from idp.mappers.tax_matcher import match_single_tax
 
 	# "VAT 10" should match "VAT 10%"
 	res = match_single_tax({"account": "VAT 10"}, company="ACME")
@@ -104,7 +104,7 @@ def test_fuzzy_match(tax_frappe):
 
 
 def test_no_match_returns_new(tax_frappe):
-	from idp.idp.mappers.tax_matcher import match_single_tax
+	from idp.mappers.tax_matcher import match_single_tax
 
 	res = match_single_tax({"account": "Sales Tax Bermuda"}, company="ACME")
 	assert res.status == "New"
@@ -112,7 +112,7 @@ def test_no_match_returns_new(tax_frappe):
 
 
 def test_match_taxes_batch(tax_frappe):
-	from idp.idp.mappers.tax_matcher import match_taxes
+	from idp.mappers.tax_matcher import match_taxes
 
 	rows = [
 		{"account": "IGST", "rate": 0.18, "tax_amount": 1800},
@@ -125,7 +125,7 @@ def test_match_taxes_batch(tax_frappe):
 
 
 def test_to_dict_shape(tax_frappe):
-	from idp.idp.mappers.tax_matcher import match_single_tax
+	from idp.mappers.tax_matcher import match_single_tax
 
 	res = match_single_tax({"account": "IGST"}, company="ACME")
 	d = res.to_dict()

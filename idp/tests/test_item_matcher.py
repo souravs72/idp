@@ -1,7 +1,7 @@
 # Copyright (c) 2026, Sanjay Kumar and contributors
 # For license information, please see license.txt
 
-"""Unit tests for :mod:`idp.idp.mappers.item_matcher` (Phase 24).
+"""Unit tests for :mod:`idp.mappers.item_matcher` (Phase 24).
 
 Pure-mode tests: we monkey-patch the small Frappe surface the matcher
 touches (``frappe.db.exists``, ``frappe.db.get_value``, ``frappe.get_all``)
@@ -84,7 +84,7 @@ def matcher_frappe(monkeypatch):
 
 
 def test_exact_item_code(matcher_frappe):
-	from idp.idp.mappers.item_matcher import match_single_item
+	from idp.mappers.item_matcher import match_single_item
 
 	res = match_single_item({"item_code": "ITEM-0001"})
 	assert res.status == "Existing"
@@ -94,7 +94,7 @@ def test_exact_item_code(matcher_frappe):
 
 
 def test_exact_barcode(matcher_frappe):
-	from idp.idp.mappers.item_matcher import match_single_item
+	from idp.mappers.item_matcher import match_single_item
 
 	res = match_single_item({"item_name": "Random Junk", "barcode": "8901234567890"})
 	assert res.status == "Existing"
@@ -103,7 +103,7 @@ def test_exact_barcode(matcher_frappe):
 
 
 def test_exact_item_name(matcher_frappe):
-	from idp.idp.mappers.item_matcher import match_single_item
+	from idp.mappers.item_matcher import match_single_item
 
 	res = match_single_item({"item_name": "Office Chair"})
 	assert res.status == "Existing"
@@ -112,7 +112,7 @@ def test_exact_item_name(matcher_frappe):
 
 
 def test_fuzzy_name_above_threshold(matcher_frappe):
-	from idp.idp.mappers.item_matcher import match_single_item
+	from idp.mappers.item_matcher import match_single_item
 
 	# Slight misspelling — should still resolve via fuzzy_name.
 	res = match_single_item({"item_name": "Office Chairs"})
@@ -123,7 +123,7 @@ def test_fuzzy_name_above_threshold(matcher_frappe):
 
 
 def test_alias_match(matcher_frappe):
-	from idp.idp.mappers.item_matcher import match_single_item
+	from idp.mappers.item_matcher import match_single_item
 
 	# Item code that doesn't exist as Item.name but matches a supplier part.
 	res = match_single_item({"item_code": "WMK1-OEM"})
@@ -135,7 +135,7 @@ def test_alias_match(matcher_frappe):
 
 
 def test_no_match_returns_new_with_candidates(matcher_frappe):
-	from idp.idp.mappers.item_matcher import match_single_item
+	from idp.mappers.item_matcher import match_single_item
 
 	res = match_single_item({"item_name": "Totally Made-Up Gizmo"})
 	assert res.status == "New"
@@ -145,7 +145,7 @@ def test_no_match_returns_new_with_candidates(matcher_frappe):
 
 
 def test_match_items_batch_returns_one_result_per_input(matcher_frappe):
-	from idp.idp.mappers.item_matcher import match_items
+	from idp.mappers.item_matcher import match_items
 
 	rows = [
 		{"item_code": "ITEM-0001"},
@@ -158,7 +158,7 @@ def test_match_items_batch_returns_one_result_per_input(matcher_frappe):
 
 
 def test_to_dict_shape(matcher_frappe):
-	from idp.idp.mappers.item_matcher import match_single_item
+	from idp.mappers.item_matcher import match_single_item
 
 	res = match_single_item({"item_code": "ITEM-0001"})
 	d = res.to_dict()
@@ -180,24 +180,24 @@ def test_to_dict_shape(matcher_frappe):
 
 
 def test_guess_is_stock_item_stock_keyword():
-	from idp.idp.mappers.mapper import _guess_is_stock_item
+	from idp.mappers.mapper import _guess_is_stock_item
 
 	assert _guess_is_stock_item({"description": "Raw material - steel"}) == 1
 
 
 def test_guess_is_stock_item_service_keyword():
-	from idp.idp.mappers.mapper import _guess_is_stock_item
+	from idp.mappers.mapper import _guess_is_stock_item
 
 	assert _guess_is_stock_item({"description": "Consultancy Service Fee"}) == 0
 
 
 def test_guess_is_stock_item_uom_alone_implies_stock():
-	from idp.idp.mappers.mapper import _guess_is_stock_item
+	from idp.mappers.mapper import _guess_is_stock_item
 
 	assert _guess_is_stock_item({"item_name": "Mystery", "uom": "Nos"}) == 1
 
 
 def test_guess_is_stock_item_undetermined():
-	from idp.idp.mappers.mapper import _guess_is_stock_item
+	from idp.mappers.mapper import _guess_is_stock_item
 
 	assert _guess_is_stock_item({"item_name": "Mystery"}) is None

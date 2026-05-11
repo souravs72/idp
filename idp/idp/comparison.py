@@ -15,7 +15,7 @@ import frappe
 from frappe.utils import flt, getdate
 
 from idp.core.logger import get_logger
-from idp.idp.mappers.base import MappedDocument, get_doctype_schema
+from idp.mappers.base import MappedDocument, get_doctype_schema
 
 logger = get_logger("idp.comparison")
 

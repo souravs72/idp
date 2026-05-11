@@ -129,7 +129,7 @@ def materialise_for_extraction(
 
 	if not is_remote_file(file_doc):
 		# Local case — let the existing helpers resolve and return.
-		from idp.idp.extractors.base import resolve_file
+		from idp.extractors.base import resolve_file
 
 		abs_path, _ = resolve_file(url)
 		return RemoteFile(local_path=abs_path, cached=False, source_url=url)

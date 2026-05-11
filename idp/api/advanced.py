@@ -28,7 +28,7 @@ logger = get_logger("idp.api.advanced")
 @frappe.whitelist()
 def list_templates(target_doctype: str | None = None) -> list[dict]:
 	"""Return summary rows for all *IDP Extraction Template* records."""
-	from idp.idp.advanced.templates import load_templates
+	from idp.advanced.templates import load_templates
 
 	out: list[dict] = []
 	for t in load_templates(target_doctype):
@@ -47,8 +47,8 @@ def list_templates(target_doctype: str | None = None) -> list[dict]:
 @frappe.whitelist()
 def detect_template_for_file(file_url: str, target_doctype: str) -> dict:
 	"""Run extraction + template detection on a single file (read-only)."""
-	from idp.idp.advanced.templates import detect_template
-	from idp.idp.extractors.base import extract_content
+	from idp.advanced.templates import detect_template
+	from idp.extractors.base import extract_content
 
 	extraction = extract_content(file_url)
 	tmpl = detect_template(extraction, target_doctype)
@@ -71,7 +71,7 @@ def create_batch(
 	company: str | None = None,
 ) -> dict:
 	"""Create a queued IDP Batch Job."""
-	from idp.idp.advanced.batch import create_batch_job
+	from idp.advanced.batch import create_batch_job
 
 	urls = json.loads(file_urls) if isinstance(file_urls, str) else list(file_urls or [])
 	if not urls:
@@ -89,7 +89,7 @@ def create_batch(
 @frappe.whitelist()
 def create_batch_from_zip_api(target_doctype: str, zip_file_url: str, company: str | None = None) -> dict:
 	"""Unpack a ZIP and create a batch job from its contents."""
-	from idp.idp.advanced.batch import create_batch_from_zip
+	from idp.advanced.batch import create_batch_from_zip
 
 	job = create_batch_from_zip(
 		user=frappe.session.user,
@@ -103,7 +103,7 @@ def create_batch_from_zip_api(target_doctype: str, zip_file_url: str, company: s
 @frappe.whitelist()
 def run_batch(job_name: str, create_documents: int | bool = 0) -> dict:
 	"""Trigger synchronous processing of a batch job."""
-	from idp.idp.advanced.batch import run_batch_job
+	from idp.advanced.batch import run_batch_job
 
 	_assert_batch_owner(job_name)
 	return run_batch_job(job_name, create_documents=bool(int(create_documents)))
@@ -112,7 +112,7 @@ def run_batch(job_name: str, create_documents: int | bool = 0) -> dict:
 @frappe.whitelist()
 def enqueue_batch(job_name: str, create_documents: int | bool = 0) -> dict:
 	"""Enqueue the batch job on the ``long`` queue."""
-	from idp.idp.advanced.batch import enqueue_batch_job
+	from idp.advanced.batch import enqueue_batch_job
 
 	_assert_batch_owner(job_name)
 	enqueue_batch_job(job_name, create_documents=bool(int(create_documents)))
@@ -171,7 +171,7 @@ def record_correction_api(
 	template_used: str | None = None,
 	origin: str = "rule",
 ) -> dict:
-	from idp.idp.advanced.feedback import record_correction
+	from idp.advanced.feedback import record_correction
 
 	name = record_correction(
 		user=frappe.session.user,
@@ -190,7 +190,7 @@ def record_correction_api(
 
 @frappe.whitelist()
 def get_fewshot_prompt(target_doctype: str, supplier_or_customer: str | None = None) -> dict:
-	from idp.idp.advanced.feedback import build_fewshot_bundle
+	from idp.advanced.feedback import build_fewshot_bundle
 
 	bundle = build_fewshot_bundle(target_doctype, supplier_or_customer=supplier_or_customer)
 	return {
@@ -209,7 +209,7 @@ def get_fewshot_prompt(target_doctype: str, supplier_or_customer: str | None = N
 
 @frappe.whitelist()
 def weak_spots_report(target_doctype: str, min_occurrences: int = 3) -> list[dict]:
-	from idp.idp.advanced.feedback import rule_mapper_weak_spots
+	from idp.advanced.feedback import rule_mapper_weak_spots
 
 	return rule_mapper_weak_spots(target_doctype, min_occurrences=int(min_occurrences))
 
@@ -221,14 +221,14 @@ def weak_spots_report(target_doctype: str, min_occurrences: int = 3) -> list[dic
 
 @frappe.whitelist()
 def list_prompt_library(industry: str | None = None) -> list[dict]:
-	from idp.idp.advanced.prompt_library import list_prompts
+	from idp.advanced.prompt_library import list_prompts
 
 	return list_prompts(industry=industry, enabled_only=True)
 
 
 @frappe.whitelist()
 def get_prompt(industry: str, target_doctype: str | None = None) -> dict | None:
-	from idp.idp.advanced.prompt_library import load_prompt
+	from idp.advanced.prompt_library import load_prompt
 
 	snip = load_prompt(industry, target_doctype)
 	return (
@@ -248,7 +248,7 @@ def get_prompt(industry: str, target_doctype: str | None = None) -> dict | None:
 def reseed_prompt_library(overwrite: int | bool = 0) -> dict:
 	"""System Manager only -- reinstall shipped prompts."""
 	frappe.only_for("System Manager")
-	from idp.idp.advanced.prompt_library import seed_builtin_prompts
+	from idp.advanced.prompt_library import seed_builtin_prompts
 
 	return seed_builtin_prompts(overwrite=bool(int(overwrite)))
 
@@ -269,7 +269,7 @@ def export_fine_tuning(
 	frappe.only_for("System Manager")
 	from frappe.utils import get_site_path
 
-	from idp.idp.advanced.fine_tuning import export_dataset
+	from idp.advanced.fine_tuning import export_dataset
 
 	folder = get_site_path("private", "files", "idp-finetune")
 	import os as _os

@@ -1,7 +1,7 @@
 # Copyright (c) 2026, Sanjay Kumar and contributors
 # For license information, please see license.txt
 
-"""Framework-light tests for :mod:`idp.idp.advanced.templates`.
+"""Framework-light tests for :mod:`idp.advanced.templates`.
 
 Covers the pure-Python behaviour of template hydration, keyword
 matching, and value extraction.  Site-backed flows (``load_templates``,
@@ -19,7 +19,7 @@ import json
 
 
 def test_loaded_template_specificity(frappe_stub):
-	from idp.idp.advanced.templates import LoadedTemplate
+	from idp.advanced.templates import LoadedTemplate
 
 	t = LoadedTemplate(
 		name="ACME Invoice",
@@ -32,7 +32,7 @@ def test_loaded_template_specificity(frappe_stub):
 
 
 def test_loaded_template_specificity_zero_when_empty(frappe_stub):
-	from idp.idp.advanced.templates import LoadedTemplate
+	from idp.advanced.templates import LoadedTemplate
 
 	t = LoadedTemplate(name="Empty", target_doctype="Sales Invoice")
 	assert t.specificity == 0
@@ -44,7 +44,7 @@ def test_loaded_template_specificity_zero_when_empty(frappe_stub):
 
 
 def test_hydrate_structured_json(frappe_stub):
-	from idp.idp.advanced.templates import _hydrate
+	from idp.advanced.templates import _hydrate
 
 	row = {
 		"name": "T1",
@@ -63,7 +63,7 @@ def test_hydrate_structured_json(frappe_stub):
 
 
 def test_hydrate_legacy_flat_dict(frappe_stub):
-	from idp.idp.advanced.templates import _hydrate
+	from idp.advanced.templates import _hydrate
 
 	row = {
 		"name": "T2",
@@ -78,7 +78,7 @@ def test_hydrate_legacy_flat_dict(frappe_stub):
 
 
 def test_hydrate_malformed_json_returns_empty(frappe_stub):
-	from idp.idp.advanced.templates import _hydrate
+	from idp.advanced.templates import _hydrate
 
 	row = {
 		"name": "T3",
@@ -97,7 +97,7 @@ def test_hydrate_malformed_json_returns_empty(frappe_stub):
 
 
 def test_kw_in_text_word_boundary(frappe_stub):
-	from idp.idp.advanced.templates import _kw_in_text
+	from idp.advanced.templates import _kw_in_text
 
 	assert _kw_in_text("acme", "invoice from acme corp") is True
 	# 'acme' should NOT match inside 'acmescope' (word boundary)
@@ -105,14 +105,14 @@ def test_kw_in_text_word_boundary(frappe_stub):
 
 
 def test_kw_in_text_phrase_uses_substring(frappe_stub):
-	from idp.idp.advanced.templates import _kw_in_text
+	from idp.advanced.templates import _kw_in_text
 
 	assert _kw_in_text("acme corp", "invoice from acme corp ltd") is True
 	assert _kw_in_text("acme corp", "invoice from acme ltd") is False
 
 
 def test_kw_in_text_empty_keyword_is_false(frappe_stub):
-	from idp.idp.advanced.templates import _kw_in_text
+	from idp.advanced.templates import _kw_in_text
 
 	assert _kw_in_text("   ", "some text") is False
 
@@ -123,13 +123,13 @@ def test_kw_in_text_empty_keyword_is_false(frappe_stub):
 
 
 def test_extract_value_near_finds_tail_after_keyword(frappe_stub):
-	from idp.idp.advanced.templates import _extract_value_near
+	from idp.advanced.templates import _extract_value_near
 
 	text = "Header line\nBill No: INV-2026-0042\nOther: 123"
 	assert _extract_value_near(text, "Bill No") == "INV-2026-0042"
 
 
 def test_extract_value_near_returns_none_when_missing(frappe_stub):
-	from idp.idp.advanced.templates import _extract_value_near
+	from idp.advanced.templates import _extract_value_near
 
 	assert _extract_value_near("foo bar baz", "missing") is None
