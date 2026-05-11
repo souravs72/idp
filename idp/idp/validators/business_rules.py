@@ -198,8 +198,21 @@ def _check_tax_rows(mapped_data: MappedDocument, issues: list[str]) -> None:
 		if not account:
 			issues.append(f"Tax row {idx}: account is required")
 
-		if rate is not None and (rate < 0 or rate > 1.0001):
-			issues.append(f"Tax row {idx}: rate ({rate}) must be between 0 and 1 (e.g. 0.18 for 18%)")
+		# Accept either fractional (0.18) or percent (18) representations
+		# of the rate.  When the extractor leaves a percent value behind
+		# we normalise it in-place so downstream arithmetic (rate *
+		# taxable_amount) stays correct.  Anything > 100 is rejected.
+		if rate is not None:
+			if rate < 0:
+				issues.append(f"Tax row {idx}: rate ({rate}) must be >= 0")
+			elif rate > 100.0001:
+				issues.append(
+					f"Tax row {idx}: rate ({rate}) must be a percentage <= 100 "
+					f"(e.g. 18 or 0.18 for 18%)"
+				)
+			elif rate > 1.0001:
+				rate = rate / 100.0
+				row["rate"] = rate
 
 		if tax_amount is not None:
 			if tax_amount < 0:

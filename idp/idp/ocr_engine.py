@@ -12,8 +12,10 @@ via module-level reference, thread-safe under the GIL).
 """
 
 import os
+import sys
 import tempfile
 import time
+import types
 from dataclasses import dataclass, field
 
 from PIL import Image, ImageEnhance, ImageFilter
@@ -23,6 +25,60 @@ from idp.core.exceptions import OCRError
 from idp.core.logger import get_logger, log_ocr_result
 
 logger = get_logger("idp.ocr")
+
+
+# ---------------------------------------------------------------------------
+# Workaround: paddlex (transitive dep of paddleocr) calls
+# ``apply_langchain_shim()`` on import which does ``import langchain`` and
+# subsequently performs ``from langchain_core.documents import Document``
+# inside ``paddlex.inference.pipelines.components.retriever.base``.
+#
+# An old ``langchain==0.0.135`` happens to be pulled in by another bench app
+# (``doppio_bot``).  That version uses ``@root_validator`` without
+# ``skip_on_failure=True`` — incompatible with Pydantic v2 and raises
+# ``pydantic.errors.PydanticUserError: ... root_validator ...`` while
+# importing ``langchain.schema``.
+#
+# paddlex never *uses* langchain in the OCR / PPStructure code paths we care
+# about (it's only referenced by retriever pipelines, which are guarded by
+# ``@class_requires_deps``).  We just need every ``langchain*`` import in
+# paddlex's startup chain to succeed.  So we pre-install harmless empty
+# package stubs into ``sys.modules`` BEFORE paddleocr is imported.  We
+# unconditionally overwrite any pre-loaded ``langchain`` because the on-disk
+# version is known to be incompatible with Pydantic v2.
+# ---------------------------------------------------------------------------
+def _neutralise_langchain_for_paddlex() -> None:
+	stub_names = (
+		"langchain",
+		"langchain_core",
+		"langchain_core.documents",
+		"langchain_text_splitters",
+		"langchain_community",
+		"langchain_community.vectorstores",
+	)
+	for name in stub_names:
+		existing = sys.modules.get(name)
+		if existing is not None and getattr(existing, "__idp_stub__", False):
+			continue
+		stub = types.ModuleType(name)
+		stub.__path__ = []  # mark as package so submodule access works
+		stub.__idp_stub__ = True
+		sys.modules[name] = stub
+	# paddlex's retriever/base.py performs unconditional
+	# ``from langchain_core.documents import Document`` and
+	# ``from langchain_text_splitters import RecursiveCharacterTextSplitter``
+	# at module top — provide placeholder classes so the imports succeed.
+	# (These classes are never *instantiated* in our OCR code paths.)
+	def _placeholder(name: str):
+		return type(name, (), {"__init__": lambda self, *a, **kw: None})
+
+	sys.modules["langchain_core.documents"].Document = _placeholder("Document")
+	sys.modules["langchain_text_splitters"].RecursiveCharacterTextSplitter = _placeholder(
+		"RecursiveCharacterTextSplitter"
+	)
+
+
+_neutralise_langchain_for_paddlex()
 
 # ---------------------------------------------------------------------------
 # Data models
@@ -101,10 +157,12 @@ def get_ocr_engine(lang: str = "en"):
 			)
 
 		try:
+			# PaddleOCR 3.x: ``use_angle_cls`` is renamed to
+			# ``use_textline_orientation``; ``show_log`` was removed
+			# (logging is configured via the global ``paddleocr.logger``).
 			_ocr_engines[lang] = PaddleOCR(
-				use_angle_cls=True,
+				use_textline_orientation=True,
 				lang=lang,
-				show_log=False,
 			)
 		except Exception as exc:
 			raise OCRError(
@@ -116,25 +174,26 @@ def get_ocr_engine(lang: str = "en"):
 
 
 def get_structure_engine(lang: str = "en"):
-	"""Get or create a PPStructure instance for table / layout extraction."""
+	"""Get or create a PPStructureV3 instance for table / layout extraction.
+
+	PaddleOCR 3.x replaces the legacy ``PPStructure`` with
+	``PPStructureV3``.  The constructor no longer accepts ``show_log``.
+	"""
 	global _structure_engines
 	if lang not in _structure_engines:
 		try:
-			from paddleocr import PPStructure
+			from paddleocr import PPStructureV3
 		except ImportError:
 			raise OCRError(
-				"PaddleOCR (PPStructure) is not installed. Install with: pip install paddleocr",
+				"PaddleOCR (PPStructureV3) is not installed. Install with: pip install paddleocr",
 				details={"lang": lang},
 			)
 
 		try:
-			_structure_engines[lang] = PPStructure(
-				lang=lang,
-				show_log=False,
-			)
+			_structure_engines[lang] = PPStructureV3(lang=lang)
 		except Exception as exc:
 			raise OCRError(
-				f"Failed to initialise PPStructure for language '{lang}': {exc}",
+				f"Failed to initialise PPStructureV3 for language '{lang}': {exc}",
 				details={"lang": lang},
 			)
 

@@ -237,9 +237,13 @@ const renderedMarkdown = computed(() =>
 )
 
 const hasCard = computed(() => {
+  // Only the ConfirmationCard renderer lives in ConfirmationCardUI.
+  // InfoCard / ErrorCard / other card types are surfaced by the plain
+  // text bubble (and the dedicated error block below).  Rendering an
+  // InfoCard through ConfirmationCardUI produced an empty yellow
+  // "Confirmation required" stub after Save Draft (Phase 24 fix).
   return (
-    props.message.rendered_card_type &&
-    props.message.rendered_card_type !== 'None' &&
+    props.message.rendered_card_type === 'ConfirmationCard' &&
     !!props.message.rendered_card_payload
   )
 })

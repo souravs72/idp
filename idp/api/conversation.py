@@ -14,10 +14,12 @@ All endpoints are guarded by Frappe's permission system and the
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import frappe
 from frappe import _
 
+from idp.core.config import get_default_company
 from idp.core.logger import get_logger
 
 logger = get_logger("idp.api.conversation")
@@ -624,12 +626,130 @@ def confirm_card(
 	if action in {"submit", "save_draft"}:
 		revalidation = _revalidate_card(card, edited)
 
+	# Phase 24 — Cancel: just acknowledge.  The frontend handles the
+	# UI-level "reset to extracted data" by re-rendering from the
+	# persisted card payload, which we never mutate on cancel.
+	if action == "cancel":
+		logger.info("confirm_card conv=%s msg=%s action=cancel", doc.name, message.name)
+		return {
+			"conversation_id": doc.name,
+			"message_id": message.name,
+			"action": action,
+			"version": version,
+			"doctype": card.get("doctype"),
+			"revalidation_warnings": revalidation,
+			"draft_saved_message_id": None,
+			"created_doc": None,
+			"confirmed_payload": {
+				"action": action,
+				"doctype": card.get("doctype"),
+				"message_id": message.name,
+				"edits": edited or {},
+			},
+		}
+
+	# Phase 24 — Submit and Save as Draft both actually create the
+	# ERPNext document.  Submit additionally calls ``submit()`` so the
+	# document leaves Draft state.  In either case the conversation's
+	# uploaded attachments are linked to the newly created record.
+	draft_saved_message_name: str | None = None
+	created_info: dict | None = None
+	if action in {"submit", "save_draft"}:
+		_apply_edits_to_card(card, edited)
+		try:
+			created_info = _create_erpnext_doc_from_card(
+				card,
+				company=card.get("company") or doc.company or "",
+				submit=(action == "submit"),
+			)
+		except Exception as exc:  # noqa: BLE001 — surface friendly error
+			envelope = _build_friendly_error(exc)
+			logger.exception(
+				"confirm_card create failed conv=%s msg=%s action=%s",
+				doc.name,
+				message.name,
+				action,
+			)
+			err_doc = _persist_error_message(doc.name, envelope)
+			return {
+				"conversation_id": doc.name,
+				"message_id": message.name,
+				"action": action,
+				"version": version,
+				"doctype": card.get("doctype"),
+				"revalidation_warnings": revalidation,
+				"draft_saved_message_id": err_doc.get("name") if err_doc else None,
+				"created_doc": None,
+				"error": envelope,
+				"confirmed_payload": None,
+			}
+
+		# Attach the conversation's uploaded files to the created doc.
+		attached = _attach_conversation_files_to_doc(
+			doc,
+			created_info["doctype"],
+			created_info["name"],
+		)
+		created_info["attached_files"] = attached
+
+		# Lock down the action buttons and stamp status onto the card
+		# so the bubble renders as read-only afterwards.
+		card["actions"] = []
+		card["created_doc"] = created_info
+		if action == "save_draft":
+			card["draft_saved"] = True
+		else:
+			card["submitted"] = True
+		message.rendered_card_payload = json.dumps(card, default=str)
+		message.save(ignore_permissions=False)
+
+		# Post a short assistant acknowledgement so the chat surface
+		# reflects what happened.
+		ack_text = (
+			_("{0} {1} created and submitted.").format(
+				created_info["doctype"], created_info["name"]
+			)
+			if action == "submit"
+			else _("{0} {1} saved as draft.").format(
+				created_info["doctype"], created_info["name"]
+			)
+		)
+		ack_doc = frappe.new_doc("IDP Message")
+		ack_doc.conversation = doc.name
+		ack_doc.role = "assistant"
+		ack_doc.content = ack_text
+		ack_doc.rendered_card_type = "InfoCard"
+		ack_doc.rendered_card_payload = json.dumps(
+			{
+				"card_type": "InfoCard",
+				"title": _("{0} created").format(created_info["doctype"]),
+				"body": ack_text,
+				"link": {
+					"doctype": created_info["doctype"],
+					"name": created_info["name"],
+				},
+			},
+			default=str,
+		)
+		ack_doc.insert(ignore_permissions=True)
+		draft_saved_message_name = ack_doc.name
+		try:
+			frappe.publish_realtime(
+				event="idp_conversation_message",
+				message={"conversation": doc.name, "message": ack_doc.as_dict()},
+				doctype="IDP Conversation",
+				docname=doc.name,
+			)
+		except Exception:
+			logger.debug("realtime publish skipped for confirm ack", exc_info=False)
+
 	logger.info(
-		"confirm_card conv=%s msg=%s action=%s warnings=%s",
+		"confirm_card conv=%s msg=%s action=%s warnings=%s created=%s",
 		doc.name,
 		message.name,
 		action,
 		len(revalidation),
+		(created_info or {}).get("name"),
 	)
 
 	return {
@@ -639,8 +759,12 @@ def confirm_card(
 		"version": version,
 		"doctype": card.get("doctype"),
 		"revalidation_warnings": revalidation,
-		# The frontend hands this back to ``run_agent`` so the agent can
-		# authorise the next ``create_document`` invocation.
+		"draft_saved_message_id": draft_saved_message_name,
+		"created_doc": created_info,
+		# Kept for backward-compat — the frontend used to feed this back
+		# into ``run_agent`` so the agent could authorise create_document.
+		# With Phase 24 the API performs the create directly, but we
+		# still emit the envelope so older clients don't break.
 		"confirmed_payload": {
 			"action": action,
 			"doctype": card.get("doctype"),
@@ -648,6 +772,291 @@ def confirm_card(
 			"edits": edited or {},
 		},
 	}
+
+
+def _create_erpnext_doc_from_card(card: dict, *, company: str, submit: bool) -> dict:
+	"""Build a MappedDocument from the persisted card and create the ERPNext doc.
+
+	Args:
+		card: The (already edits-applied) ConfirmationCard payload.
+		company: Owning company; falls back to default if blank.
+		submit: When True, also call ``doc.submit()`` after insert.
+
+	Returns:
+		``{"doctype", "name", "url", "submitted", "warnings", "created_masters"}``.
+	"""
+
+	from idp.idp.mappers.base import MappedDocument
+	from idp.idp.mappers.document_creator import create_document as create_doc_fn
+
+	# Header values: prefer the (possibly user-edited) card field values.
+	header: dict[str, Any] = {}
+	for h in card.get("header") or []:
+		if not isinstance(h, dict):
+			continue
+		fn = h.get("fieldname")
+		if not fn:
+			continue
+		header[fn] = h.get("value")
+
+	# Items: rebuild from card rows.  Apply user-picked ``erpnext_item``
+	# back onto the row data as ``item_code`` so the document_creator
+	# (which expects ERPNext field names) maps it correctly.  Likewise
+	# carry over ``is_stock_item`` overrides set via the table.
+	#
+	# When the user picked an existing ERPNext item via the dropdown we
+	# also pull the canonical ``item_name``/``description``/``stock_uom``
+	# from the Item master so the resulting line shows the ERPNext name
+	# (not the OCR-extracted string) — Phase 24 fix.  ERPNext's own
+	# ``get_item_details`` hook still runs on insert to compute rate,
+	# HSN, taxes, etc., so we deliberately keep the fetch minimal.
+	#
+	# For rows whose status is ``New`` (no existing item match) we
+	# collect per-row overrides keyed by the item_code that will be
+	# auto-created, so ``is_stock_item`` etc. travel through to
+	# auto_create_missing_masters.
+	items: list[dict] = []
+	item_overrides: dict[str, dict] = {}
+	items_block = card.get("items") or {}
+	for r in items_block.get("rows") or []:
+		if not isinstance(r, dict):
+			continue
+		row_data = dict(r.get("data") or {})
+		picked_item = r.get("erpnext_item")
+		if picked_item:
+			row_data["item_code"] = picked_item
+			# Pull canonical fields from the Item master so the saved
+			# Purchase Invoice line reflects the ERPNext item, not the
+			# OCR extraction.
+			master = frappe.db.get_value(
+				"Item",
+				picked_item,
+				["item_name", "description", "stock_uom"],
+				as_dict=True,
+			)
+			if master:
+				if master.get("item_name"):
+					row_data["item_name"] = master["item_name"]
+				if master.get("description"):
+					row_data["description"] = master["description"]
+				if master.get("stock_uom") and not row_data.get("uom"):
+					row_data["uom"] = master["stock_uom"]
+		else:
+			# Row will trigger auto-create.  The item_code in row_data
+			# (set by the mapper) will be the key under which the new
+			# Item is created — collect any per-row overrides here.
+			pending_code = row_data.get("item_code")
+			if pending_code:
+				override: dict = {}
+				if "is_stock_item" in row_data:
+					override["is_stock_item"] = 1 if row_data.get("is_stock_item") else 0
+				if row_data.get("item_name"):
+					override["item_name"] = row_data["item_name"]
+				if row_data.get("description"):
+					override["description"] = row_data["description"]
+				if row_data.get("uom"):
+					override["stock_uom"] = row_data["uom"]
+				if override:
+					item_overrides[str(pending_code)] = override
+		items.append(row_data)
+
+	# Taxes: rebuild from card rows, using user-picked ``erpnext_account``.
+	# ERPNext's ``rate`` field on Purchase/Sales Taxes and Charges is a
+	# percentage (18.0, not 0.18).  The extractor sometimes returns the
+	# fractional form (mirroring the OCR text) so we normalise here:
+	# anything <= 1 is treated as a fraction and scaled to a percent.
+	# This matches ``TaxMappingTable.formatRate`` which already does the
+	# same heuristic for display (Phase 24 fix).
+	taxes: list[dict] = []
+	taxes_block = card.get("taxes") or {}
+	for r in taxes_block.get("rows") or []:
+		if not isinstance(r, dict):
+			continue
+		extracted = r.get("extracted") or {}
+		account = r.get("erpnext_account") or extracted.get("account")
+		raw_rate = extracted.get("rate")
+		rate_value: float | None = None
+		if raw_rate not in (None, ""):
+			try:
+				rate_value = float(raw_rate)
+				if rate_value <= 1:
+					rate_value = rate_value * 100.0
+			except (TypeError, ValueError):
+				rate_value = None
+		taxes.append(
+			{
+				"account_head": account,
+				"account": account,
+				"rate": rate_value,
+				"tax_amount": extracted.get("tax_amount"),
+				"taxable_amount": extracted.get("taxable_amount"),
+				"description": extracted.get("description") or account,
+				"charge_type": "On Net Total",
+			}
+		)
+
+	mapped = MappedDocument(
+		doctype=card.get("doctype") or "",
+		header=header,
+		items=items,
+		taxes=taxes,
+	)
+
+	result = create_doc_fn(
+		mapped,
+		company=company or get_default_company() or "",
+		create_missing_masters=True,
+		skip_validation=True,
+		item_overrides=item_overrides or None,
+	)
+
+	created_doctype = result["doctype"]
+	created_name = result["name"]
+
+	if submit:
+		try:
+			created_doc = frappe.get_doc(created_doctype, created_name)
+			created_doc.flags.ignore_permissions = True
+			created_doc.submit()
+		except Exception as exc:  # noqa: BLE001
+			# Insert succeeded but submit failed — surface the error
+			# upstream while keeping the Draft.
+			logger.exception(
+				"confirm_card submit failed for %s %s: %s",
+				created_doctype,
+				created_name,
+				exc,
+			)
+			raise
+
+	# Re-read so we get the latest docstatus.
+	final_doc = frappe.get_doc(created_doctype, created_name)
+	return {
+		"doctype": final_doc.doctype,
+		"name": final_doc.name,
+		"url": frappe.utils.get_url_to_form(final_doc.doctype, final_doc.name),
+		"submitted": bool(submit),
+		"docstatus": int(getattr(final_doc, "docstatus", 0) or 0),
+		"warnings": result.get("warnings") or [],
+		"created_masters": result.get("created_masters") or [],
+	}
+
+
+def _attach_conversation_files_to_doc(
+	conversation_doc: "frappe.Document",
+	target_doctype: str,
+	target_name: str,
+) -> list[dict]:
+	"""Link every uploaded conversation attachment to *target_doctype/name*.
+
+	We don't duplicate the ``tabFile`` row — instead we insert a fresh
+	``File`` row for the target that points at the same ``file_url``,
+	preserving the original file binary and keeping ``attached_to_*``
+	correctly set.  Returns metadata about the attached files.
+	"""
+
+	out: list[dict] = []
+	for att in conversation_doc.attachments or []:
+		try:
+			file_url = att.file_url
+			if not file_url:
+				continue
+			file_doc = frappe.get_doc(
+				{
+					"doctype": "File",
+					"file_url": file_url,
+					"file_name": att.file_name or file_url.rsplit("/", 1)[-1],
+					"attached_to_doctype": target_doctype,
+					"attached_to_name": target_name,
+					"is_private": 1 if (file_url or "").startswith("/private/") else 0,
+				}
+			)
+			file_doc.flags.ignore_permissions = True
+			# ``ignore_duplicate_entry_error`` keeps re-runs idempotent if
+			# the user re-clicks Submit on a previously failed attempt.
+			try:
+				file_doc.insert(ignore_permissions=True)
+			except Exception as exc:  # noqa: BLE001
+				logger.warning(
+					"attach file %s to %s/%s failed: %s",
+					file_url,
+					target_doctype,
+					target_name,
+					exc,
+				)
+				continue
+			out.append(
+				{
+					"file_url": file_url,
+					"file_name": att.file_name,
+					"attached_to": f"{target_doctype}/{target_name}",
+				}
+			)
+		except Exception:  # noqa: BLE001
+			logger.exception(
+				"unexpected failure attaching %s to %s/%s",
+				getattr(att, "file_url", "?"),
+				target_doctype,
+				target_name,
+			)
+	return out
+
+
+def _apply_edits_to_card(card: dict, edited: dict | None) -> None:
+	"""Mutate *card* in-place to reflect the user's confirmation edits.
+
+	Only the bits the UI surfaces today are honoured: header field
+	values, item-row mappings (``erpnext_item``), tax-row mappings
+	(``erpnext_account``), and per-item ``is_stock_item`` overrides.
+	The rest of the payload is left intact so re-rendering keeps its
+	candidate lists, scores, and warnings.
+	"""
+
+	if not isinstance(edited, dict):
+		return
+
+	header_edits = edited.get("header") or {}
+	if isinstance(header_edits, dict) and header_edits:
+		for h in card.get("header") or []:
+			if not isinstance(h, dict):
+				continue
+			fn = h.get("fieldname")
+			if fn in header_edits:
+				h["value"] = header_edits[fn]
+
+	item_map = edited.get("item_mappings") or {}
+	stock_overrides = edited.get("item_stock_overrides") or {}
+	items_block = card.get("items") or {}
+	for r in items_block.get("rows") or []:
+		if not isinstance(r, dict):
+			continue
+		idx = r.get("index")
+		if idx is None:
+			continue
+		key = str(idx)
+		if isinstance(item_map, dict) and (key in item_map or idx in item_map):
+			r["erpnext_item"] = item_map.get(key) or item_map.get(idx)
+			r["status"] = "Existing" if r["erpnext_item"] else "New"
+		if isinstance(stock_overrides, dict) and (key in stock_overrides or idx in stock_overrides):
+			val = stock_overrides.get(key)
+			if val is None:
+				val = stock_overrides.get(idx)
+			data = r.get("data") or {}
+			data["is_stock_item"] = bool(val)
+			r["data"] = data
+
+	account_map = edited.get("account_mappings") or {}
+	taxes_block = card.get("taxes") or {}
+	for r in taxes_block.get("rows") or []:
+		if not isinstance(r, dict):
+			continue
+		idx = r.get("row_index")
+		if idx is None:
+			continue
+		key = str(idx)
+		if isinstance(account_map, dict) and (key in account_map or idx in account_map):
+			r["erpnext_account"] = account_map.get(key) or account_map.get(idx)
+			r["status"] = "Existing" if r["erpnext_account"] else "New"
 
 
 @frappe.whitelist()
@@ -874,3 +1283,283 @@ def list_agent_tools() -> list[dict]:
 		}
 		for t in list_tools()
 	]
+
+
+# ---------------------------------------------------------------------------
+# Phase 24 — Item / Tax remap endpoints
+# ---------------------------------------------------------------------------
+
+
+@frappe.whitelist()
+def search_items(query: str, top_n: int = 10) -> list[dict]:
+	"""Phase 24 — interactive Item search for the mapping table.
+
+	The user can pick an alternate ``ERPNext Item`` for any row whose
+	auto-match landed on ``status = "New"``.  This endpoint surfaces
+	the full :func:`match_single_item` candidate list so the UI can
+	render a search dropdown without round-tripping the LLM.
+	"""
+
+	_require_login()
+	query = (query or "").strip()
+	if not query:
+		return []
+	try:
+		top_n = max(1, min(int(top_n or 10), 50))
+	except (TypeError, ValueError):
+		top_n = 10
+
+	from idp.idp.mappers.item_matcher import match_single_item
+
+	# Use a deliberately low floor so even partial substrings show up
+	# in the search dropdown — the UI sorts and filters from there.
+	result = match_single_item(
+		{"item_code": query, "item_name": query},
+		match_threshold=0.99,  # ensures status stays "New" for ranking
+		floor_threshold=0.3,
+		top_n=top_n,
+	)
+	return [c.to_dict() for c in result.matches]
+
+
+@frappe.whitelist()
+def search_accounts(query: str, company: str | None = None, top_n: int = 10) -> list[dict]:
+	"""Phase 24 — interactive Account search for the tax mapping table."""
+
+	_require_login()
+	query = (query or "").strip()
+	if not query:
+		return []
+	try:
+		top_n = max(1, min(int(top_n or 10), 50))
+	except (TypeError, ValueError):
+		top_n = 10
+
+	from idp.idp.mappers.tax_matcher import match_single_tax
+
+	result = match_single_tax(
+		{"account": query},
+		company=company,
+		match_threshold=0.99,
+		floor_threshold=0.3,
+		top_n=top_n,
+	)
+	return [c.to_dict() for c in result.matches]
+
+
+@frappe.whitelist()
+def remap_card_row(
+	conversation_id: str,
+	message_id: str,
+	row_kind: str,
+	row_index: int,
+	action: str,
+	target: str | None = None,
+) -> dict:
+	"""Phase 24 §24.5 — apply a user remap onto a persisted ConfirmationCard.
+
+	Args:
+		conversation_id: Owning conversation.
+		message_id: ``IDP Message`` carrying the card payload.
+		row_kind: Either ``"items"`` or ``"taxes"``.
+		row_index: Zero-based index in the (full) row list.
+		action: One of ``"pick"`` (set ``erpnext_*`` to ``target``),
+			``"mark_new"`` (clear mapping, force ``status = "New"``),
+			``"accept"`` (no-op confirmation; persists the row's current
+			best match and clears the candidate list).
+		target: Required for ``action = "pick"`` — the chosen
+			``Item.name`` / ``Account.name``.
+
+	Returns the updated row dict (same shape as the card payload row).
+	"""
+
+	from idp.core.exceptions import ConfirmationCardError
+
+	_require_login()
+	doc = _load_conversation(conversation_id)
+	if not frappe.has_permission("IDP Conversation", ptype="write", doc=doc):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	row_kind = (row_kind or "").strip().lower()
+	if row_kind not in ("items", "taxes"):
+		raise ConfirmationCardError(_("row_kind must be 'items' or 'taxes'"))
+
+	action = (action or "").strip().lower()
+	if action not in ("pick", "mark_new", "accept"):
+		raise ConfirmationCardError(_("action must be 'pick', 'mark_new', or 'accept'"))
+
+	try:
+		row_index = int(row_index)
+		if row_index < 0:
+			raise ValueError
+	except (TypeError, ValueError):
+		raise ConfirmationCardError(_("row_index must be a non-negative integer")) from None
+
+	message = frappe.get_doc("IDP Message", message_id)
+	if message.conversation != doc.name:
+		raise ConfirmationCardError(_("Message does not belong to this conversation"))
+
+	card = _parse_json_arg(message.rendered_card_payload, None)
+	if not isinstance(card, dict):
+		raise ConfirmationCardError(_("Message does not carry a confirmation card"))
+
+	block = card.get(row_kind)
+	if not isinstance(block, dict):
+		raise ConfirmationCardError(_("Card has no {kind} block").format(kind=row_kind))
+
+	rows = block.get("rows") or []
+	# Find the row by ``index`` / ``row_index`` since ``rows`` may only
+	# carry the inline page (Phase 25 pagination).
+	idx_key = "index" if row_kind == "items" else "row_index"
+	target_row = None
+	for r in rows:
+		if isinstance(r, dict) and r.get(idx_key) == row_index:
+			target_row = r
+			break
+	if target_row is None:
+		raise ConfirmationCardError(
+			_("Row {idx} not found in {kind} block").format(idx=row_index, kind=row_kind)
+		)
+
+	resolved_field = "erpnext_item" if row_kind == "items" else "erpnext_account"
+
+	if action == "mark_new":
+		target_row[resolved_field] = None
+		target_row["status"] = "New"
+		target_row["match_reason"] = None
+		target_row["confidence"] = 0.0
+	elif action == "pick":
+		if not target:
+			raise ConfirmationCardError(_("target is required for action='pick'"))
+		target_row[resolved_field] = str(target)
+		target_row["status"] = "Existing"
+		target_row["match_reason"] = "user_picked"
+		target_row["confidence"] = 1.0
+	elif action == "accept":
+		# Confirm whatever is already there — collapse the candidate list
+		# but keep the resolved value & status as-is.
+		if target_row.get(resolved_field):
+			target_row["status"] = "Existing"
+			if not target_row.get("match_reason"):
+				target_row["match_reason"] = "user_accepted"
+
+	# Persist the mutated card payload.
+	message.rendered_card_payload = json.dumps(card)
+	message.save(ignore_permissions=False)
+	frappe.db.commit()
+
+	return {
+		"conversation_id": doc.name,
+		"message_id": message.name,
+		"row_kind": row_kind,
+		"row_index": row_index,
+		"row": target_row,
+	}
+
+
+@frappe.whitelist()
+def create_item_from_row(
+	conversation_id: str,
+	message_id: str,
+	row_index: int,
+	defaults: str | dict | None = None,
+) -> dict:
+	"""Phase 24 §24.6 — auto-create a minimal Item from an extracted row.
+
+	Permission: requires the ``IDP Master Creator`` role (Phase 21) or
+	the standard Frappe ``create`` permission on Item.  Either gate is
+	sufficient.
+
+	The new Item picks defaults from the row's extracted data (item_name,
+	stock_uom, is_stock_item, is_fixed_asset).  After creation the
+	matching row in the persisted ConfirmationCard is flipped to
+	``status = "Existing"`` and ``erpnext_item`` is set to the new
+	Item's name.
+	"""
+
+	from idp.core.exceptions import ConfirmationCardError
+	from idp.idp.mappers.document_creator import _create_item
+
+	user = _require_login()
+	doc = _load_conversation(conversation_id)
+	if not frappe.has_permission("IDP Conversation", ptype="write", doc=doc):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	user_roles = set(frappe.get_roles(user))
+	if "IDP Master Creator" not in user_roles and not frappe.has_permission("Item", ptype="create"):
+		frappe.throw(
+			_("You need the 'IDP Master Creator' role or create permission on Item."),
+			frappe.PermissionError,
+		)
+
+	try:
+		row_index = int(row_index)
+		if row_index < 0:
+			raise ValueError
+	except (TypeError, ValueError):
+		raise ConfirmationCardError(_("row_index must be a non-negative integer")) from None
+
+	defaults_dict = _parse_json_arg(defaults, {}) or {}
+	if not isinstance(defaults_dict, dict):
+		raise ConfirmationCardError(_("defaults must be a JSON object"))
+
+	message = frappe.get_doc("IDP Message", message_id)
+	if message.conversation != doc.name:
+		raise ConfirmationCardError(_("Message does not belong to this conversation"))
+
+	card = _parse_json_arg(message.rendered_card_payload, None)
+	if not isinstance(card, dict):
+		raise ConfirmationCardError(_("Message does not carry a confirmation card"))
+
+	items_block = card.get("items") or {}
+	rows = items_block.get("rows") or []
+	target_row = next(
+		(r for r in rows if isinstance(r, dict) and r.get("index") == row_index),
+		None,
+	)
+	if target_row is None:
+		raise ConfirmationCardError(
+			_("Item row {idx} not found in card").format(idx=row_index)
+		)
+
+	row_data = target_row.get("data") or {}
+	proposed_name = (
+		str(row_data.get("item_name") or row_data.get("item") or row_data.get("item_code") or "").strip()
+	)
+	if not proposed_name:
+		raise ConfirmationCardError(_("Row has no item name to create from"))
+
+	settings: dict[str, Any] = {
+		"stock_uom": defaults_dict.get("stock_uom") or row_data.get("uom") or "Nos",
+		"item_group": defaults_dict.get("item_group", "All Item Groups"),
+		"is_stock_item": int(
+			defaults_dict.get("is_stock_item")
+			if defaults_dict.get("is_stock_item") is not None
+			else (row_data.get("is_stock_item") or 0)
+		),
+		"is_fixed_asset": int(defaults_dict.get("is_fixed_asset", 0)),
+	}
+
+	# If the Item already exists (race / explicit naming), short-circuit.
+	if frappe.db.exists("Item", proposed_name):
+		new_name = proposed_name
+	else:
+		_create_item(proposed_name, get_default_company(), settings)
+		new_name = proposed_name
+
+	# Flip the row in the persisted card.
+	target_row["erpnext_item"] = new_name
+	target_row["status"] = "Existing"
+	target_row["match_reason"] = "auto_created"
+	target_row["confidence"] = 1.0
+	message.rendered_card_payload = json.dumps(card)
+	message.save(ignore_permissions=False)
+	frappe.db.commit()
+
+	return {
+		"conversation_id": doc.name,
+		"message_id": message.name,
+		"row_index": row_index,
+		"item_code": new_name,
+		"row": target_row,
+	}

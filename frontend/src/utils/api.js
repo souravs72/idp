@@ -303,3 +303,28 @@ export function listLLMProviders() {
     url: '/api/method/idp.api.llm.list_providers',
   })
 }
+
+// ---------------------------------------------------------------------------
+// Phase 24 — Item / Account search for the mapping table dropdowns
+// ---------------------------------------------------------------------------
+
+export function searchItems({ query, topN = 10 } = {}) {
+  return frappeRequest({
+    url: '/api/method/idp.api.conversation.search_items',
+    params: {
+      query: query || '',
+      top_n: topN,
+    },
+  })
+}
+
+export function searchAccounts({ query, company, topN = 10 } = {}) {
+  return frappeRequest({
+    url: '/api/method/idp.api.conversation.search_accounts',
+    params: {
+      query: query || '',
+      company: company || undefined,
+      top_n: topN,
+    },
+  })
+}

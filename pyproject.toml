@@ -21,6 +21,10 @@ dependencies = [
     "openai>=1.40",
     "tiktoken>=0.7",
     "anthropic>=0.34",
+    # Phase 24 — fast fuzzy matching for Item/Account candidate ranking.
+    # Falls back to stdlib difflib when not installed, so this stays a
+    # soft requirement at runtime.
+    "rapidfuzz>=3.0",
 ]
 
 [project.optional-dependencies]

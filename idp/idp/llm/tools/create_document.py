@@ -130,7 +130,17 @@ def create_document(arguments: dict, ctx: ToolContext) -> ToolResult:
 			stop_processing=True,
 		)
 
-	return ToolResult.ok(
+	# Terminal turn: the InfoCard payload already carries the
+	# user-facing confirmation text and a deep-link to the new record.
+	# Stop the agent loop here so we don't pay for an extra LLM call
+	# that would only re-render the same "X created" sentence.
+	body = (
+		f"{doctype} {doc.name} was submitted."
+		if should_submit
+		else f"{doctype} {doc.name} was saved as draft."
+	)
+	return ToolResult(
+		success=True,
 		data={
 			"doctype": doctype,
 			"name": doc.name,
@@ -140,9 +150,10 @@ def create_document(arguments: dict, ctx: ToolContext) -> ToolResult:
 		card={
 			"card_type": "InfoCard",
 			"title": f"{doctype} created",
-			"body": f"{doctype} {doc.name} was created successfully.",
+			"body": body,
 			"link": {"doctype": doctype, "name": doc.name},
 		},
+		stop_processing=True,
 	)
 
 

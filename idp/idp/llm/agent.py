@@ -162,13 +162,27 @@ class IDPAgent:
 			)
 
 		# Inject user confirmation (Phase 20 Submit button click).
+		#
+		# We persist this as a *user*-role message rather than a
+		# synthetic ``tool`` row so we don't have to fabricate a
+		# ``tool_call_id`` that pairs with a prior assistant
+		# ``tool_use``.  Anthropic strictly validates that every
+		# ``tool_result.tool_use_id`` references an upstream ``tool_use``
+		# block whose id matches the regex ``^[a-zA-Z0-9_-]+$``; an
+		# orphan / empty id raises a 400 (Phase 24 fix).
+		#
+		# A plain user-role JSON line is enough for the LLM to recognise
+		# the confirmation and proceed to ``create_document`` — the
+		# previously-shown ConfirmationCard already supplies the data,
+		# and the system prompt tells the model to call ``create_document``
+		# once the user confirms.
 		if user_confirmed_action:
+			ack_payload = {"user_confirmed": True, "action": user_confirmed_action}
 			ack = self._persist_message(
-				role="tool",
-				content=json.dumps({"user_confirmed": True, "action": user_confirmed_action}),
+				role="user",
+				content="[user_confirmed_action] " + json.dumps(ack_payload, default=str),
 				tool_name="user_confirmation",
 				tool_arguments=user_confirmed_action,
-				tool_result={"success": True, "user_confirmed": True},
 			)
 			new_messages.append(ack)
 
@@ -217,6 +231,23 @@ class IDPAgent:
 
 			# 3. Persist assistant message --------------------------------
 			tool_calls = list(getattr(response, "tool_calls", None) or [])
+			# Persist the full tool_calls array so multi-tool-call turns
+			# can round-trip back to the LLM with all tool_use_ids intact.
+			# The legacy single tool_call_id/name/arguments fields are kept
+			# in sync with the first call for backward-compat with the UI
+			# and any consumer that hasn't migrated to the new field.
+			tool_calls_payload = (
+				[
+					{
+						"id": c.call_id,
+						"name": c.name,
+						"arguments": c.arguments or {},
+					}
+					for c in tool_calls
+				]
+				if tool_calls
+				else None
+			)
 			assistant_msg = self._persist_message(
 				role="assistant",
 				content=response.content or "",
@@ -226,6 +257,7 @@ class IDPAgent:
 				tool_call_id=tool_calls[0].call_id if tool_calls else None,
 				tool_name=tool_calls[0].name if tool_calls else None,
 				tool_arguments=tool_calls[0].arguments if tool_calls else None,
+				tool_calls=tool_calls_payload,
 			)
 			new_messages.append(assistant_msg)
 			self._publish_event(
@@ -300,6 +332,18 @@ class IDPAgent:
 								"stop_processing": True,
 							},
 						)
+					else:
+						# Card-as-terminal: synthesise the assistant's final
+						# user-facing reply from the card payload itself
+						# instead of paying for another LLM round-trip just
+						# to paraphrase data we already rendered.  See
+						# ``propose_create_document`` and ``create_document``
+						# for the contract.
+						self._maybe_emit_terminal_assistant_message(
+							tool_name=tool_name,
+							card=result.card,
+							new_messages=new_messages,
+						)
 					break
 
 			if stop_loop:
@@ -360,6 +404,7 @@ class IDPAgent:
 				"tool_call_id",
 				"tool_name",
 				"tool_arguments",
+				"tool_calls",
 				"tool_result",
 				"attachments",
 				"rendered_card_type",
@@ -371,7 +416,13 @@ class IDPAgent:
 		)
 		# Stringified JSON columns → dict for the renderer.
 		for r in rows:
-			for col in ("tool_arguments", "tool_result", "attachments", "rendered_card_payload"):
+			for col in (
+				"tool_arguments",
+				"tool_calls",
+				"tool_result",
+				"attachments",
+				"rendered_card_payload",
+			):
 				val = r.get(col)
 				if isinstance(val, str) and val.strip():
 					try:
@@ -392,6 +443,7 @@ class IDPAgent:
 		tool_call_id: str | None = None,
 		tool_name: str | None = None,
 		tool_arguments: dict | None = None,
+		tool_calls: list[dict] | None = None,
 		tool_result: dict | None = None,
 		rendered_card_type: str | None = None,
 		rendered_card_payload: dict | None = None,
@@ -420,6 +472,8 @@ class IDPAgent:
 			doc.tool_name = tool_name
 		if tool_arguments is not None:
 			doc.tool_arguments = json.dumps(tool_arguments, default=str)
+		if tool_calls is not None:
+			doc.tool_calls = json.dumps(tool_calls, default=str)
 		if tool_result is not None:
 			doc.tool_result = json.dumps(tool_result, default=str)
 		if rendered_card_type:
@@ -432,6 +486,73 @@ class IDPAgent:
 			doc.error = error
 		doc.insert(ignore_permissions=True)
 		return doc.as_dict()
+
+	def _maybe_emit_terminal_assistant_message(
+		self,
+		*,
+		tool_name: str,
+		card: dict | None,
+		new_messages: list[dict],
+	) -> None:
+		"""Synthesise a final assistant message from a terminal tool's card.
+
+		Tools like ``propose_create_document`` and ``create_document``
+		mark their result with ``stop_processing=True`` because the card
+		payload already contains all the user-facing text the chat needs
+		to show.  Rather than letting the agent iterate one more time
+		just so the LLM can paraphrase that card, we synthesise the
+		assistant's reply deterministically here.
+
+		The persisted message carries:
+
+		* ``role="assistant"`` so the UI renders it as a regular reply.
+		* ``content`` taken from ``card.summary`` (ConfirmationCard) or
+		  ``card.body`` (InfoCard).
+
+		For ``ConfirmationCard`` we deliberately do NOT re-attach the
+		card payload here because the *tool*-role message that produced
+		it already carries ``rendered_card_payload`` and the UI renders
+		that as the interactive card.  Re-attaching would result in two
+		identical cards appearing in the chat (Phase 24 fix).
+
+		For ``InfoCard`` we also drop the payload — the body text is
+		sufficient and the renderer doesn't need a second copy.
+		"""
+
+		if not isinstance(card, dict):
+			return
+
+		card_type = card.get("card_type")
+		if card_type == "ConfirmationCard":
+			content = card.get("summary") or ""
+		elif card_type == "InfoCard":
+			title = card.get("title") or ""
+			body = card.get("body") or ""
+			content = f"{title}\n\n{body}".strip() if title and body else (title or body)
+		else:
+			# Unknown card type — let the LLM iterate normally.  We
+			# reach this only when a third-party tool starts setting
+			# stop_processing=True without following the contract.
+			return
+
+		if not content:
+			return
+
+		# Synthesise text-only assistant reply.  The tool-role row that
+		# fired this terminal turn already owns the card payload, so
+		# attaching it again here would render two cards in the chat.
+		final_msg = self._persist_message(
+			role="assistant",
+			content=content,
+		)
+		new_messages.append(final_msg)
+		self._publish_event(
+			"idp_conversation_message",
+			{"conversation": self.conversation_id, "message": final_msg},
+		)
+		logger.debug(
+			f"agent emitted terminal assistant message from {tool_name} ({card_type})"
+		)
 
 	def _publish_event(self, event: str, payload: dict) -> None:
 		"""Publish a realtime event to the conversation's subscribers."""

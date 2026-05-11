@@ -20,6 +20,7 @@
   "column_break_tool",
   "tool_arguments",
   "tool_result",
+  "tool_calls",
   "attachments_section",
   "attachments",
   "card_section",
@@ -123,6 +124,12 @@
    "label": "Tool Result"
   },
   {
+   "description": "Full JSON list of tool calls when assistant batches multiple. Each entry: {id, name, arguments}. Takes precedence over the legacy single tool_call_* fields when populated.",
+   "fieldname": "tool_calls",
+   "fieldtype": "JSON",
+   "label": "Tool Calls"
+  },
+  {
    "collapsible": 1,
    "fieldname": "attachments_section",
    "fieldtype": "Section Break",
@@ -145,7 +152,7 @@
    "fieldname": "rendered_card_type",
    "fieldtype": "Select",
    "label": "Rendered Card Type",
-   "options": "None\nConfirmationCard\nComparisonCard\nErrorCard"
+   "options": "None\nConfirmationCard\nComparisonCard\nErrorCard\nInfoCard"
   },
   {
    "fieldname": "rendered_card_payload",
@@ -194,7 +201,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-04-21 00:00:00.000000",
+ "modified": "2026-05-07 12:59:51.000000",
  "modified_by": "Administrator",
  "module": "IDP",
  "name": "IDP Message",

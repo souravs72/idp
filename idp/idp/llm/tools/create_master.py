@@ -37,8 +37,17 @@ _PARAMETERS_SCHEMA = {
 			"description": "Field map for the master record.  Must include the required fields.",
 			"additionalProperties": True,
 		},
+		"user_confirmed": {
+			"type": "boolean",
+			"description": (
+				"Must be true.  The agent injects this only when the user has "
+				"explicitly approved master creation via the ConfirmationCard "
+				"(missing_masters review).  The LLM must NOT set this on its "
+				"own — surface gaps via propose_create_document instead."
+			),
+		},
 	},
-	"required": ["doctype", "fields"],
+	"required": ["doctype", "fields", "user_confirmed"],
 	"additionalProperties": False,
 }
 
@@ -47,14 +56,25 @@ _PARAMETERS_SCHEMA = {
 	name="create_master",
 	description=(
 		"Create a missing master record (Supplier, Customer, Item, UOM, Account, "
-		"...).  Use after list_missing_masters reports gaps.  Only the "
-		"whitelisted master DocTypes are accepted."
+		"...).  REQUIRES user_confirmed=True, which only the agent can set after "
+		"the user approves master creation in the ConfirmationCard.  Do NOT call "
+		"this autonomously — surface missing masters via propose_create_document."
 	),
 	parameters_schema=_PARAMETERS_SCHEMA,
 	mutating=True,
 )
 def create_master(arguments: dict, ctx: ToolContext) -> ToolResult:
 	args = arguments or {}
+
+	if not args.get("user_confirmed"):
+		return ToolResult.fail(
+			"user has not confirmed master creation — call "
+			"propose_create_document and let the user approve missing_masters "
+			"via the ConfirmationCard first",
+			error_code="USER_CONFIRMATION_REQUIRED",
+			stop_processing=True,
+		)
+
 	doctype = (args.get("doctype") or "").strip()
 	fields = args.get("fields") or {}
 

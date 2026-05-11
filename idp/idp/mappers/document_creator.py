@@ -50,6 +50,7 @@ def create_document(
 	company: str = "",
 	create_missing_masters: bool = False,
 	item_defaults: dict | None = None,
+	item_overrides: dict | None = None,
 	skip_validation: bool = False,
 ) -> dict:
 	"""Create an ERPNext document (as Draft) from mapped extraction data.
@@ -61,6 +62,10 @@ def create_document(
 			records if they don't exist.
 		item_defaults: Override defaults for auto-created Items, e.g.
 			``{"is_stock_item": 1, "item_group": "Products"}``.
+		item_overrides: Per-item-code overrides, keyed by the item_code that
+			will be auto-created. Each value is a dict of Item field
+			overrides (``is_stock_item``, ``item_name``, ``description``,
+			``stock_uom``) — these win over ``item_defaults``.
 		skip_validation: When True, skip schema + business-rule validation
 			before creating the document.  Useful when the caller has already
 			validated separately.
@@ -106,7 +111,7 @@ def create_document(
 	missing = _find_missing_masters(mapped_data, company)
 	if missing:
 		if create_missing_masters:
-			result = auto_create_missing_masters(missing, company, item_defaults)
+			result = auto_create_missing_masters(missing, company, item_defaults, item_overrides)
 			created_masters = result["created"]
 			for fail in result["failed"]:
 				warnings.append(f'Failed to create {fail["doctype"]} "{fail["name"]}": {fail["error"]}')
@@ -173,6 +178,7 @@ def auto_create_missing_masters(
 	missing: list[dict],
 	company: str,
 	item_defaults: dict | None = None,
+	item_overrides: dict | None = None,
 ) -> dict:
 	"""Create minimal master records for missing parties and items.
 
@@ -185,12 +191,16 @@ def auto_create_missing_masters(
 		- **Item**: item_name, item_group, is_stock_item, stock_uom
 		- **UOM**: uom_name
 
+	``item_overrides`` maps an item_code → field overrides dict that wins
+	over ``item_defaults`` for that specific Item (Phase 24).
+
 	Returns:
 		``{"created": [{"doctype", "name"}], "failed": [{"doctype", "name", "error"}]}``
 	"""
 	created: list[dict] = []
 	failed: list[dict] = []
 	item_settings = {**_DEFAULT_ITEM_SETTINGS, **(item_defaults or {})}
+	overrides_by_code = item_overrides or {}
 
 	for entry in missing:
 		dt = entry["doctype"]
@@ -202,7 +212,9 @@ def auto_create_missing_masters(
 			elif dt == "Customer":
 				_create_customer(value, company)
 			elif dt == "Item":
-				_create_item(value, company, item_settings)
+				row_override = overrides_by_code.get(str(value)) or {}
+				settings_for_row = {**item_settings, **row_override}
+				_create_item(value, company, settings_for_row)
 			elif dt == "UOM":
 				_create_uom(value)
 			else:
@@ -332,6 +344,36 @@ def _build_doc_dict(mapped_data: MappedDocument, company: str) -> dict:
 
 			doc_dict[child_table_field] = rows
 
+	# --- Child table taxes (Phase 24) ---
+	# ERPNext computes ``tax_amount`` from net_total × rate when
+	# ``charge_type='On Net Total'``, so the row only needs
+	# ``account_head``, ``charge_type``, ``rate`` and ``description``.
+	# We still forward ``tax_amount`` when provided so deviations from
+	# the recomputed value are auditable in the warnings.
+	if mapped_data.taxes and "taxes" in schema.get("child_tables", {}):
+		tax_child_dt = schema["child_tables"]["taxes"]["doctype"]
+		tax_valid = {f["fieldname"] for f in schema["child_tables"]["taxes"]["fields"]}
+		tax_rows: list[dict] = []
+		for tax_data in mapped_data.taxes:
+			if not isinstance(tax_data, dict):
+				continue
+			row = {"doctype": tax_child_dt}
+			# Default charge_type so ERPNext can compute the tax amount
+			# from the net total; the card always sets "On Net Total"
+			# but rule-based callers may omit it.
+			if "charge_type" in tax_valid:
+				row["charge_type"] = tax_data.get("charge_type") or "On Net Total"
+			for fieldname, value in tax_data.items():
+				if fieldname in tax_valid and value not in (None, ""):
+					row[fieldname] = value
+			# Skip rows with no account_head — ERPNext will reject them
+			# anyway and we'd rather surface that as a warning upstream.
+			if not row.get("account_head"):
+				continue
+			tax_rows.append(row)
+		if tax_rows:
+			doc_dict["taxes"] = tax_rows
+
 	return doc_dict
 
 
@@ -381,23 +423,31 @@ def _create_customer(name: str, company: str) -> None:
 
 
 def _create_item(name: str, company: str, settings: dict) -> None:
-	"""Create a minimal Item record."""
-	uom = settings.get("stock_uom", "Nos")
+	"""Create a minimal Item record.
+
+	``settings`` may carry per-row overrides — ``item_name``,
+	``description``, ``stock_uom``, ``is_stock_item`` — so that
+	auto-created Items reflect the user's confirmation-card choices
+	(Phase 24).
+	"""
+	uom = settings.get("stock_uom") or "Nos"
 	# Ensure the UOM exists
 	if not frappe.db.exists("UOM", uom):
 		_create_uom(uom)
 
-	doc = frappe.get_doc(
-		{
-			"doctype": "Item",
-			"item_name": name,
-			"item_code": name,
-			"item_group": _get_first_or_default("Item Group", settings.get("item_group", "All Item Groups")),
-			"stock_uom": uom,
-			"is_stock_item": settings.get("is_stock_item", 0),
-			"is_fixed_asset": settings.get("is_fixed_asset", 0),
-		}
-	)
+	doc_dict: dict = {
+		"doctype": "Item",
+		"item_name": settings.get("item_name") or name,
+		"item_code": name,
+		"item_group": _get_first_or_default("Item Group", settings.get("item_group", "All Item Groups")),
+		"stock_uom": uom,
+		"is_stock_item": 1 if settings.get("is_stock_item") else 0,
+		"is_fixed_asset": 1 if settings.get("is_fixed_asset") else 0,
+	}
+	if settings.get("description"):
+		doc_dict["description"] = settings["description"]
+
+	doc = frappe.get_doc(doc_dict)
 	doc.flags.ignore_permissions = True
 	doc.flags.ignore_mandatory = True
 	doc.insert()

@@ -882,6 +882,15 @@ class FieldMapper:
 							row_dict[fieldname] = normalised
 
 				if row_dict:
+					# Phase 24 — populate is_stock_item via keyword heuristic
+					# when the schema has the column and the row hasn't
+					# already supplied it (e.g. via a dedicated "Is Stock"
+					# header).  Blank => undetermined (per §24.0).
+					if any(f["fieldname"] == "is_stock_item" for f in child_fields):
+						if "is_stock_item" not in row_dict:
+							guess = _guess_is_stock_item(row_dict)
+							if guess is not None:
+								row_dict["is_stock_item"] = guess
 					items.append(row_dict)
 
 		return items
@@ -1003,3 +1012,108 @@ def _has_company_field(doctype: str) -> bool:
 		return meta.has_field("company")
 	except Exception:
 		return False
+
+
+# ---------------------------------------------------------------------------
+# Phase 24 — is_stock_item keyword heuristic
+# ---------------------------------------------------------------------------
+
+
+# Hints that strongly suggest a *stockable* (physical, inventoried) item.
+_STOCK_KEYWORDS: tuple[str, ...] = (
+	"raw material",
+	"finished good",
+	"component",
+	"part",
+	"goods",
+	"product",
+	"hardware",
+	"box",
+	"unit",
+	"bottle",
+	"piece",
+	"package",
+	"kg",
+	"gram",
+	"litre",
+	"liter",
+	"meter",
+	"metre",
+)
+
+# Hints that strongly suggest a *non-stock* (service / consumable) item.
+_NON_STOCK_KEYWORDS: tuple[str, ...] = (
+	"service",
+	"consultancy",
+	"consulting",
+	"subscription",
+	"license",
+	"licence",
+	"fee",
+	"charges",
+	"freight",
+	"shipping",
+	"installation",
+	"maintenance",
+	"support",
+	"training",
+	"warranty",
+)
+
+# UOMs that almost always indicate a stockable item.
+_STOCK_UOMS: tuple[str, ...] = (
+	"nos",
+	"no",
+	"pcs",
+	"pc",
+	"piece",
+	"box",
+	"unit",
+	"kg",
+	"gm",
+	"g",
+	"l",
+	"ltr",
+	"litre",
+	"liter",
+	"mtr",
+	"meter",
+	"metre",
+	"set",
+	"pack",
+)
+
+
+def _guess_is_stock_item(row: dict) -> int | None:
+	"""Return ``1``/``0``/``None`` based on row description & UOM keywords.
+
+	Per Phase 24 §24.0 the rule mapper populates ``is_stock_item`` with
+	a keyword heuristic; ``None`` (blank) means undetermined and the UI
+	leaves the cell empty.
+	"""
+
+	if not isinstance(row, dict):
+		return None
+
+	desc_parts: list[str] = []
+	for key in ("item_name", "description", "item_code", "particulars"):
+		val = row.get(key)
+		if val:
+			desc_parts.append(str(val).lower())
+	desc = " ".join(desc_parts)
+
+	uom = str(row.get("uom") or row.get("stock_uom") or "").strip().lower()
+
+	hits_stock = any(kw in desc for kw in _STOCK_KEYWORDS)
+	hits_non_stock = any(kw in desc for kw in _NON_STOCK_KEYWORDS)
+	uom_is_stock = uom in _STOCK_UOMS
+
+	# Service-leaning keywords win when the row also lacks a stock-y UOM.
+	if hits_non_stock and not uom_is_stock:
+		return 0
+	if hits_stock or uom_is_stock:
+		return 1
+	if hits_non_stock:
+		# Stock UOM + service keyword is ambiguous → leave undetermined.
+		return None
+	return None

@@ -91,17 +91,24 @@ export function useAgent() {
   }
 
   /**
-   * Phase 20: confirm a ConfirmationCard. Two phases:
-   *   1) Call ``confirm_card`` to validate + obtain the
-   *      ``confirmed_payload`` envelope.
-   *   2) Re-enter the agent loop with that envelope so the next
-   *      ``create_document`` tool call gets authorised.
+   * Phase 24: confirm a ConfirmationCard.
+   *
+   * The backend ``confirm_card`` endpoint now performs the actual
+   * ERPNext document creation directly (and attaches the uploaded
+   * source files to the new record).
+   *
+   *   - ``submit``     → create + submit + attach
+   *   - ``save_draft`` → create as Draft + attach
+   *   - ``cancel``     → no-op (UI resets edits locally)
+   *   - ``edit``       → handled in the card UI (no API call)
+   *
+   * After the call we re-sync the conversation so the new ack message
+   * (and any persisted card mutation) shows up in the chat.
    */
   async function confirm({
     messageId,
     action,
     edits = null,
-    sendFollowUp = true,
   }) {
     const conversationId = store.currentId
     if (!conversationId) throw new Error('No active conversation')
@@ -116,16 +123,17 @@ export function useAgent() {
         action,
         editedPayload: edits || null,
       })
-      if (action === 'submit' && sendFollowUp && out?.confirmed_payload) {
-        await send({
-          content: '',
-          attachments: [],
-          userConfirmedAction: out.confirmed_payload,
-        })
-      } else {
-        // Reload so revalidation warnings surface even when not submitting.
-        await syncConversation(conversationId)
+
+      // Surface backend-side errors (e.g. document insert failed)
+      // through the same friendly-error channel as send().
+      if (out && out.error && out.error.friendly_message) {
+        lastError.value = out.error.friendly_message
+        store.setAgentError(out.error.friendly_message)
       }
+
+      // Reload so revalidation warnings, the mutated card payload, and
+      // the ack assistant message surface in the chat surface.
+      await syncConversation(conversationId)
       return out
     } catch (err) {
       const friendly =

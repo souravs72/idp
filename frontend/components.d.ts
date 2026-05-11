@@ -18,6 +18,7 @@ declare module 'vue' {
     ExtractionForm: typeof import('./src/components/ExtractionForm.vue')['default']
     ExtractionPreview: typeof import('./src/components/ExtractionPreview.vue')['default']
     FileDropzone: typeof import('./src/components/FileDropzone.vue')['default']
+    ItemMappingTable: typeof import('./src/components/chat/ItemMappingTable.vue')['default']
     MessageBubble: typeof import('./src/components/chat/MessageBubble.vue')['default']
     MissingMastersDialog: typeof import('./src/components/MissingMastersDialog.vue')['default']
     NewConversationDialog: typeof import('./src/components/chat/NewConversationDialog.vue')['default']
@@ -27,6 +28,7 @@ declare module 'vue' {
     RouterView: typeof import('vue-router')['RouterView']
     SettingsPanel: typeof import('./src/components/SettingsPanel.vue')['default']
     StatusBadge: typeof import('./src/components/StatusBadge.vue')['default']
+    TaxMappingTable: typeof import('./src/components/chat/TaxMappingTable.vue')['default']
     ThinkingIndicator: typeof import('./src/components/chat/ThinkingIndicator.vue')['default']
   }
 }

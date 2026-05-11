@@ -51,10 +51,12 @@ export const useConversationStore = defineStore('idpConversation', () => {
   })
 
   const visibleMessages = computed(() => {
-    // Hide raw system / "user_confirmation" tool acks from the chat surface.
+    // Hide raw system / "user_confirmation" acks from the chat surface.
+    // The user_confirmation row may carry role="tool" (legacy) or
+    // role="user" (Phase 24 — to satisfy Anthropic's tool_use_id rules).
     return sortedMessages.value.filter((m) => {
       if (m.role === 'system') return false
-      if (m.role === 'tool' && m.tool_name === 'user_confirmation') return false
+      if (m.tool_name === 'user_confirmation') return false
       return true
     })
   })

@@ -278,7 +278,25 @@ def render_history(
 
 		if role == "assistant":
 			msg: dict[str, Any] = {"role": "assistant", "content": raw.get("content") or ""}
-			if raw.get("tool_call_id") and raw.get("tool_name"):
+			# Prefer the full tool_calls array (multi-tool-call turns) so
+			# every tool_use_id round-trips intact and matches its tool_result
+			# block.  Fall back to the legacy single tool_call_id/name fields
+			# for rows persisted before the tool_calls field was added.
+			calls_raw = raw.get("tool_calls")
+			if isinstance(calls_raw, list) and calls_raw:
+				msg["tool_calls"] = [
+					{
+						"id": c.get("id") or c.get("call_id") or "",
+						"type": "function",
+						"function": {
+							"name": c.get("name") or "",
+							"arguments": _to_json(c.get("arguments")),
+						},
+					}
+					for c in calls_raw
+					if isinstance(c, dict) and (c.get("id") or c.get("call_id"))
+				]
+			elif raw.get("tool_call_id") and raw.get("tool_name"):
 				msg["tool_calls"] = [
 					{
 						"id": raw["tool_call_id"],
@@ -293,11 +311,22 @@ def render_history(
 			continue
 
 		if role == "tool":
+			# Anthropic (and OpenAI strict mode) reject ``tool_result`` /
+			# ``tool`` messages whose ``tool_call_id`` is empty or doesn't
+			# match the upstream assistant ``tool_use``.  We silently
+			# downgrade orphan rows (e.g. legacy ``user_confirmation``
+			# acks persisted before Phase 24) to plain user-role text so
+			# the LLM still sees the content but the API stays happy.
+			tool_call_id = raw.get("tool_call_id") or ""
+			content_str = _to_json(raw.get("tool_result")) or (raw.get("content") or "")
+			if not tool_call_id:
+				rendered.append({"role": "user", "content": content_str})
+				continue
 			rendered.append(
 				{
 					"role": "tool",
-					"tool_call_id": raw.get("tool_call_id") or "",
-					"content": _to_json(raw.get("tool_result")) or (raw.get("content") or ""),
+					"tool_call_id": tool_call_id,
+					"content": content_str,
 				}
 			)
 			continue
