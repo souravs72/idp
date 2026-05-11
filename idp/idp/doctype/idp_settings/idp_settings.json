@@ -31,6 +31,7 @@
   "advanced_section",
   "ocr_timeout_seconds",
   "max_pages_per_pdf",
+  "confirmation_page_size",
   "phase15_section",
   "enable_templates",
   "enable_batch_processing",
@@ -214,6 +215,13 @@
    "fieldname": "max_pages_per_pdf",
    "fieldtype": "Int",
    "label": "Max Pages per PDF"
+  },
+  {
+   "default": "10",
+   "description": "Phase 25 \u2014 default rows per page on the ConfirmationCard items table. Range 5\u201350.",
+   "fieldname": "confirmation_page_size",
+   "fieldtype": "Int",
+   "label": "Confirmation Card Page Size"
   },
   {
    "fieldname": "phase15_section",

@@ -61,15 +61,22 @@
       </div>
     </div>
 
-    <!-- Items table (Phase 24 §24.0) -->
+    <!-- Items / generic child table (Phase 24 §24.0, Phase 25 §25.1) -->
     <div v-if="itemsBlock.rows?.length" class="mb-4">
       <div
-        class="mb-1 flex items-center justify-between text-xs font-medium text-gray-700 dark:text-gray-300"
+        class="mb-1 flex flex-wrap items-center justify-between gap-2 text-xs font-medium text-gray-700 dark:text-gray-300"
       >
         <span>
-          Items
+          {{ childTableTitle }}
           <span class="text-gray-500">
             ({{ itemsTotal }} row{{ itemsTotal === 1 ? '' : 's' }})
+          </span>
+          <span
+            v-if="sourcePages.length"
+            class="ml-2 text-[10px] text-gray-500"
+            :title="`Extracted from PDF page(s): ${sourcePages.join(', ')}`"
+          >
+            pages {{ sourcePages.join(', ') }}
           </span>
         </span>
         <div v-if="itemsTotal > pageSize" class="flex items-center gap-2">
@@ -92,11 +99,60 @@
           </button>
         </div>
       </div>
+
+      <!-- Phase 25 §25.4 — mass-edit toolbar for item tables only. -->
+      <div
+        v-if="isItemTable && itemsTotal > 1"
+        class="mb-2 flex flex-wrap items-center gap-2 rounded bg-amber-100/50 px-2 py-1 text-[11px] text-amber-900 dark:bg-amber-900/30 dark:text-amber-200"
+      >
+        <button
+          class="rounded bg-white px-2 py-0.5 text-[11px] text-gray-700 shadow-sm hover:bg-gray-100 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+          :disabled="bulkBusy"
+          @click="onBulkMatch"
+        >
+          {{ bulkBusy ? 'Working…' : 'Auto-match all' }}
+        </button>
+        <button
+          class="rounded bg-white px-2 py-0.5 text-[11px] text-gray-700 shadow-sm hover:bg-gray-100 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+          :disabled="bulkBusy"
+          @click="onBulkAccept"
+        >
+          Accept all suggestions
+        </button>
+        <span class="ml-1 inline-flex items-center gap-1">
+          <span class="text-gray-600 dark:text-gray-300">UOM →</span>
+          <input
+            v-model="bulkUom"
+            type="text"
+            placeholder="e.g. Nos"
+            class="w-20 rounded border border-gray-300 bg-white px-1 py-0.5 text-[11px] dark:border-gray-700 dark:bg-gray-900"
+          />
+          <button
+            class="rounded bg-white px-2 py-0.5 text-[11px] text-gray-700 shadow-sm hover:bg-gray-100 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+            :disabled="bulkBusy || !bulkUom.trim()"
+            @click="onApplyUomToAll"
+          >
+            Apply to all
+          </button>
+        </span>
+        <span v-if="bulkResult" class="ml-auto text-[10px] text-amber-900 dark:text-amber-200">
+          {{ bulkResult }}
+        </span>
+      </div>
+
       <ItemMappingTable
+        v-if="isItemTable"
         :rows="displayItems"
         :editing="editing"
         @edit="onItemEdit"
         @edit-stock="onItemStockEdit"
+      />
+      <GenericChildTable
+        v-else
+        :rows="displayItems"
+        :schema="childRowSchema"
+        :editing="editing"
+        @edit-cell="onGenericCellEdit"
       />
     </div>
 
@@ -190,10 +246,16 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { useAgent } from '@/composables/useAgent'
-import { getCardItemsPage } from '@/utils/api'
+import {
+  getCardItemsPage,
+  bulkMatchItems,
+  bulkAcceptSuggestions,
+  applyToAllRows,
+} from '@/utils/api'
 import { useConversationStore } from '@/stores/conversation'
 import ItemMappingTable from './ItemMappingTable.vue'
 import TaxMappingTable from './TaxMappingTable.vue'
+import GenericChildTable from './GenericChildTable.vue'
 
 const props = defineProps({
   message: { type: Object, required: true },
@@ -264,6 +326,32 @@ const page = ref(1)
 const itemsLoading = ref(false)
 const fetchedRows = ref(null)
 
+// Phase 25 §25.1 — child-table routing.  Cards built before Phase 25
+// don't carry ``child_table_name`` (default to ``items``) so the
+// existing ItemMappingTable keeps rendering for legacy messages.
+const childTableName = computed(
+  () => card.value.child_table_name || 'items',
+)
+const isItemTable = computed(() => childTableName.value === 'items')
+const childRowSchema = computed(() => {
+  const s = card.value.child_row_schema
+  return Array.isArray(s) ? s : []
+})
+const childTableTitle = computed(() => {
+  const name = childTableName.value || 'items'
+  return name
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ')
+})
+
+// Phase 25 §25.2 — multi-page source breadcrumb.
+const sourcePages = computed(() => {
+  const sp = card.value.source_pages
+  return Array.isArray(sp) ? sp.filter((n) => Number.isFinite(n) && n > 0) : []
+})
+
 const displayItems = computed(() => {
   if (page.value === 1 || !fetchedRows.value) {
     return itemsBlock.value.rows || []
@@ -304,10 +392,18 @@ const edits = ref({
   item_mappings: {}, // {row_index: erpnext_item}
   account_mappings: {}, // {row_index: erpnext_account}
   item_stock_overrides: {}, // {row_index: bool}
+  // Phase 25 §25.1 — per-row generic cell edits (any child-table fieldname).
+  // Shape: ``{row_index: {fieldname: value, ...}}``
+  row_edits: {},
 })
 const lastError = ref(null)
 const revalidationWarnings = ref([])
 const busy = computed(() => agentBusy.value)
+
+// Phase 25 §25.4 — bulk toolbar state.
+const bulkBusy = ref(false)
+const bulkUom = ref('')
+const bulkResult = ref('')
 
 function actionStyle(a) {
   switch (a.id) {
@@ -386,6 +482,7 @@ async function invoke(action) {
       item_mappings: {},
       account_mappings: {},
       item_stock_overrides: {},
+      row_edits: {},
     }
     revalidationWarnings.value = []
     editing.value = false
@@ -398,13 +495,15 @@ async function invoke(action) {
       Object.keys(edits.value.header).length ||
       Object.keys(edits.value.item_mappings).length ||
       Object.keys(edits.value.account_mappings).length ||
-      Object.keys(edits.value.item_stock_overrides).length
+      Object.keys(edits.value.item_stock_overrides).length ||
+      Object.keys(edits.value.row_edits).length
     const editsPayload =
       (editing.value && hasEdits) ||
       // Mapping/stock toggles are always live, even outside Edit mode.
       Object.keys(edits.value.item_mappings).length ||
       Object.keys(edits.value.account_mappings).length ||
-      Object.keys(edits.value.item_stock_overrides).length
+      Object.keys(edits.value.item_stock_overrides).length ||
+      Object.keys(edits.value.row_edits).length
         ? buildEditsPayload()
         : null
     const result = await confirm({
@@ -440,6 +539,9 @@ function buildEditsPayload() {
   if (Object.keys(edits.value.item_stock_overrides).length) {
     out.item_stock_overrides = { ...edits.value.item_stock_overrides }
   }
+  if (Object.keys(edits.value.row_edits).length) {
+    out.row_edits = JSON.parse(JSON.stringify(edits.value.row_edits))
+  }
   return out
 }
 
@@ -465,5 +567,89 @@ function onTaxEdit({ index, value }) {
     ...edits.value.account_mappings,
     [index]: value,
   }
+}
+
+// Phase 25 §25.1 — generic child-table cell edit.  Folds into the
+// ``row_edits`` patch keyed by row index.
+function onGenericCellEdit({ index, fieldname, value }) {
+  if (index == null || !fieldname) return
+  const current = edits.value.row_edits[index] || {}
+  edits.value.row_edits = {
+    ...edits.value.row_edits,
+    [index]: { ...current, [fieldname]: value },
+  }
+}
+
+// Phase 25 §25.4 — bulk action handlers.  All three mutate the
+// persisted card on the server, then reload the page so the local
+// view reflects the new state.
+
+async function onBulkMatch() {
+  if (bulkBusy.value) return
+  bulkBusy.value = true
+  bulkResult.value = ''
+  try {
+    const out = await bulkMatchItems({
+      conversationId: store.currentId,
+      messageId: props.message.name,
+      matchThreshold: 0.6,
+      onlyUnmatched: true,
+    })
+    bulkResult.value = `${out?.matched || 0} matched, ${out?.refreshed || 0} refreshed.`
+    applyCardPatch(out)
+  } catch (err) {
+    lastError.value = err?.message || String(err)
+  } finally {
+    bulkBusy.value = false
+  }
+}
+
+async function onBulkAccept() {
+  if (bulkBusy.value) return
+  bulkBusy.value = true
+  bulkResult.value = ''
+  try {
+    const out = await bulkAcceptSuggestions({
+      conversationId: store.currentId,
+      messageId: props.message.name,
+    })
+    bulkResult.value = `Accepted ${out?.accepted || 0} suggestion(s).`
+    applyCardPatch(out)
+  } catch (err) {
+    lastError.value = err?.message || String(err)
+  } finally {
+    bulkBusy.value = false
+  }
+}
+
+async function onApplyUomToAll() {
+  const value = bulkUom.value.trim()
+  if (!value || bulkBusy.value) return
+  bulkBusy.value = true
+  bulkResult.value = ''
+  try {
+    const out = await applyToAllRows({
+      conversationId: store.currentId,
+      messageId: props.message.name,
+      fieldname: 'uom',
+      value,
+      rowKind: 'items',
+    })
+    bulkResult.value = `UOM = ${value} applied to ${out?.updated || 0} row(s).`
+    applyCardPatch(out)
+  } catch (err) {
+    lastError.value = err?.message || String(err)
+  } finally {
+    bulkBusy.value = false
+  }
+}
+
+function applyCardPatch(out) {
+  // The bulk endpoints return the freshly-persisted card payload —
+  // patch it onto the local message so the table re-renders without
+  // a round-trip to the conversation endpoint.
+  const payload = out?.rendered_card_payload
+  if (!payload || typeof store.patchMessage !== 'function') return
+  store.patchMessage(props.message.name, { rendered_card_payload: payload })
 }
 </script>

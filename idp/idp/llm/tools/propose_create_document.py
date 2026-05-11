@@ -9,6 +9,20 @@ validation, pagination, missing-master prerequisites, action buttons)
 that the chatbot UI renders so the user can review, edit, and confirm
 before ``create_document`` runs.
 
+Phase 25 — extends the payload so non-item DocTypes (Journal Entry,
+Payment Entry, Payroll Entry) and very long item sets work cleanly:
+
+* ``child_table_name`` is derived from the target DocType's schema
+  rather than hard-coded to ``items``; the UI uses it to switch between
+  the bespoke :class:`ItemMappingTable` (when it equals ``items``) and
+  the generic :class:`GenericChildTable` for everything else.
+* ``child_row_schema`` carries the child DocType's column metadata so
+  the generic table can render the right columns without an extra
+  round-trip.
+* ``source_pages`` (card level) and ``source_page`` (per row) carry
+  PDF page provenance forward from the extractor so the user can
+  trace any row back to its origin.
+
 Card payload shape (versioned by
 :data:`idp.idp.llm.schemas.CONFIRMATION_CARD_PAYLOAD_VERSION`)::
 
@@ -18,6 +32,9 @@ Card payload shape (versioned by
       "doctype": "Purchase Invoice",
       "company": "Acme",
       "file_id": "file_1",
+      "source_pages": [1, 3, 5],
+      "child_table_name": "items",         # Phase 25
+      "child_row_schema": [...],           # Phase 25
       "summary": "...",
       "header": [
          {"fieldname": "supplier", "value": "...", "confidence": 0.92,
@@ -27,7 +44,7 @@ Card payload shape (versioned by
          "page": 1, "page_size": 10, "total": 23,
          "rows": [
             {"index": 0, "data": {...}, "status": "Existing"|"New",
-             "erpnext_item": "ITEM-0001",
+             "erpnext_item": "ITEM-0001", "source_page": 2,
              "item_mapping_suggestions": [{name, label, score}], ...},
             ...
          ]
@@ -71,7 +88,14 @@ _PARAMETERS_SCHEMA = {
 		},
 		"items": {
 			"type": "array",
-			"description": "Optional child-table rows.",
+			"description": (
+				"Optional child-table rows.  For Item-bearing DocTypes "
+				"(Sales/Purchase Invoice, Delivery Note, etc.) the rows "
+				"are item lines.  For non-Item DocTypes (Journal Entry, "
+				"Payment Entry, Payroll Entry) the rows are whatever the "
+				"primary child table holds (accounts, references, …) — "
+				"Phase 25 routes them through the generic child table UI."
+			),
 			"items": {"type": "object", "additionalProperties": True},
 		},
 		"taxes": {
@@ -85,6 +109,14 @@ _PARAMETERS_SCHEMA = {
 		"file_id": {
 			"type": "string",
 			"description": "Source attachment alias (file_1, file_2, ...) for provenance.",
+		},
+		"source_pages": {
+			"type": "array",
+			"description": (
+				"Phase 25 — PDF page numbers that contributed to this "
+				"document.  Used by the UI as a trace breadcrumb."
+			),
+			"items": {"type": "integer", "minimum": 1},
 		},
 		"confidence_scores": {
 			"type": "object",
@@ -160,6 +192,13 @@ def propose_create_document(arguments: dict, ctx: ToolContext) -> ToolResult:
 	schema_errors: list[str] = list(args.get("schema_errors") or [])
 	missing_masters: list[dict] = list(args.get("missing_masters") or [])
 	file_id = args.get("file_id")
+	source_pages = _normalise_source_pages(args.get("source_pages"))
+
+	# Phase 25 — resolve the primary child table name + its row schema
+	# from the target DocType meta.  Falls back to ``items`` when the
+	# DocType has no child tables (or Frappe isn't loaded — unit tests).
+	child_table_name, child_row_schema = _resolve_child_table_metadata(doctype)
+	is_item_table = child_table_name == "items"
 
 	# Run business-rule validation on a synthesised MappedDocument so the
 	# card carries the same warnings the eventual create_document call
@@ -174,13 +213,22 @@ def propose_create_document(arguments: dict, ctx: ToolContext) -> ToolResult:
 	# include them in the ``header`` arg.  We compute them from the
 	# items / taxes block when missing so the user can review the money
 	# numbers without scrolling to the totals strip.
-	header_rows = _ensure_total_rows(header_rows, header, items_raw, taxes_raw)
+	#
+	# Skip this for non-Item DocTypes (Journal Entry, Payment Entry, …)
+	# whose primary child table isn't a list of priced items — synthesising
+	# a "net_total" from a list of GL postings would be misleading.
+	if is_item_table:
+		header_rows = _ensure_total_rows(header_rows, header, items_raw, taxes_raw)
 
-	# Items — annotate with status (New/Existing) and fuzzy suggestions.
-	items_payload = _build_items_payload(
-		items_raw,
-		page_size=_clamp_page_size(args.get("page_size")),
-	)
+	# Items — annotate with status (New/Existing) and fuzzy suggestions
+	# only when the child table actually holds Item rows.  For non-Item
+	# DocTypes we keep the raw row data (with provenance) and let the
+	# UI render a generic editable child-table grid.
+	page_size = _clamp_page_size(args.get("page_size"))
+	if is_item_table:
+		items_payload = _build_items_payload(items_raw, page_size=page_size)
+	else:
+		items_payload = _build_generic_rows_payload(items_raw, page_size=page_size)
 
 	# Taxes — same treatment but always one page (rarely > 10 rows).
 	taxes_payload = _build_taxes_payload(taxes_raw, company=ctx.company)
@@ -204,10 +252,13 @@ def propose_create_document(arguments: dict, ctx: ToolContext) -> ToolResult:
 		"doctype": doctype,
 		"company": ctx.company,
 		"file_id": file_id,
+		"source_pages": source_pages,
+		"child_table_name": child_table_name,
+		"child_row_schema": child_row_schema,
 		"summary": summary,
 		"header": header_rows,
 		"items": items_payload,
-		"taxes": taxes_payload,
+		"taxes": taxes_payload if is_item_table else {"rows": [], "total": 0},
 		"totals": totals,
 		"validation": {
 			"schema_errors": schema_errors,
@@ -302,6 +353,40 @@ def _build_items_payload(items: list[dict], *, page_size: int) -> dict:
 	}
 
 
+def _build_generic_rows_payload(rows_raw: list[dict], *, page_size: int) -> dict:
+	"""Phase 25 — paginated payload for non-Item child tables.
+
+	Mirrors :func:`_build_items_payload` but skips the item-matcher
+	(there is nothing to match for Journal Entry accounts / Payment
+	Entry references) and emits a uniform row shape::
+
+	    {"index": N, "data": {...}, "source_page": P}
+
+	The frontend's :class:`GenericChildTable` consumes this directly.
+	"""
+
+	total = len(rows_raw)
+	first_page = rows_raw[:page_size]
+	rows: list[dict] = []
+	for idx, row in enumerate(first_page):
+		if not isinstance(row, dict):
+			row = {}
+		rows.append(
+			{
+				"index": idx,
+				"data": dict(row),
+				"source_page": _row_source_page(row),
+			}
+		)
+	return {
+		"page": 1,
+		"page_size": page_size,
+		"total": total,
+		"has_more": total > page_size,
+		"rows": rows,
+	}
+
+
 def _run_item_matcher(items: list[dict]) -> list[dict]:
 	"""Invoke :func:`match_items` with safe fallback to per-row resolution.
 
@@ -374,6 +459,8 @@ def _build_item_row(idx: int, row: dict, match_results: list[dict]) -> dict:
 		"confidence": mr.get("confidence"),
 		"match_candidates": candidates,
 		"item_mapping_suggestions": suggestions,
+		# Phase 25 — per-row PDF page reference for traceability.
+		"source_page": _row_source_page(row),
 	}
 
 
@@ -641,11 +728,149 @@ def _run_business_rules(
 
 
 def _clamp_page_size(value: Any) -> int:
+	"""Resolve the items page size.
+
+	Precedence: explicit tool arg → ``IDP Settings.confirmation_page_size``
+	→ :data:`_DEFAULT_PAGE_SIZE`.  Always clamped to ``[1, _MAX_PAGE_SIZE]``.
+	"""
+
+	if value is not None:
+		try:
+			return max(1, min(int(value), _MAX_PAGE_SIZE))
+		except (TypeError, ValueError):
+			pass
+	# Phase 25 — fall back to the admin-tuned default in IDP Settings.
+	settings_value = _settings_page_size()
+	if settings_value is not None:
+		return max(1, min(settings_value, _MAX_PAGE_SIZE))
+	return _DEFAULT_PAGE_SIZE
+
+
+def _settings_page_size() -> int | None:
+	"""Best-effort read of ``IDP Settings.confirmation_page_size``."""
+
 	try:
-		v = int(value) if value is not None else _DEFAULT_PAGE_SIZE
+		from idp.core.config import get_idp_settings
+	except Exception:
+		return None
+	try:
+		settings = get_idp_settings()
+	except Exception:
+		return None
+	raw = (settings or {}).get("confirmation_page_size") if isinstance(settings, dict) else None
+	if raw in (None, "", 0):
+		return None
+	try:
+		v = int(raw)
 	except (TypeError, ValueError):
-		v = _DEFAULT_PAGE_SIZE
-	return max(1, min(v, _MAX_PAGE_SIZE))
+		return None
+	# IDP Settings is admin-tunable; honour it even when slightly out of
+	# the §25.3 documented range (5–50) but never below 1.
+	return max(1, v)
+
+
+def _normalise_source_pages(value: Any) -> list[int]:
+	"""Sanitise the ``source_pages`` argument into a sorted unique int list."""
+
+	if not value:
+		return []
+	if isinstance(value, (int, str)):
+		value = [value]
+	out: set[int] = set()
+	for v in value:
+		try:
+			n = int(v)
+		except (TypeError, ValueError):
+			continue
+		if n > 0:
+			out.add(n)
+	return sorted(out)
+
+
+_SOURCE_PAGE_KEYS = ("source_page", "page", "page_number", "pdf_page", "_page")
+
+
+def _row_source_page(row: Any) -> int | None:
+	"""Pluck the per-row PDF page from common keys produced by the extractor."""
+
+	if not isinstance(row, dict):
+		return None
+	for key in _SOURCE_PAGE_KEYS:
+		if key in row and row[key] not in (None, ""):
+			try:
+				n = int(row[key])
+			except (TypeError, ValueError):
+				continue
+			if n > 0:
+				return n
+	return None
+
+
+def _resolve_child_table_metadata(doctype: str) -> tuple[str, list[dict]]:
+	"""Phase 25 — derive the primary child table fieldname + row schema.
+
+	Returns ``(child_table_name, child_row_schema)``.  Falls back to
+	``("items", [])`` when Frappe (or the DocType meta) is unavailable
+	so unit-test fixtures and CLI runs still get a sane card.
+	"""
+
+	if not doctype:
+		return "items", []
+	try:
+		from idp.idp.mappers.base import get_doctype_schema
+	except Exception:
+		return "items", []
+	try:
+		schema = get_doctype_schema(doctype)
+	except Exception:
+		return "items", []
+	child_tables = schema.get("child_tables") or {}
+	if not isinstance(child_tables, dict) or not child_tables:
+		return "items", []
+
+	# Prefer ``items`` when present (the most common shape), otherwise
+	# pick the first declared child table.  We deliberately ignore
+	# ``taxes`` — that table is rendered by its own dedicated UI block.
+	preferred_order = ("items", "accounts", "references", "earnings", "deductions")
+	for name in preferred_order:
+		if name in child_tables:
+			return name, _summarise_child_fields(child_tables[name])
+
+	# Pick the first non-taxes table as the primary.
+	for name, info in child_tables.items():
+		if name == "taxes":
+			continue
+		return name, _summarise_child_fields(info)
+
+	# Only had ``taxes`` — treat it as the primary so the user still
+	# sees something.  Practically unreachable for ERPNext core.
+	first_name = next(iter(child_tables))
+	return first_name, _summarise_child_fields(child_tables[first_name])
+
+
+def _summarise_child_fields(child_info: Any) -> list[dict]:
+	"""Trim a child-table schema dict down to the fields the UI needs."""
+
+	if not isinstance(child_info, dict):
+		return []
+	fields = child_info.get("fields") or []
+	out: list[dict] = []
+	for f in fields:
+		if not isinstance(f, dict):
+			continue
+		fn = f.get("fieldname")
+		if not fn:
+			continue
+		out.append(
+			{
+				"fieldname": fn,
+				"fieldtype": f.get("fieldtype") or "Data",
+				"label": f.get("label") or fn,
+				"reqd": int(f.get("reqd") or 0),
+				"options": f.get("options") or "",
+			}
+		)
+	return out
 
 
 _PARTY_FIELDS = (

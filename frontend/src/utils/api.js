@@ -328,3 +328,56 @@ export function searchAccounts({ query, company, topN = 10 } = {}) {
     },
   })
 }
+
+// ---------------------------------------------------------------------------
+// Phase 25 — Mass-edit / bulk-match helpers for large item sets
+// ---------------------------------------------------------------------------
+
+export function bulkMatchItems({
+  conversationId,
+  messageId,
+  matchThreshold = 0.6,
+  onlyUnmatched = true,
+} = {}) {
+  return frappeRequest({
+    url: '/api/method/idp.api.conversation.bulk_match_items',
+    method: 'POST',
+    params: {
+      conversation_id: conversationId,
+      message_id: messageId,
+      match_threshold: matchThreshold,
+      only_unmatched: onlyUnmatched ? 1 : 0,
+    },
+  })
+}
+
+export function bulkAcceptSuggestions({ conversationId, messageId } = {}) {
+  return frappeRequest({
+    url: '/api/method/idp.api.conversation.bulk_accept_suggestions',
+    method: 'POST',
+    params: {
+      conversation_id: conversationId,
+      message_id: messageId,
+    },
+  })
+}
+
+export function applyToAllRows({
+  conversationId,
+  messageId,
+  fieldname,
+  value,
+  rowKind = 'items',
+} = {}) {
+  return frappeRequest({
+    url: '/api/method/idp.api.conversation.apply_to_all_rows',
+    method: 'POST',
+    params: {
+      conversation_id: conversationId,
+      message_id: messageId,
+      fieldname,
+      value: value == null ? '' : value,
+      row_kind: rowKind,
+    },
+  })
+}

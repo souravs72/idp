@@ -799,6 +799,12 @@ def _create_erpnext_doc_from_card(card: dict, *, company: str, submit: bool) -> 
 			continue
 		header[fn] = h.get("value")
 
+	# Phase 25 — non-item DocTypes (Journal Entry, Payment Entry, …)
+	# stream their child rows through the same ``items`` slot on
+	# :class:`MappedDocument`, but skip the Item-master enrichment
+	# (``erpnext_item`` / ``is_stock_item`` are item-only concepts).
+	is_item_table = (card.get("child_table_name") or "items") == "items"
+
 	# Items: rebuild from card rows.  Apply user-picked ``erpnext_item``
 	# back onto the row data as ``item_code`` so the document_creator
 	# (which expects ERPNext field names) maps it correctly.  Likewise
@@ -822,6 +828,13 @@ def _create_erpnext_doc_from_card(card: dict, *, company: str, submit: bool) -> 
 		if not isinstance(r, dict):
 			continue
 		row_data = dict(r.get("data") or {})
+		# Strip Phase 25 provenance keys — they aren't ERPNext fields.
+		row_data.pop("source_page", None)
+		if not is_item_table:
+			# Non-item child tables (Journal Entry accounts, Payment
+			# Entry references, …) — forward the raw row data as-is.
+			items.append(row_data)
+			continue
 		picked_item = r.get("erpnext_item")
 		if picked_item:
 			row_data["item_code"] = picked_item
@@ -1026,6 +1039,12 @@ def _apply_edits_to_card(card: dict, edited: dict | None) -> None:
 
 	item_map = edited.get("item_mappings") or {}
 	stock_overrides = edited.get("item_stock_overrides") or {}
+	# Phase 25 — Generic child-row edits.  Shape:
+	# ``{row_index: {fieldname: value, ...}}``.  Applied for every card,
+	# but the GenericChildTable UI is the primary producer (non-item
+	# DocTypes); the item table also uses it for the "Apply to all
+	# rows" UOM action.
+	row_edits = edited.get("row_edits") or {}
 	items_block = card.get("items") or {}
 	for r in items_block.get("rows") or []:
 		if not isinstance(r, dict):
@@ -1044,6 +1063,15 @@ def _apply_edits_to_card(card: dict, edited: dict | None) -> None:
 			data = r.get("data") or {}
 			data["is_stock_item"] = bool(val)
 			r["data"] = data
+		if isinstance(row_edits, dict) and (key in row_edits or idx in row_edits):
+			patch = row_edits.get(key) or row_edits.get(idx) or {}
+			if isinstance(patch, dict) and patch:
+				data = dict(r.get("data") or {})
+				for fn, val in patch.items():
+					if not fn:
+						continue
+					data[fn] = val
+				r["data"] = data
 
 	account_map = edited.get("account_mappings") or {}
 	taxes_block = card.get("taxes") or {}
@@ -1082,7 +1110,9 @@ def get_card_items_page(
 
 	try:
 		page = max(1, int(page or 1))
-		page_size = max(1, min(int(page_size or 10), 100))
+		# Phase 25 — accept the admin-tuned default from IDP Settings.
+		page_size_raw = page_size if page_size not in (None, 0, "0") else _settings_page_size_default()
+		page_size = max(1, min(int(page_size_raw or 10), 100))
 	except (TypeError, ValueError):
 		raise ConfirmationCardError(_("page and page_size must be integers")) from None
 
@@ -1107,11 +1137,33 @@ def get_card_items_page(
 	end = start + page_size
 	slice_rows = source_items[start:end] if isinstance(source_items, list) else []
 
+	# Phase 25 — extract source_page per row for traceability.
+	source_page_keys = ("source_page", "page", "page_number", "pdf_page", "_page")
+
+	def _row_source_page(row: dict) -> int | None:
+		for key in source_page_keys:
+			v = row.get(key)
+			if v in (None, ""):
+				continue
+			try:
+				n = int(v)
+			except (TypeError, ValueError):
+				continue
+			if n > 0:
+				return n
+		return None
+
 	rendered = []
 	for offset, row in enumerate(slice_rows):
 		if not isinstance(row, dict):
 			continue
-		rendered.append({"index": start + offset, "data": row})
+		rendered.append(
+			{
+				"index": start + offset,
+				"data": row,
+				"source_page": _row_source_page(row),
+			}
+		)
 
 	return {
 		"conversation_id": doc.name,
@@ -1126,6 +1178,26 @@ def get_card_items_page(
 			"tool_result_data": tool_result.get("data") if isinstance(tool_result, dict) else None,
 		},
 	}
+
+
+def _settings_page_size_default() -> int | None:
+	"""Read ``IDP Settings.confirmation_page_size`` with a safe fallback."""
+
+	try:
+		from idp.core.config import get_idp_settings
+	except Exception:
+		return None
+	try:
+		settings = get_idp_settings() or {}
+	except Exception:
+		return None
+	raw = settings.get("confirmation_page_size")
+	if raw in (None, "", 0):
+		return None
+	try:
+		return max(1, int(raw))
+	except (TypeError, ValueError):
+		return None
 
 
 def _revalidate_card(card: dict, edited: dict | None) -> list[str]:
@@ -1562,4 +1634,281 @@ def create_item_from_row(
 		"row_index": row_index,
 		"item_code": new_name,
 		"row": target_row,
+	}
+
+
+# ---------------------------------------------------------------------------
+# Phase 25 — Bulk / Mass-edit helpers for large item sets
+# ---------------------------------------------------------------------------
+
+
+@frappe.whitelist()
+def bulk_match_items(
+	conversation_id: str,
+	message_id: str,
+	match_threshold: float | str = 0.6,
+	only_unmatched: int | str | bool = 1,
+) -> dict:
+	"""Phase 25 §25.4 — re-run the §24.1 item matcher with a looser threshold.
+
+	Walks the full ``items`` list from the original tool arguments
+	(persisted alongside the ConfirmationCard) and updates every row in
+	the persisted card whose ``status == "New"`` (or every row when
+	``only_unmatched=False``).  Rows whose best score clears the looser
+	``match_threshold`` are flipped to ``Existing`` with the new resolved
+	Item name; otherwise the candidate list is refreshed so the user
+	can pick from a richer dropdown.
+
+	Returns a summary ``{matched, refreshed, unchanged, total}``.
+	"""
+
+	from idp.core.exceptions import ConfirmationCardError
+
+	_require_login()
+	doc = _load_conversation(conversation_id)
+	if not frappe.has_permission("IDP Conversation", ptype="write", doc=doc):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	try:
+		threshold = float(match_threshold)
+	except (TypeError, ValueError):
+		threshold = 0.6
+	threshold = max(0.0, min(threshold, 1.0))
+
+	only_unmatched_flag = str(only_unmatched).lower() not in ("0", "false", "no", "")
+
+	message = frappe.get_doc("IDP Message", message_id)
+	if message.conversation != doc.name:
+		raise ConfirmationCardError(_("Message does not belong to this conversation"))
+
+	card = _parse_json_arg(message.rendered_card_payload, None)
+	if not isinstance(card, dict):
+		raise ConfirmationCardError(_("Message does not carry a confirmation card"))
+
+	# Phase 25 only re-matches when the card is item-bearing; otherwise
+	# silently no-op so the UI can safely surface the button on every
+	# card (it just won't do anything for, say, Journal Entry).
+	if (card.get("child_table_name") or "items") != "items":
+		return {
+			"conversation_id": doc.name,
+			"message_id": message.name,
+			"matched": 0,
+			"refreshed": 0,
+			"unchanged": 0,
+			"total": 0,
+			"skipped_reason": "non_item_doctype",
+		}
+
+	from idp.idp.mappers.item_matcher import match_items
+
+	tool_args = _parse_json_arg(message.tool_arguments, None) or {}
+	source_items: list[dict] = list(tool_args.get("items") or [])
+
+	# Run a fresh matcher pass over the full extracted set.  The looser
+	# ``match_threshold`` means rows that previously fell to "New" can
+	# now bind to their top candidate when its score >= threshold.
+	results = match_items(source_items, match_threshold=threshold, floor_threshold=0.3)
+
+	# Index existing rows by their ``index`` field so we can update both
+	# the inline first page and the persisted card payload (the latter
+	# only carries page 1 — but persisted updates still need to flow
+	# through ``confirm_card`` via the tool args anyway).
+	items_block = card.get("items") or {}
+	rows = items_block.get("rows") or []
+	by_index = {r.get("index"): r for r in rows if isinstance(r, dict) and r.get("index") is not None}
+
+	matched = 0
+	refreshed = 0
+	unchanged = 0
+
+	for idx, result in enumerate(results):
+		target_row = by_index.get(idx)
+		if target_row is None:
+			# Row is beyond page 1 — nothing to update inline; the
+			# persisted source items still drive deeper pages and will
+			# be re-matched on the next card render.
+			continue
+		current_status = target_row.get("status") or "New"
+		if only_unmatched_flag and current_status == "Existing":
+			unchanged += 1
+			continue
+
+		candidates = [c.to_dict() for c in result.matches]
+		target_row["match_candidates"] = candidates
+		target_row["item_mapping_suggestions"] = [
+			{
+				"name": c.get("item_code"),
+				"label": c.get("item_name"),
+				"score": c.get("score"),
+			}
+			for c in candidates
+		]
+
+		if result.status == "Existing" and result.best_match:
+			target_row["erpnext_item"] = result.best_match
+			target_row["status"] = "Existing"
+			target_row["match_reason"] = result.match_reason or "bulk_match"
+			target_row["confidence"] = result.confidence
+			matched += 1
+		else:
+			# Still no match — but candidates refreshed.
+			target_row["match_reason"] = result.match_reason or target_row.get("match_reason")
+			target_row["confidence"] = result.confidence
+			refreshed += 1
+
+	# Persist the updated card.
+	message.rendered_card_payload = json.dumps(card)
+	message.save(ignore_permissions=False)
+	frappe.db.commit()
+
+	return {
+		"conversation_id": doc.name,
+		"message_id": message.name,
+		"matched": matched,
+		"refreshed": refreshed,
+		"unchanged": unchanged,
+		"total": len(results),
+		"match_threshold": threshold,
+		"rendered_card_payload": message.rendered_card_payload,
+	}
+
+
+@frappe.whitelist()
+def apply_to_all_rows(
+	conversation_id: str,
+	message_id: str,
+	fieldname: str,
+	value: str | None = None,
+	row_kind: str = "items",
+) -> dict:
+	"""Phase 25 §25.4 — apply *value* to *fieldname* on every row.
+
+	Common use cases: bulk-set ``uom`` to ``Nos``, bulk-set
+	``is_stock_item`` to ``0`` across a Service Invoice.  Operates on
+	the inline rows of the persisted card payload.
+	"""
+
+	from idp.core.exceptions import ConfirmationCardError
+
+	_require_login()
+	doc = _load_conversation(conversation_id)
+	if not frappe.has_permission("IDP Conversation", ptype="write", doc=doc):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	fieldname = (fieldname or "").strip()
+	if not fieldname:
+		raise ConfirmationCardError(_("fieldname is required"))
+
+	row_kind = (row_kind or "items").strip().lower()
+	if row_kind not in ("items", "taxes"):
+		raise ConfirmationCardError(_("row_kind must be 'items' or 'taxes'"))
+
+	message = frappe.get_doc("IDP Message", message_id)
+	if message.conversation != doc.name:
+		raise ConfirmationCardError(_("Message does not belong to this conversation"))
+
+	card = _parse_json_arg(message.rendered_card_payload, None)
+	if not isinstance(card, dict):
+		raise ConfirmationCardError(_("Message does not carry a confirmation card"))
+
+	block = card.get(row_kind) or {}
+	rows = block.get("rows") or []
+	updated = 0
+	for r in rows:
+		if not isinstance(r, dict):
+			continue
+		if row_kind == "items":
+			data = dict(r.get("data") or {})
+			data[fieldname] = value
+			r["data"] = data
+		else:
+			# Taxes use the ``extracted`` sub-dict.
+			extracted = dict(r.get("extracted") or {})
+			extracted[fieldname] = value
+			r["extracted"] = extracted
+		updated += 1
+
+	message.rendered_card_payload = json.dumps(card)
+	message.save(ignore_permissions=False)
+	frappe.db.commit()
+
+	return {
+		"conversation_id": doc.name,
+		"message_id": message.name,
+		"row_kind": row_kind,
+		"fieldname": fieldname,
+		"value": value,
+		"updated": updated,
+		"rendered_card_payload": message.rendered_card_payload,
+	}
+
+
+@frappe.whitelist()
+def bulk_accept_suggestions(
+	conversation_id: str,
+	message_id: str,
+) -> dict:
+	"""Phase 25 §25.4 — accept the top candidate for every unresolved row.
+
+	Walks the inline rows of the persisted card and, for any row whose
+	``status == "New"`` with a non-empty ``match_candidates`` list,
+	picks the highest-scoring candidate and flips the row to
+	``Existing``.  Useful when the user trusts the matcher's first
+	guess across the whole table.
+	"""
+
+	from idp.core.exceptions import ConfirmationCardError
+
+	_require_login()
+	doc = _load_conversation(conversation_id)
+	if not frappe.has_permission("IDP Conversation", ptype="write", doc=doc):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	message = frappe.get_doc("IDP Message", message_id)
+	if message.conversation != doc.name:
+		raise ConfirmationCardError(_("Message does not belong to this conversation"))
+
+	card = _parse_json_arg(message.rendered_card_payload, None)
+	if not isinstance(card, dict):
+		raise ConfirmationCardError(_("Message does not carry a confirmation card"))
+
+	if (card.get("child_table_name") or "items") != "items":
+		return {
+			"conversation_id": doc.name,
+			"message_id": message.name,
+			"accepted": 0,
+			"skipped_reason": "non_item_doctype",
+		}
+
+	items_block = card.get("items") or {}
+	rows = items_block.get("rows") or []
+	accepted = 0
+	for r in rows:
+		if not isinstance(r, dict):
+			continue
+		if (r.get("status") or "New") == "Existing":
+			continue
+		candidates = r.get("match_candidates") or []
+		if not candidates:
+			continue
+		# Already sorted by score descending — pick the first.
+		top = candidates[0]
+		pick = top.get("item_code") if isinstance(top, dict) else None
+		if not pick:
+			continue
+		r["erpnext_item"] = pick
+		r["status"] = "Existing"
+		r["match_reason"] = "bulk_accepted"
+		r["confidence"] = top.get("score") if isinstance(top, dict) else None
+		accepted += 1
+
+	message.rendered_card_payload = json.dumps(card)
+	message.save(ignore_permissions=False)
+	frappe.db.commit()
+
+	return {
+		"conversation_id": doc.name,
+		"message_id": message.name,
+		"accepted": accepted,
+		"rendered_card_payload": message.rendered_card_payload,
 	}
