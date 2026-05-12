@@ -22,6 +22,35 @@ from idp.llm.providers.registry import register_provider
 logger = get_logger("idp.llm.anthropic")
 
 
+_EPHEMERAL: dict[str, Any] = {"type": "ephemeral"}
+
+
+def _wrap_system_with_cache(system: str) -> list[dict]:
+	"""Wrap *system* text in an ephemeral cache block for prompt caching.
+
+	Anthropic accepts ``system`` either as a string (no caching) or as a
+	list of ``{"type":"text","text":..., "cache_control":...}`` blocks
+	(cacheable).  Static system text marked ephemeral is cached for ~5
+	minutes server-side, yielding ~90% discount on cached input tokens.
+	"""
+
+	return [{"type": "text", "text": system, "cache_control": _EPHEMERAL}]
+
+
+def _wrap_tools_with_cache(tools: list[dict]) -> list[dict]:
+	"""Attach ``cache_control: ephemeral`` to the LAST tool definition.
+
+	Anthropic propagates cache scope from any single tool entry to the
+	full ``tools`` block, so we only need to mark one — the last makes
+	the cache boundary explicit and survives reordering by callers."""
+
+	if not tools:
+		return tools
+	out = [dict(t) for t in tools]
+	out[-1]["cache_control"] = _EPHEMERAL
+	return out
+
+
 def translate_tools_openai_to_anthropic(tools: list[dict] | None) -> list[dict]:
 	"""Convert OpenAI-style ``{"type":"function","function":{...}}`` envelopes
 	to Anthropic's ``{"name","description","input_schema"}`` shape."""
@@ -167,11 +196,16 @@ class AnthropicProvider(LLMProvider):
 		self,
 		*,
 		api_key: str | None = None,
-		default_model: str = "claude-haiku-4-5-20251001",
+		default_model: str = "claude-opus-4-5-20251101",
+		cache_control: bool = True,
 		**_: Any,
 	) -> None:
 		self.api_key = api_key
 		self.default_model = default_model
+		# Wraps system prompt + tool definitions in `cache_control: ephemeral`
+		# so subsequent turns get the ~90% cached-token discount.  Static
+		# prompts cache for ~5 minutes server-side at Anthropic.
+		self.cache_control = bool(cache_control)
 		self._client: Any = None
 
 	def chat(
@@ -185,6 +219,7 @@ class AnthropicProvider(LLMProvider):
 		max_tokens: int = 4_096,
 		stream: bool = False,
 		model: str | None = None,
+		cache_control: bool | None = None,
 		**extra: Any,
 	) -> LLMResponse:
 		if stream:
@@ -199,10 +234,15 @@ class AnthropicProvider(LLMProvider):
 			"max_tokens": max_tokens,
 			"temperature": temperature,
 		}
+		# Per-call override falls back to the instance default.  Callers
+		# can pass cache_control=False for short one-off prompts where
+		# caching overhead exceeds the discount.
+		use_cache = self.cache_control if cache_control is None else bool(cache_control)
 		if system:
-			payload["system"] = system
+			payload["system"] = _wrap_system_with_cache(system) if use_cache else system
 		if tools:
-			payload["tools"] = translate_tools_openai_to_anthropic(tools)
+			translated = translate_tools_openai_to_anthropic(tools)
+			payload["tools"] = _wrap_tools_with_cache(translated) if use_cache else translated
 			if isinstance(tool_choice, str) and tool_choice in {"auto", "any"}:
 				payload["tool_choice"] = {"type": tool_choice}
 		payload.update(extra)
@@ -267,6 +307,14 @@ class AnthropicProvider(LLMProvider):
 				)
 
 		usage = data.get("usage") or {}
+		# Anthropic returns cache stats as siblings of input/output tokens.
+		# Surface them on the raw envelope so the Document Log can record
+		# `cached_tokens` for §TE.8 measurement.
+		cache_read = int(usage.get("cache_read_input_tokens") or 0)
+		cache_created = int(usage.get("cache_creation_input_tokens") or 0)
+		if cache_read or cache_created:
+			data["_idp_cached_tokens"] = cache_read
+			data["_idp_cache_creation_tokens"] = cache_created
 		return LLMResponse(
 			content="\n".join(text_parts) or None,
 			tool_calls=tool_calls,

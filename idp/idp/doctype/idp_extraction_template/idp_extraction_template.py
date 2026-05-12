@@ -29,3 +29,8 @@ class IDPExtractionTemplate(Document):
 					frappe.throw(
 						f"{fieldname.replace('_', ' ').title()} is not valid JSON: {exc}"
 					)
+
+		# Phase 16 (§TE.5) — per-DocType LLM fallback threshold.
+		if self.llm_fallback_threshold is not None:
+			if self.llm_fallback_threshold < 0 or self.llm_fallback_threshold > 1:
+				frappe.throw("LLM Fallback Threshold must be between 0.0 and 1.0")

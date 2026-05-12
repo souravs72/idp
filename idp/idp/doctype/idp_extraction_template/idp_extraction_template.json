@@ -10,7 +10,9 @@
   "description",
   "mappings_section",
   "field_mappings",
-  "validation_rules"
+  "validation_rules",
+  "llm_section",
+  "llm_fallback_threshold"
  ],
  "fields": [
   {
@@ -50,11 +52,23 @@
    "fieldname": "validation_rules",
    "fieldtype": "JSON",
    "label": "Validation Rules"
+  },
+  {
+   "fieldname": "llm_section",
+   "fieldtype": "Section Break",
+   "label": "LLM Fallback"
+  },
+  {
+   "description": "Confidence threshold (0.0\u20131.0) below which the hybrid mapper invokes the LLM for this DocType. Leave blank to use the global default from IDP Settings.",
+   "fieldname": "llm_fallback_threshold",
+   "fieldtype": "Float",
+   "label": "LLM Fallback Threshold",
+   "precision": "3"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-04-21 00:00:00.000000",
+ "modified": "2026-05-12 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "IDP",
  "name": "IDP Extraction Template",

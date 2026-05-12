@@ -9,10 +9,15 @@ Wraps a concrete :class:`LLMProvider` with cross-cutting concerns:
 * Pre-flight budget enforcement via :func:`enforce_budget`.
 * Cost accounting via :func:`estimate_cost`.
 * A capability-query helper used by the hybrid mapper.
+* Two-tier model routing (§TE.3): callers pass a ``purpose`` (e.g.
+  ``classification`` / ``extraction``) and the client resolves the
+  matching row in ``IDP Settings.llm_model_routes`` to pick a cheap or
+  expensive model+provider.  Falls back to the default provider/model
+  when no route matches.
 
-Settings are deliberately simple: a single active provider plus a single
-``llm_api_key`` field on IDP Settings (Ollama is keyless).  This matches
-the "one provider at a time" deployment model.
+A single API key is decrypted once from IDP Settings; secondary
+providers selected via routes share the same key when they're the
+same vendor.  Ollama is keyless.
 """
 
 from __future__ import annotations
@@ -49,12 +54,22 @@ class LLMClient:
 		max_retries: int = DEFAULT_MAX_RETRIES,
 		backoff_base: float = DEFAULT_BACKOFF_BASE,
 		on_budget_check: Callable[[str, int], None] | None = None,
+		routes: list[dict] | None = None,
+		provider_kwargs: dict[str, Any] | None = None,
 	) -> None:
 		self.provider = provider
 		self.default_model = default_model
 		self.max_retries = max_retries
 		self.backoff_base = backoff_base
 		self.on_budget_check = on_budget_check or enforce_budget
+		# Routes are normalised dicts: {"purpose","provider","model","tier"}.
+		self.routes: list[dict] = list(routes or [])
+		# Init kwargs (api_key, host_url, etc.) reused when we have to
+		# instantiate a secondary provider on demand.
+		self._provider_kwargs: dict[str, Any] = dict(provider_kwargs or {})
+		# Cache of (provider_name -> LLMProvider) for routed lookups.
+		default_name = getattr(provider, "name", "") or provider.__class__.__name__.lower()
+		self._provider_cache: dict[str, LLMProvider] = {default_name: provider}
 
 	# ---- factory ------------------------------------------------------------
 
@@ -64,7 +79,8 @@ class LLMClient:
 
 		Reads the single ``llm_api_key`` field and the active ``llm_provider``
 		so swapping providers is a one-line settings change with no key
-		management churn.  Ollama ignores the key.
+		management churn.  Ollama ignores the key.  Two-tier routes
+		(``llm_model_routes`` child table) are loaded for §TE.3 routing.
 		"""
 
 		try:
@@ -77,16 +93,17 @@ class LLMClient:
 		except Exception as exc:
 			raise LLMProviderUnavailableError(f"cannot load IDP Settings: {exc}") from exc
 
-		if not getattr(doc, "enable_hybrid_mapper", 0):
-			raise LLMProviderUnavailableError("Hybrid mapper is disabled in IDP Settings")
+		if not getattr(doc, "enable_hybrid_mapper", 0) and not getattr(doc, "llm_enabled", 0):
+			raise LLMProviderUnavailableError("LLM is disabled in IDP Settings")
 
 		provider_name = (getattr(doc, "llm_provider", None) or "openai").strip()
 		model = (getattr(doc, "llm_model", None) or "").strip()
 		if not model:
 			# Sensible default per provider so admins don't *have* to set both.
+			# Anthropic default aligned with Phase 16 spec (Opus 4.5).
 			model = {
 				"openai": "gpt-4o-mini",
-				"anthropic": "claude-haiku-4-5-20251001",
+				"anthropic": "claude-opus-4-5-20251101",
 				"ollama": "llama3.1:8b",
 			}.get(provider_name, "")
 
@@ -107,7 +124,58 @@ class LLMClient:
 				kwargs["host_url"] = host
 
 		provider = get_provider(provider_name, **kwargs)
-		return cls(provider, default_model=model or provider.default_model)
+
+		routes = _normalise_routes(getattr(doc, "llm_model_routes", None) or [])
+		# Keep api_key/host on hand for secondary providers selected
+		# via routes (same vendor reuses the same key).
+		provider_kwargs: dict[str, Any] = {}
+		if api_key:
+			provider_kwargs["api_key"] = api_key
+		host = (getattr(doc, "ollama_host_url", None) or "").strip()
+		if host:
+			provider_kwargs["host_url"] = host
+
+		return cls(
+			provider,
+			default_model=model or provider.default_model,
+			routes=routes,
+			provider_kwargs=provider_kwargs,
+		)
+
+	# ---- routing ------------------------------------------------------------
+
+	def resolve_route(self, purpose: str | None) -> tuple[LLMProvider, str]:
+		"""Return ``(provider, model)`` for *purpose*.
+
+		Looks up the first matching row in ``llm_model_routes``.  Falls
+		back to the default provider/model when *purpose* is None or no
+		route matches — this preserves the v1 single-provider deployment
+		model.
+		"""
+
+		if not purpose or not self.routes:
+			return self.provider, self.default_model
+		for row in self.routes:
+			if row.get("purpose") == purpose:
+				provider_name = (row.get("provider") or "").strip()
+				model_name = (row.get("model") or "").strip()
+				if not provider_name or not model_name:
+					return self.provider, self.default_model
+				return self._get_or_build_provider(provider_name, model_name), model_name
+		return self.provider, self.default_model
+
+	def _get_or_build_provider(self, name: str, model: str) -> LLMProvider:
+		cached = self._provider_cache.get(name)
+		if cached is not None:
+			return cached
+		kwargs = dict(self._provider_kwargs)
+		kwargs["default_model"] = model
+		# Ollama doesn't take an api_key.
+		if name == "ollama":
+			kwargs.pop("api_key", None)
+		provider = get_provider(name, **kwargs)
+		self._provider_cache[name] = provider
+		return provider
 
 	# ---- chat ---------------------------------------------------------------
 
@@ -122,17 +190,25 @@ class LLMClient:
 		max_tokens: int = 4_096,
 		model: str | None = None,
 		user: str | None = None,
+		purpose: str | None = None,
 		**extra: Any,
 	) -> LLMResponse:
 		"""Run a chat completion with retries and budget enforcement.
 
-		Pre-flight budget check uses the provider's tokeniser so we don't
-		burn quota on a request that cannot fit.  Final accounting is
-		attached to the response's ``raw['_idp_cost_usd']`` field.
+		If *model* is omitted and *purpose* is supplied, the route table
+		is consulted to pick the cheap or expensive tier.  Pre-flight
+		budget check uses the provider's tokeniser so we don't burn quota
+		on a request that cannot fit.  Final cost is attached to
+		``response.raw['_idp_cost_usd']``.
 		"""
 
-		target = model or self.default_model
-		estimated = self.provider.count_tokens(messages, model=target)
+		if model:
+			provider = self.provider
+			target = model
+		else:
+			provider, target = self.resolve_route(purpose)
+
+		estimated = provider.count_tokens(messages, model=target)
 
 		if user:
 			# Budget enforcement is best-effort; failures during the lookup
@@ -145,6 +221,7 @@ class LLMClient:
 				logger.debug(f"budget enforcement skipped: {exc}")
 
 		response = self._chat_with_retry(
+			provider,
 			messages,
 			tools=tools,
 			tool_choice=tool_choice,
@@ -156,6 +233,8 @@ class LLMClient:
 		)
 
 		response.raw.setdefault("_idp_cost_usd", estimate_cost(response.usage, target))
+		if purpose:
+			response.raw.setdefault("_idp_purpose", purpose)
 		return response
 
 	def supports(self, capability: str, *, model: str | None = None) -> bool:
@@ -171,11 +250,16 @@ class LLMClient:
 
 	# ---- internals ----------------------------------------------------------
 
-	def _chat_with_retry(self, messages: list[dict], **kwargs: Any) -> LLMResponse:
+	def _chat_with_retry(
+		self,
+		provider: LLMProvider,
+		messages: list[dict],
+		**kwargs: Any,
+	) -> LLMResponse:
 		last_exc: Exception | None = None
 		for attempt in range(self.max_retries + 1):
 			try:
-				return self.provider.chat(messages, **kwargs)
+				return provider.chat(messages, **kwargs)
 			except LLMBudgetExceededError:
 				raise
 			except LLMError:
@@ -193,6 +277,33 @@ class LLMClient:
 				time.sleep(delay)
 		# Wrap the final exception so callers see a uniform LLMError surface.
 		raise LLMError(f"LLM call failed after {self.max_retries + 1} attempts: {last_exc}") from last_exc
+
+
+def _normalise_routes(rows: Any) -> list[dict]:
+	"""Convert a Frappe child-table iterable into a list of plain dicts.
+
+	The IDP LLM Model Route schema is ``purpose`` / ``provider`` /
+	``model_name`` / ``tier``.  We surface ``model`` (not ``model_name``)
+	in the normalised dict for symmetry with ``LLMClient.chat(model=...)``.
+	"""
+
+	out: list[dict] = []
+	for row in rows or []:
+		# Each row may be a Frappe Document or a plain dict (in tests).
+		def _get(field: str) -> str:
+			val = row.get(field) if isinstance(row, dict) else getattr(row, field, None)
+			return val.strip() if isinstance(val, str) else ""
+
+		purpose = _get("purpose")
+		provider = _get("provider")
+		model = _get("model_name") or _get("model")
+		tier = _get("tier") or "expensive"
+		if not purpose or not provider or not model:
+			# Skip incomplete rows quietly — Settings validation already
+			# enforces purpose uniqueness; partial rows are best ignored.
+			continue
+		out.append({"purpose": purpose, "provider": provider, "model": model, "tier": tier})
+	return out
 
 
 __all__ = ["LLMClient"]

@@ -44,10 +44,15 @@ class HybridFieldMapper:
 		llm_client: Any,
 		*,
 		confidence_threshold: float = DEFAULT_THRESHOLD,
+		doctype_thresholds: dict[str, float] | None = None,
 	) -> None:
 		self.rule_mapper = rule_mapper
 		self.llm_client = llm_client
 		self.confidence_threshold = confidence_threshold
+		# Per-DocType overrides (§TE.5).  Populated either explicitly by
+		# callers (tests) or implicitly via :meth:`_resolve_threshold`,
+		# which consults IDP Extraction Template at map time.
+		self.doctype_thresholds: dict[str, float] = dict(doctype_thresholds or {})
 
 	def map_fields(
 		self,
@@ -73,12 +78,13 @@ class HybridFieldMapper:
 		_tag_provenance(rule_result, source="rule")
 
 		# --- 2. Decide whether to invoke the LLM --------------------------------
+		threshold = self._resolve_threshold(target_doctype)
 		schema_required = _required_fieldnames(target_doctype)
 		missing = [f for f in schema_required if f not in rule_result.header]
 		avg_conf = _avg_confidence(rule_result)
-		if not missing and avg_conf >= self.confidence_threshold:
+		if not missing and avg_conf >= threshold:
 			rule_result.warnings.append(
-				f"hybrid: rule pass sufficient (avg_conf={avg_conf:.2f} >= {self.confidence_threshold:.2f})"
+				f"hybrid: rule pass sufficient (avg_conf={avg_conf:.2f} >= {threshold:.2f})"
 			)
 			return rule_result
 
@@ -123,6 +129,50 @@ class HybridFieldMapper:
 	# ------------------------------------------------------------------------
 	# internals
 	# ------------------------------------------------------------------------
+
+	def _resolve_threshold(self, target_doctype: str) -> float:
+		"""Return the LLM-fallback threshold to use for *target_doctype*.
+
+		Precedence (highest first):
+
+		1. Explicit override passed via the ``doctype_thresholds`` ctor arg
+		   or set on the instance later (used by tests).
+		2. ``IDP Extraction Template.llm_fallback_threshold`` for the
+		   first template targeting this DocType (§TE.5).
+		3. The instance-wide ``confidence_threshold`` (typically loaded
+		   from ``IDP Settings.llm_fallback_threshold_default``).
+		"""
+
+		if target_doctype in self.doctype_thresholds:
+			return float(self.doctype_thresholds[target_doctype])
+
+		try:
+			import frappe  # noqa: F401
+		except ImportError:
+			return self.confidence_threshold
+
+		try:
+			import frappe
+
+			rows = frappe.get_all(
+				"IDP Extraction Template",
+				filters={"target_doctype": target_doctype},
+				fields=["llm_fallback_threshold"],
+				order_by="modified desc",
+				limit=1,
+			)
+		except Exception as exc:  # pragma: no cover - defensive
+			logger.debug(f"extraction-template threshold lookup skipped: {exc}")
+			return self.confidence_threshold
+
+		if rows and rows[0].get("llm_fallback_threshold") is not None:
+			value = float(rows[0]["llm_fallback_threshold"])
+			# Cache so repeated calls within the request don't re-query
+			# the DB.  Templates are edited infrequently; a per-request
+			# memo is sufficient.
+			self.doctype_thresholds[target_doctype] = value
+			return value
+		return self.confidence_threshold
 
 	def _call_llm(
 		self,
