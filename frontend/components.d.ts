@@ -18,6 +18,7 @@ declare module 'vue' {
     ExtractionForm: typeof import('./src/components/ExtractionForm.vue')['default']
     ExtractionPreview: typeof import('./src/components/ExtractionPreview.vue')['default']
     FileDropzone: typeof import('./src/components/FileDropzone.vue')['default']
+    GenericChildTable: typeof import('./src/components/chat/GenericChildTable.vue')['default']
     ItemMappingTable: typeof import('./src/components/chat/ItemMappingTable.vue')['default']
     MessageBubble: typeof import('./src/components/chat/MessageBubble.vue')['default']
     MissingMastersDialog: typeof import('./src/components/MissingMastersDialog.vue')['default']
