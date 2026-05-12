@@ -1,0 +1,63 @@
+{
+ "actions": [],
+ "creation": "2026-05-12 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "purpose",
+  "provider",
+  "model_name",
+  "tier"
+ ],
+ "fields": [
+  {
+   "description": "What this model is used for. Cheap tier (Haiku / gpt-4o-mini) handles classification/gating; expensive tier handles extraction.",
+   "fieldname": "purpose",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Purpose",
+   "options": "classification\nextraction\nvision\nsummarisation\nconfirmation",
+   "reqd": 1
+  },
+  {
+   "default": "anthropic",
+   "fieldname": "provider",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Provider",
+   "options": "anthropic\nopenai\nollama",
+   "reqd": 1
+  },
+  {
+   "description": "Model identifier passed to the provider, e.g. claude-opus-4-5-20251101, claude-haiku-4-5-20251001, gpt-4o-mini, llama3.1:8b.",
+   "fieldname": "model_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Model Name",
+   "reqd": 1
+  },
+  {
+   "default": "expensive",
+   "description": "Two-tier routing: cheap models for gating, expensive for extraction.",
+   "fieldname": "tier",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Tier",
+   "options": "cheap\nexpensive",
+   "reqd": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-05-12 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "IDP",
+ "name": "IDP LLM Model Route",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

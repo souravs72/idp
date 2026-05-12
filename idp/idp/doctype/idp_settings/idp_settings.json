@@ -56,7 +56,30 @@
   "custom_providers",
   "model_overrides",
   "daily_token_budget",
-  "monthly_token_budget"
+  "monthly_token_budget",
+  "phase11_llm_section",
+  "llm_enabled",
+  "llm_api_base",
+  "llm_fallback_threshold_default",
+  "llm_vision_enabled",
+  "column_break_phase11_llm",
+  "llm_model_routes",
+  "phase11_cost_section",
+  "daily_token_budget_usd",
+  "per_user_daily_limit_usd",
+  "column_break_phase11_cost",
+  "per_conversation_max_iterations",
+  "alert_email_on_budget_80pct",
+  "phase11_retention_section",
+  "active_retention_days",
+  "archived_retention_days",
+  "column_break_phase11_retention",
+  "auto_purge_failed_after_days",
+  "phase11_chatbot_section",
+  "enable_chatbot_ui",
+  "enable_legacy_ui",
+  "column_break_phase11_chatbot",
+  "streaming_enabled"
  ],
  "fields": [
   {
@@ -211,21 +234,21 @@
   },
   {
    "default": "300",
-   "description": "Phase 27 \u2014 wall-clock timeout for the PaddleOCR subprocess. On expiry the request fails with OCR_TIMEOUT.",
+   "description": "Wall-clock timeout for the PaddleOCR subprocess. On expiry the request fails with OCR_TIMEOUT.",
    "fieldname": "ocr_timeout_seconds",
    "fieldtype": "Int",
    "label": "OCR Timeout (seconds)"
   },
   {
    "default": "100",
-   "description": "Phase 27 \u2014 stop OCR after N pages. Files exceeding this cap raise PDF_TOO_MANY_PAGES.",
+   "description": "Stop OCR after N pages. Files exceeding this cap raise PDF_TOO_MANY_PAGES.",
    "fieldname": "max_pages_per_pdf",
    "fieldtype": "Int",
    "label": "Max Pages per PDF"
   },
   {
    "default": "10",
-   "description": "Phase 25 \u2014 default rows per page on the ConfirmationCard items table. Range 5\u201350.",
+   "description": "Default rows per page on the ConfirmationCard items table. Range 5\u201350.",
    "fieldname": "confirmation_page_size",
    "fieldtype": "Int",
    "label": "Confirmation Card Page Size"
@@ -233,7 +256,7 @@
   {
    "fieldname": "phase27_section",
    "fieldtype": "Section Break",
-   "label": "Phase 27 - Extraction Hardening"
+   "label": "Extraction Hardening"
   },
   {
    "default": "auto",
@@ -264,7 +287,7 @@
   {
    "fieldname": "phase15_section",
    "fieldtype": "Section Break",
-   "label": "Phase 15 - Advanced Features"
+   "label": "Advanced Features"
   },
   {
    "default": "1",
@@ -306,7 +329,7 @@
    "label": "Enable Prompt Library"
   },
   {
-   "description": "JSON array of approver rules per DocType (see docs/TEST.md Phase 15)",
+   "description": "JSON array of approver rules per DocType (see docs/TEST.md \u2014 Workflow Routing).",
    "fieldname": "approver_rules",
    "fieldtype": "Long Text",
    "label": "Approver Rules (JSON)"
@@ -314,7 +337,7 @@
   {
    "fieldname": "phase16_section",
    "fieldtype": "Section Break",
-   "label": "Phase 16 - LLM Configuration"
+   "label": "Hybrid Mapper"
   },
   {
    "default": "0",
@@ -386,11 +409,157 @@
    "fieldname": "monthly_token_budget",
    "fieldtype": "Int",
    "label": "Monthly Token Budget"
+  },
+  {
+   "fieldname": "phase11_llm_section",
+   "fieldtype": "Section Break",
+   "label": "LLM Configuration"
+  },
+  {
+   "default": "1",
+   "description": "Master switch for the v2 LLM stack (provider abstraction, hybrid mapper, agent loop). When off, IDP falls back to rule-only extraction and the chatbot UI degrades to legacy mode.",
+   "fieldname": "llm_enabled",
+   "fieldtype": "Check",
+   "label": "LLM Enabled"
+  },
+  {
+   "description": "Optional base URL override for the active provider (e.g. self-hosted proxy, Azure OpenAI endpoint). Leave blank to use the provider default.",
+   "fieldname": "llm_api_base",
+   "fieldtype": "Data",
+   "label": "LLM API Base URL"
+  },
+  {
+   "default": "0.70",
+   "description": "Default rule-confidence threshold below which the hybrid mapper escalates to the LLM. Per-DocType overrides live on IDP DocType Mapper Config.",
+   "fieldname": "llm_fallback_threshold_default",
+   "fieldtype": "Float",
+   "label": "LLM Fallback Threshold (Default)",
+   "precision": "2"
+  },
+  {
+   "default": "1",
+   "description": "Allow the LLM provider to receive page images when OCR text is insufficient. Vision calls are gated and capped per conversation.",
+   "fieldname": "llm_vision_enabled",
+   "fieldtype": "Check",
+   "label": "LLM Vision Enabled"
+  },
+  {
+   "fieldname": "column_break_phase11_llm",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Map each model purpose (classification, extraction, vision, summarisation, confirmation) to a provider/model/tier. Cheap tier handles gating; expensive tier handles extraction.",
+   "fieldname": "llm_model_routes",
+   "fieldtype": "Table",
+   "label": "LLM Model Routes",
+   "options": "IDP LLM Model Route"
+  },
+  {
+   "fieldname": "phase11_cost_section",
+   "fieldtype": "Section Break",
+   "label": "Cost Controls"
+  },
+  {
+   "default": "10.00",
+   "description": "Hard cap on total LLM spend per day across all users. Once reached, IDP gracefully degrades to rule-only extraction.",
+   "fieldname": "daily_token_budget_usd",
+   "fieldtype": "Currency",
+   "label": "Daily Token Budget (USD)",
+   "options": "USD"
+  },
+  {
+   "default": "2.00",
+   "description": "Per-user daily cap; users are warned before exceeding.",
+   "fieldname": "per_user_daily_limit_usd",
+   "fieldtype": "Currency",
+   "label": "Per-User Daily Limit (USD)",
+   "options": "USD"
+  },
+  {
+   "fieldname": "column_break_phase11_cost",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "12",
+   "description": "Hard cap on tool-call iterations per conversation turn. Prevents runaway agent loops.",
+   "fieldname": "per_conversation_max_iterations",
+   "fieldtype": "Int",
+   "label": "Max Tool Iterations per Turn",
+   "non_negative": 1
+  },
+  {
+   "description": "Email address(es) notified once the daily budget crosses 80% \u2014 comma-separated.",
+   "fieldname": "alert_email_on_budget_80pct",
+   "fieldtype": "Data",
+   "label": "Budget Alert Email"
+  },
+  {
+   "fieldname": "phase11_retention_section",
+   "fieldtype": "Section Break",
+   "label": "Conversation Retention"
+  },
+  {
+   "default": "90",
+   "description": "Active conversations retained for N days, then auto-archived. Set 0 to disable auto-archive.",
+   "fieldname": "active_retention_days",
+   "fieldtype": "Int",
+   "label": "Active Retention (days)",
+   "non_negative": 1
+  },
+  {
+   "default": "365",
+   "description": "Archived conversations retained for N days, then purged unless legal_hold is set.",
+   "fieldname": "archived_retention_days",
+   "fieldtype": "Int",
+   "label": "Archived Retention (days)",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "column_break_phase11_retention",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "30",
+   "description": "Conversations in Failed status are purged after N days (legal_hold still exempts).",
+   "fieldname": "auto_purge_failed_after_days",
+   "fieldtype": "Int",
+   "label": "Auto-Purge Failed After (days)",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "phase11_chatbot_section",
+   "fieldtype": "Section Break",
+   "label": "Chatbot UI"
+  },
+  {
+   "default": "1",
+   "description": "Expose the conversational /idp/chat UI. When off, users are routed to the legacy SPA at /idp.",
+   "fieldname": "enable_chatbot_ui",
+   "fieldtype": "Check",
+   "label": "Enable Chatbot UI"
+  },
+  {
+   "default": "1",
+   "description": "Keep the legacy SPA available at /idp alongside the new chat UI. Turn off once users have migrated.",
+   "fieldname": "enable_legacy_ui",
+   "fieldtype": "Check",
+   "label": "Enable Legacy UI"
+  },
+  {
+   "fieldname": "column_break_phase11_chatbot",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "description": "Stream assistant prose token-by-token over Socket.IO. Tool results and ConfirmationCards remain atomic. Disable for strict-audit environments.",
+   "fieldname": "streaming_enabled",
+   "fieldtype": "Check",
+   "label": "Streaming Enabled"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-04-21 00:00:00.000000",
+ "modified": "2026-05-12 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "IDP",
  "name": "IDP Settings",

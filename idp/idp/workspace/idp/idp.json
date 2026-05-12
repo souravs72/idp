@@ -1,7 +1,7 @@
 {
  "app": "idp",
  "charts": [],
- "content": "[{\"id\":\"idp_header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Intelligent Document Processing</b></span>\",\"col\":12}},{\"id\":\"idp_shortcut_header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Shortcuts</b></span>\",\"col\":12}},{\"id\":\"idp_shortcut_upload\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Upload Document\",\"col\":3}},{\"id\":\"idp_shortcut_chat\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Chat Assistant\",\"col\":3}},{\"id\":\"idp_shortcut_settings\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"IDP Settings\",\"col\":3}},{\"id\":\"idp_shortcut_history\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Processing History\",\"col\":3}},{\"id\":\"idp_masters_header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Configuration</b></span>\",\"col\":12}}]",
+ "content": "[{\"id\":\"idp_header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Intelligent Document Processing</b></span>\",\"col\":12}},{\"id\":\"idp_shortcut_header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Shortcuts</b></span>\",\"col\":12}},{\"id\":\"idp_shortcut_new_chat\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"New IDP Chat\",\"col\":3}},{\"id\":\"idp_shortcut_my_conv\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"My Conversations\",\"col\":3}},{\"id\":\"idp_shortcut_upload\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Upload Document\",\"col\":3}},{\"id\":\"idp_shortcut_history\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Processing History\",\"col\":3}},{\"id\":\"idp_metrics_header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Today\\u2019s Activity</b></span>\",\"col\":12}},{\"id\":\"idp_card_llm_cost\",\"type\":\"card\",\"data\":{\"card_name\":\"LLM Cost (Today)\",\"col\":4}},{\"id\":\"idp_masters_header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Configuration</b></span>\",\"col\":12}}]",
  "creation": "2026-04-21 00:00:00.000000",
  "custom_blocks": [],
  "docstatus": 0,
@@ -85,11 +85,16 @@
    "type": "Link"
   }
  ],
- "modified": "2026-04-21 00:00:00.000000",
+ "modified": "2026-05-12 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "IDP",
  "name": "IDP",
- "number_cards": [],
+ "number_cards": [
+  {
+   "label": "LLM Cost (Today)",
+   "number_card_name": "LLM Cost (Today)"
+  }
+ ],
  "owner": "Administrator",
  "parent_page": "",
  "public": 1,
@@ -98,6 +103,21 @@
  "roles": [],
  "sequence_id": 20.0,
  "shortcuts": [
+  {
+   "color": "Blue",
+   "doc_view": "",
+   "label": "New IDP Chat",
+   "link_to": "/idp/chat",
+   "type": "URL"
+  },
+  {
+   "color": "Blue",
+   "doc_view": "List",
+   "label": "My Conversations",
+   "link_to": "IDP Conversation",
+   "stats_filter": "{\"user\":[\"=\",\"frappe.session.user\"]}",
+   "type": "DocType"
+  },
   {
    "color": "Green",
    "doc_view": "",

@@ -26,7 +26,21 @@
   "data_section",
   "extraction_data",
   "validation_errors",
-  "error_message"
+  "error_message",
+  "phase11_v2_section",
+  "conversation",
+  "mapper_source",
+  "model_tier",
+  "column_break_phase11_v2",
+  "llm_tokens_used",
+  "llm_cost_usd",
+  "cached_tokens",
+  "phase11_te_section",
+  "tokens_per_extracted_field",
+  "attachment_text_chars_sent",
+  "column_break_phase11_te",
+  "attachment_text_chars_total",
+  "vision_calls_in_request"
  ],
  "fields": [
   {
@@ -145,11 +159,107 @@
    "fieldname": "error_message",
    "fieldtype": "Text",
    "label": "Error Message"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "phase11_v2_section",
+   "fieldtype": "Section Break",
+   "label": "LLM & Conversation"
+  },
+  {
+   "description": "Conversation this log row belongs to. Nullable for legacy single-shot uploads.",
+   "fieldname": "conversation",
+   "fieldtype": "Link",
+   "label": "Conversation",
+   "options": "IDP Conversation",
+   "search_index": 1
+  },
+  {
+   "description": "Which mapper produced the extraction: rule-only, LLM, or hybrid (rule + LLM fallback).",
+   "fieldname": "mapper_source",
+   "fieldtype": "Select",
+   "label": "Mapper Source",
+   "options": "\nrule\nllm\nhybrid"
+  },
+  {
+   "description": "Two-tier routing classification. cheap = gating models; expensive = extraction models.",
+   "fieldname": "model_tier",
+   "fieldtype": "Select",
+   "label": "Model Tier",
+   "options": "\ncheap\nexpensive"
+  },
+  {
+   "fieldname": "column_break_phase11_v2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "llm_tokens_used",
+   "fieldtype": "Int",
+   "label": "LLM Tokens Used",
+   "non_negative": 1
+  },
+  {
+   "default": "0.00",
+   "fieldname": "llm_cost_usd",
+   "fieldtype": "Currency",
+   "label": "LLM Cost (USD)",
+   "options": "USD"
+  },
+  {
+   "default": "0",
+   "description": "Tokens served from provider prompt cache (Anthropic ephemeral / OpenAI prompt cache).",
+   "fieldname": "cached_tokens",
+   "fieldtype": "Int",
+   "label": "Cached Tokens",
+   "non_negative": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "phase11_te_section",
+   "fieldtype": "Section Break",
+   "label": "Token Efficiency Metrics"
+  },
+  {
+   "description": "llm_tokens_used / number of extracted fields. Tracked week-over-week \u2014 sustained >15% regression triggers investigation.",
+   "fieldname": "tokens_per_extracted_field",
+   "fieldtype": "Float",
+   "label": "Tokens / Extracted Field",
+   "precision": "3",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Characters of attachment text actually sent to the LLM this request after per-turn budget trimming.",
+   "fieldname": "attachment_text_chars_sent",
+   "fieldtype": "Int",
+   "label": "Attachment Text Chars Sent",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "column_break_phase11_te",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "Total characters available in attachment text before trimming. Ratio sent / total = compression efficiency.",
+   "fieldname": "attachment_text_chars_total",
+   "fieldtype": "Int",
+   "label": "Attachment Text Chars Total",
+   "non_negative": 1
+  },
+  {
+   "default": "0",
+   "description": "Number of vision (multimodal) calls made on this request \u2014 enforced against the per-conversation vision cap.",
+   "fieldname": "vision_calls_in_request",
+   "fieldtype": "Int",
+   "label": "Vision Calls in Request",
+   "non_negative": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-04-21 00:00:00.000000",
+ "modified": "2026-05-12 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "IDP",
  "name": "IDP Document Log",
