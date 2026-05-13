@@ -41,6 +41,12 @@ logger = get_logger("idp.llm.client")
 
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_BACKOFF_BASE = 0.5  # seconds
+# Default cap on output tokens per response.  Overridden by
+# ``IDP Settings.llm_max_tokens`` when the client is built via
+# :meth:`LLMClient.from_settings`.  Sized large enough that
+# multi-page invoice confirmation payloads (header + items + taxes)
+# don't get truncated mid-JSON on Anthropic / OpenAI models.
+DEFAULT_MAX_OUTPUT_TOKENS = 16_384
 
 
 class LLMClient:
@@ -56,6 +62,7 @@ class LLMClient:
 		on_budget_check: Callable[[str, int], None] | None = None,
 		routes: list[dict] | None = None,
 		provider_kwargs: dict[str, Any] | None = None,
+		default_max_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS,
 	) -> None:
 		self.provider = provider
 		self.default_model = default_model
@@ -64,6 +71,10 @@ class LLMClient:
 		self.on_budget_check = on_budget_check or enforce_budget
 		# Routes are normalised dicts: {"purpose","provider","model","tier"}.
 		self.routes: list[dict] = list(routes or [])
+		# Cap on output tokens applied to every ``chat()`` call unless the
+		# caller passes an explicit ``max_tokens`` argument.  Sourced from
+		# ``IDP Settings.llm_max_tokens`` when built via from_settings().
+		self.default_max_tokens = int(default_max_tokens) if default_max_tokens else DEFAULT_MAX_OUTPUT_TOKENS
 		# Init kwargs (api_key, host_url, etc.) reused when we have to
 		# instantiate a secondary provider on demand.
 		self._provider_kwargs: dict[str, Any] = dict(provider_kwargs or {})
@@ -135,11 +146,20 @@ class LLMClient:
 		if host:
 			provider_kwargs["host_url"] = host
 
+		# Output-token cap is driven by IDP Settings so admins can
+		# raise it for multi-page invoices without code changes.
+		try:
+			configured_max_tokens = int(getattr(doc, "llm_max_tokens", 0) or 0)
+		except (TypeError, ValueError):
+			configured_max_tokens = 0
+		default_max_tokens = configured_max_tokens or DEFAULT_MAX_OUTPUT_TOKENS
+
 		return cls(
 			provider,
 			default_model=model or provider.default_model,
 			routes=routes,
 			provider_kwargs=provider_kwargs,
+			default_max_tokens=default_max_tokens,
 		)
 
 	# ---- routing ------------------------------------------------------------
@@ -187,7 +207,7 @@ class LLMClient:
 		tool_choice: str | dict = "auto",
 		response_format: dict | None = None,
 		temperature: float = 0.0,
-		max_tokens: int = 4_096,
+		max_tokens: int | None = None,
 		model: str | None = None,
 		user: str | None = None,
 		purpose: str | None = None,
@@ -200,7 +220,14 @@ class LLMClient:
 		budget check uses the provider's tokeniser so we don't burn quota
 		on a request that cannot fit.  Final cost is attached to
 		``response.raw['_idp_cost_usd']``.
+
+		``max_tokens`` falls back to :attr:`default_max_tokens` (sourced
+		from IDP Settings.llm_max_tokens) so admins can raise the output
+		budget for long confirmation payloads without code changes.
 		"""
+
+		if max_tokens is None or max_tokens <= 0:
+			max_tokens = self.default_max_tokens
 
 		if model:
 			provider = self.provider

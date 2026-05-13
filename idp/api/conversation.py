@@ -59,6 +59,27 @@ def _parse_json_arg(value, default):
 		return default
 
 
+def _full_items_from_message(message: "frappe.Document") -> list[dict]:
+	"""Return the full items list that was sent to ``propose_create_document``.
+
+	The persisted ConfirmationCard payload only inlines the first page of
+	items (see :func:`idp.llm.tools.propose_create_document._build_items_payload`)
+	to keep the chat message size bounded.  For revalidation and document
+	creation we need every row, otherwise ``net_total`` will not match
+	the truncated sum of ``items[].amount`` and Save-as-Draft fails.
+
+	The raw items are recovered from ``IDP Message.tool_arguments`` which
+	preserves the original LLM payload verbatim.  Falls back to an empty
+	list when the message predates Phase 20 or the args field is empty.
+	"""
+
+	args = _parse_json_arg(getattr(message, "tool_arguments", None), None) or {}
+	items = args.get("items") if isinstance(args, dict) else None
+	if not isinstance(items, list):
+		return []
+	return [dict(r) for r in items if isinstance(r, dict)]
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -620,11 +641,16 @@ def confirm_card(
 	if edited is not None and not isinstance(edited, dict):
 		raise ConfirmationCardError(_("edited_payload must be a JSON object"))
 
+	# Recover the full items list from the message's stored tool_arguments
+	# so revalidation and document creation see every row, not just the
+	# first page persisted in the card snapshot.
+	full_items = _full_items_from_message(message)
+
 	# Re-run business rules on the edited values so the user sees fresh
 	# warnings before the next agent turn fires create_document.
 	revalidation: list[str] = []
 	if action in {"submit", "save_draft"}:
-		revalidation = _revalidate_card(card, edited)
+		revalidation = _revalidate_card(card, edited, full_items=full_items)
 
 	# Phase 24 — Cancel: just acknowledge.  The frontend handles the
 	# UI-level "reset to extracted data" by re-rendering from the
@@ -656,11 +682,45 @@ def confirm_card(
 	created_info: dict | None = None
 	if action in {"submit", "save_draft"}:
 		_apply_edits_to_card(card, edited)
+
+		# Pre-flight: every tax row must resolve to an existing ERPNext
+		# Account.  Without this check the user sees ERPNext's raw
+		# validation error ("Could not find Row #N: Account Head: …"),
+		# which is opaque and not actionable from the chatbot.  Account
+		# creation has too many required dimensions (root_type,
+		# parent_account, account_type, currency) to auto-create
+		# reliably, so we surface a friendly blocker and ask the user
+		# to either pick an existing account from the dropdown or
+		# create the account in Chart of Accounts first.
+		unmapped_accounts = _unmapped_tax_accounts(card)
+		if unmapped_accounts:
+			envelope = _build_unmapped_accounts_error(unmapped_accounts)
+			logger.info(
+				"confirm_card unmapped accounts conv=%s msg=%s accounts=%s",
+				doc.name,
+				message.name,
+				unmapped_accounts,
+			)
+			err_doc = _persist_error_message(doc.name, envelope)
+			return {
+				"conversation_id": doc.name,
+				"message_id": message.name,
+				"action": action,
+				"version": version,
+				"doctype": card.get("doctype"),
+				"revalidation_warnings": revalidation,
+				"draft_saved_message_id": err_doc.get("name") if err_doc else None,
+				"created_doc": None,
+				"error": envelope,
+				"confirmed_payload": None,
+			}
+
 		try:
 			created_info = _create_erpnext_doc_from_card(
 				card,
 				company=card.get("company") or doc.company or "",
 				submit=(action == "submit"),
+				full_items=full_items,
 			)
 		except Exception as exc:  # noqa: BLE001 — surface friendly error
 			envelope = _build_friendly_error(exc)
@@ -774,13 +834,27 @@ def confirm_card(
 	}
 
 
-def _create_erpnext_doc_from_card(card: dict, *, company: str, submit: bool) -> dict:
+def _create_erpnext_doc_from_card(
+	card: dict,
+	*,
+	company: str,
+	submit: bool,
+	full_items: list[dict] | None = None,
+) -> dict:
 	"""Build a MappedDocument from the persisted card and create the ERPNext doc.
 
 	Args:
 		card: The (already edits-applied) ConfirmationCard payload.
 		company: Owning company; falls back to default if blank.
 		submit: When True, also call ``doc.submit()`` after insert.
+		full_items: Every item row from the original
+			``propose_create_document`` call.  Required for long
+			invoices where the card only persists the first page —
+			without it ``net_total`` would be enforced against an
+			incomplete items list and the saved document would only
+			carry the first page of line items.  Per-row edits the
+			user made on the visible page take precedence; rows
+			beyond the first page are accepted as-extracted.
 
 	Returns:
 		``{"doctype", "name", "url", "submitted", "warnings", "created_masters"}``.
@@ -805,7 +879,21 @@ def _create_erpnext_doc_from_card(card: dict, *, company: str, submit: bool) -> 
 	# (``erpnext_item`` / ``is_stock_item`` are item-only concepts).
 	is_item_table = (card.get("child_table_name") or "items") == "items"
 
-	# Items: rebuild from card rows.  Apply user-picked ``erpnext_item``
+	# Build an index → card-row map.  The card only carries the first
+	# page so user-picked ``erpnext_item``/``erpnext_account`` plus any
+	# ``row_edits`` only apply to those indices.  Rows beyond page 1
+	# fall through with their original extracted data and ``New``
+	# status (auto-created masters).
+	card_rows_by_index: dict[int, dict] = {}
+	for r in (card.get("items") or {}).get("rows") or []:
+		if not isinstance(r, dict):
+			continue
+		idx = r.get("index")
+		if isinstance(idx, int):
+			card_rows_by_index[idx] = r
+
+	# Items: rebuild from full_items when available so every row makes
+	# it into the saved document.  Apply user-picked ``erpnext_item``
 	# back onto the row data as ``item_code`` so the document_creator
 	# (which expects ERPNext field names) maps it correctly.  Likewise
 	# carry over ``is_stock_item`` overrides set via the table.
@@ -823,11 +911,29 @@ def _create_erpnext_doc_from_card(card: dict, *, company: str, submit: bool) -> 
 	# auto_create_missing_masters.
 	items: list[dict] = []
 	item_overrides: dict[str, dict] = {}
-	items_block = card.get("items") or {}
-	for r in items_block.get("rows") or []:
-		if not isinstance(r, dict):
-			continue
-		row_data = dict(r.get("data") or {})
+
+	if full_items:
+		source_iter = list(enumerate(full_items))
+	else:
+		# Legacy fallback: only the persisted card rows are available.
+		source_iter = [
+			(r.get("index") if isinstance(r.get("index"), int) else i, dict(r.get("data") or {}))
+			for i, r in enumerate((card.get("items") or {}).get("rows") or [])
+			if isinstance(r, dict)
+		]
+
+	for idx, base_data in source_iter:
+		# When a card row exists for this index its ``data`` is the
+		# edited form — use it.  Otherwise the row came from
+		# full_items beyond the visible page so we trust the
+		# extracted data verbatim.
+		card_row = card_rows_by_index.get(idx)
+		if card_row is not None:
+			r = card_row
+			row_data = dict(r.get("data") or {})
+		else:
+			r = {}
+			row_data = dict(base_data or {})
 		# Strip Phase 25 provenance keys — they aren't ERPNext fields.
 		row_data.pop("source_page", None)
 		if not is_item_table:
@@ -1087,6 +1193,71 @@ def _apply_edits_to_card(card: dict, edited: dict | None) -> None:
 			r["status"] = "Existing" if r["erpnext_account"] else "New"
 
 
+def _unmapped_tax_accounts(card: dict) -> list[str]:
+	"""Return the extracted account names that aren't mapped to an ERPNext Account.
+
+	A tax row counts as unmapped when ``erpnext_account`` is blank — that
+	is, neither the §24.3 matcher nor the user's dropdown selection
+	produced an existing ``Account`` record.  ERPNext would otherwise
+	raise a Row #N validation error on insert, which is opaque inside
+	the chatbot.  Returns the list of extracted account labels (e.g.
+	``"Output CGST - TT"``) so the caller can show them to the user.
+	"""
+
+	taxes_block = card.get("taxes") or {}
+	rows = taxes_block.get("rows") if isinstance(taxes_block, dict) else None
+	if not isinstance(rows, list):
+		return []
+
+	unmapped: list[str] = []
+	for r in rows:
+		if not isinstance(r, dict):
+			continue
+		if (r.get("erpnext_account") or "").strip():
+			continue
+		extracted = r.get("extracted") or {}
+		label = (extracted.get("account") or r.get("account") or "").strip()
+		if label:
+			unmapped.append(label)
+	# Deduplicate while preserving order — the same account name often
+	# repeats across multiple tax rows (CGST and SGST both default to
+	# the same head when the source document is ambiguous).
+	seen: set[str] = set()
+	deduped: list[str] = []
+	for name in unmapped:
+		if name in seen:
+			continue
+		seen.add(name)
+		deduped.append(name)
+	return deduped
+
+
+def _build_unmapped_accounts_error(accounts: list[str]) -> dict:
+	"""Friendly envelope for the unmapped-account blocker.
+
+	Mirrors the shape :func:`_build_friendly_error` produces so the
+	frontend's existing ErrorCard renderer (``error_code`` +
+	``friendly_message`` + optional ``details_for_admin``) keeps
+	working unchanged.
+	"""
+
+	quoted = ", ".join(f"'{name}'" for name in accounts)
+	friendly = _(
+		"The following accounts could not be matched to an existing ERPNext "
+		"Account: {0}.  Pick a matching account from the dropdown in the "
+		"tax table, or create the missing account under Chart of Accounts "
+		"first (account creation needs Root Type, Parent Account and "
+		"Account Type, which we don't ask for inside the chatbot)."
+	).format(quoted)
+	return {
+		"error_code": "UNMAPPED_ACCOUNTS",
+		"friendly_message": friendly,
+		"details_for_admin": {
+			"unmapped_accounts": list(accounts),
+		},
+	}
+
+
 @frappe.whitelist()
 def get_card_items_page(
 	conversation_id: str,
@@ -1200,7 +1371,11 @@ def _settings_page_size_default() -> int | None:
 		return None
 
 
-def _revalidate_card(card: dict, edited: dict | None) -> list[str]:
+def _revalidate_card(
+	card: dict,
+	edited: dict | None,
+	full_items: list[dict] | None = None,
+) -> list[str]:
 	"""Apply user edits onto the card snapshot and re-run business rules.
 
 	* ``edited.header``: dict overriding header field values.
@@ -1208,6 +1383,12 @@ def _revalidate_card(card: dict, edited: dict | None) -> list[str]:
 	* ``edited.taxes``: list[dict] replacing the tax rows wholesale.
 	* ``edited.account_mappings``: ``{row_index: account_name}`` —
 	  resolves user-picked ``erpnext_account`` for each tax row.
+
+	``full_items`` should carry every item row originally sent to
+	``propose_create_document``.  Without it the validator only sees
+	the first page persisted in the card snapshot and the
+	``net_total`` vs ``sum(items[].amount)`` rule fires a false
+	mismatch on long invoices.
 	"""
 
 	try:
@@ -1221,11 +1402,27 @@ def _revalidate_card(card: dict, edited: dict | None) -> list[str]:
 		if isinstance(h, dict) and h.get("fieldname"):
 			header[h["fieldname"]] = h.get("value")
 
-	# Items — pull from the card snapshot's first page and the persisted
-	# card never holds beyond ``items.total`` on its own; we trust the
-	# user edits to be the full set when provided.
-	items_block = card.get("items") or {}
-	items = [r.get("data") for r in (items_block.get("rows") or []) if isinstance(r, dict)]
+	# Items — prefer the full list recovered from tool_arguments so
+	# revalidation matches what create_document will actually persist.
+	# Apply any per-row data overrides from the card's first-page edits
+	# (e.g. ``row_edits`` / stock-item flag) on top.
+	if full_items:
+		page_overrides: dict[int, dict] = {}
+		for r in (card.get("items") or {}).get("rows") or []:
+			if not isinstance(r, dict):
+				continue
+			idx = r.get("index")
+			if not isinstance(idx, int):
+				continue
+			page_overrides[idx] = dict(r.get("data") or {})
+		items = []
+		for idx, row in enumerate(full_items):
+			merged = page_overrides.get(idx) or dict(row)
+			merged.pop("source_page", None)
+			items.append(merged)
+	else:
+		items_block = card.get("items") or {}
+		items = [r.get("data") for r in (items_block.get("rows") or []) if isinstance(r, dict)]
 
 	taxes_block = card.get("taxes") or {}
 	taxes = []

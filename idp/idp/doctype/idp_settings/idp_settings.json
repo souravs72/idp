@@ -64,6 +64,7 @@
   "llm_vision_enabled",
   "column_break_phase11_llm",
   "llm_model_routes",
+  "llm_max_tokens",
   "phase11_cost_section",
   "daily_token_budget_usd",
   "per_user_daily_limit_usd",
@@ -453,6 +454,14 @@
    "fieldtype": "Table",
    "label": "LLM Model Routes",
    "options": "IDP LLM Model Route"
+  },
+  {
+   "default": "16384",
+   "description": "Maximum output tokens per LLM response (Anthropic/OpenAI max_tokens; Ollama num_predict). Increase when the agent's confirmation cards get truncated mid-JSON (e.g. multi-page invoices with long items/taxes tables). Typical safe range: 4096\u201364000 depending on model context window.",
+   "fieldname": "llm_max_tokens",
+   "fieldtype": "Int",
+   "label": "LLM Max Output Tokens",
+   "non_negative": 1
   },
   {
    "fieldname": "phase11_cost_section",
