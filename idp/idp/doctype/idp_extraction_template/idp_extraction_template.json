@@ -12,7 +12,9 @@
   "field_mappings",
   "validation_rules",
   "llm_section",
-  "llm_fallback_threshold"
+  "llm_fallback_threshold",
+  "phase28_section",
+  "page_pre_pass_patterns"
  ],
  "fields": [
   {
@@ -64,6 +66,17 @@
    "fieldtype": "Float",
    "label": "LLM Fallback Threshold",
    "precision": "3"
+  },
+  {
+   "fieldname": "phase28_section",
+   "fieldtype": "Section Break",
+   "label": "Page Pre-Pass (Phase 28)"
+  },
+  {
+   "description": "JSON list of regex patterns added to the per-DocType signal set used by the page-aware pre-pass. Pages without any built-in or template-defined signal are replaced with a placeholder in the LLM context. Example: [\"\\\\bGSTIN\\\\b\", \"IFSC[ :]\"]",
+   "fieldname": "page_pre_pass_patterns",
+   "fieldtype": "Long Text",
+   "label": "Page Pre-Pass Patterns (JSON)"
   }
  ],
  "index_web_pages_for_search": 1,

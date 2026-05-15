@@ -11,6 +11,7 @@
   "column_break_main",
   "requires_confirmation",
   "mutating",
+  "max_output_tokens",
   "roles_section",
   "allowed_roles",
   "denied_roles",
@@ -59,6 +60,13 @@
    "label": "Mutating",
    "read_only": 1,
    "description": "Mirrors ToolSpec.mutating for filtering."
+  },
+  {
+   "description": "Phase 28: per-tool cap on LLM output tokens generated while producing the tool response. Leave blank (or 0) to use the provider default. When the cap is exceeded, the dispatch returns a stop_processing envelope with a friendly user_message.",
+   "fieldname": "max_output_tokens",
+   "fieldtype": "Int",
+   "label": "Max Output Tokens",
+   "non_negative": 1
   },
   {
    "fieldname": "roles_section",

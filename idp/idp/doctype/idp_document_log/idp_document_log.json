@@ -40,7 +40,8 @@
   "attachment_text_chars_sent",
   "column_break_phase11_te",
   "attachment_text_chars_total",
-  "vision_calls_in_request"
+  "vision_calls_in_request",
+  "mapper_cache_state"
  ],
  "fields": [
   {
@@ -255,6 +256,13 @@
    "fieldtype": "Int",
    "label": "Vision Calls in Request",
    "non_negative": 1
+  },
+  {
+   "description": "Phase 28 mapper-output cache state for this row. hit = served from cache (rule & possibly LLM skipped); miss = computed fresh and written back; bypass = caching disabled or input not cacheable.",
+   "fieldname": "mapper_cache_state",
+   "fieldtype": "Select",
+   "label": "Mapper Cache State",
+   "options": "\nhit\nmiss\nbypass"
   }
  ],
  "index_web_pages_for_search": 1,

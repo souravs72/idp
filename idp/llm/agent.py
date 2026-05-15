@@ -117,6 +117,7 @@ class IDPAgent:
 		from idp.llm.file_alias import get_registry
 		from idp.llm.message_renderer import render_history, render_user_message
 		from idp.llm.prompts import build_chat_system_prompt
+		from idp.llm.summariser import maybe_summarise, render_digest_as_system_note
 		from idp.llm.tools.base import ToolContext
 		from idp.llm.tools.registry import dispatch, get_provider_schemas, load_tool_registry
 
@@ -214,11 +215,53 @@ class IDPAgent:
 		agg_in = agg_out = 0
 		agg_cost = 0.0
 
+		# Phase 28 — read renderer-level token-efficiency flags once per
+		# request.  ``get_single_value`` returns ``None`` for unknown
+		# fields (older installs without the patch applied), so we fall
+		# back to the documented defaults.
+		try:
+			page_pre_pass_enabled = bool(
+				frappe.db.get_single_value("IDP Settings", "page_pre_pass_enabled")
+			)
+		except Exception:
+			page_pre_pass_enabled = True
+		try:
+			strip_thinking_blocks = bool(
+				frappe.db.get_single_value("IDP Settings", "strip_thinking_blocks")
+			)
+		except Exception:
+			strip_thinking_blocks = True
+		# Mutable accumulator the renderer fills in across all attachments
+		# rendered this turn.  Surfaced to the IDP Document Log row below.
+		page_pre_pass_stats: dict[str, int] = {}
+
 		for iterations in range(1, self.max_iterations + 1):
 			persisted = self._fetch_history()
+			# Phase 28 G4 — slide a digest over older messages once we
+			# cross the configurable threshold.  The summariser is
+			# best-effort: any failure degrades to verbatim rendering.
+			summary = maybe_summarise(
+				conversation_id=self.conversation_id,
+				rows=persisted,
+				llm_client=client,
+			)
+			render_rows = summary.get("tail") or persisted
 			# Render history through the same registry the user sees.
 			messages = [{"role": "system", "content": system_prompt}]
-			messages.extend(render_history(persisted, registry, supports_vision=supports_vision))
+			digest_msg = render_digest_as_system_note(summary.get("digest") or "")
+			if digest_msg:
+				messages.append(digest_msg)
+			messages.extend(
+				render_history(
+					render_rows,
+					registry,
+					supports_vision=supports_vision,
+					target_doctype=ctx.target_doctype,
+					page_pre_pass_enabled=page_pre_pass_enabled,
+					page_pre_pass_stats=page_pre_pass_stats,
+					strip_thinking_blocks=strip_thinking_blocks,
+				)
+			)
 
 			self._publish_event(
 				"idp_conversation_thinking",

@@ -120,6 +120,12 @@ class ToolSpec:
 	handler: Callable[..., ToolResult]
 	requires_role: str | None = None
 	mutating: bool = False
+	# Phase 28 G6 — soft cap on the JSON-serialised size of the tool
+	# result handed back to the LLM (in tokens, ~4 chars/token).  ``None``
+	# means no cap (legacy behaviour).  Populated by the registry from
+	# ``IDP Tool Configuration.max_output_tokens`` at dispatch time, not
+	# from the ``@tool`` decorator — admins control caps without code edits.
+	max_output_tokens: int | None = None
 
 	def to_provider_schema(self) -> dict:
 		"""Return the OpenAI-style ``{"type":"function", "function": {...}}``

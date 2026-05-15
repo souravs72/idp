@@ -25,15 +25,25 @@ so downstream tooling that already consumes that format keeps working.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from idp.core.logger import get_logger
 from idp.llm.file_alias import AttachmentRecord, FileAliasRegistry
+from idp.llm.page_prepass import load_template_patterns, select_relevant_pages
 
 logger = get_logger("idp.llm.renderer")
 
 INLINE_TEXT_BUDGET = 15_000  # chars
 PAGE_DIVIDER_RE_PREFIX = "--- Page "
+
+# Phase 28 G5: match <thinking>…</thinking> and <think>…</think> blocks that some
+# providers (Claude extended-thinking, DeepSeek-R1, OpenAI o-series) embed in
+# assistant content.  Multiline + lazy so back-to-back blocks don't merge.
+_THINKING_RE = re.compile(
+	r"<(thinking|think)>.*?</\1>\s*",
+	flags=re.IGNORECASE | re.DOTALL,
+)
 
 # MIME → short tag map (matches ExtractFileContent.file_info.type).
 _MIME_TAG = {
@@ -68,6 +78,27 @@ _EXT_TAG = {
 	".docx": "docx",
 	".txt": "text",
 }
+
+
+def strip_thinking(content: str) -> str:
+	"""Remove ``<thinking>…</thinking>`` / ``<think>…</think>`` blocks (Phase 28 G5).
+
+	Some providers (Anthropic extended-thinking, DeepSeek-R1, OpenAI
+	o-series) emit reasoning trace blocks embedded in assistant content.
+	Re-feeding them into the next turn wastes tokens and can confuse
+	smaller models.  We only strip on the *outbound* render path; the
+	IDP Message row keeps the original content for audit.
+
+	Returns *content* unchanged when no blocks are found, so the cost
+	for the common case is a single regex search.
+	"""
+
+	if not content or "<" not in content:
+		return content
+	cleaned = _THINKING_RE.sub("", content)
+	# Collapse 3+ consecutive blank lines that may be left behind.
+	cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+	return cleaned.strip()
 
 
 def short_mime_tag(mime_type: str | None, file_name: str | None = None) -> str:
@@ -134,6 +165,9 @@ def render_attachment_for_llm(
 	pages: int | None = None,
 	extracted_pages: int | None = None,
 	budget: int = INLINE_TEXT_BUDGET,
+	target_doctype: str | None = None,
+	page_pre_pass_enabled: bool = False,
+	page_pre_pass_stats: dict[str, Any] | None = None,
 ) -> str:
 	"""Return the text block placed in a user message for *record*.
 
@@ -144,6 +178,12 @@ def render_attachment_for_llm(
 	  ``--- Page N ---`` markers.  The inline text is truncated at
 	  ``budget`` characters and a tail marker advertises the
 	  ``read_attachment_more`` tool when truncation occurs.
+
+	Phase 28 G1: when ``page_pre_pass_enabled`` is true and the body has
+	``--- Page N ---`` markers, run the regex pre-pass to elide pages
+	without any recognised signal for *target_doctype*.  Pre-pass stats
+	(pages_total / pages_kept / pages_omitted / chars_total / chars_after)
+	are merged into ``page_pre_pass_stats`` if the caller passed a dict.
 	"""
 
 	if is_image(record):
@@ -153,6 +193,19 @@ def render_attachment_for_llm(
 	body = extracted_text if extracted_text is not None else record.inline_text_preview
 	if not body:
 		return tag
+
+	# Phase 28 G1 — page-aware pre-pass before truncation.
+	if page_pre_pass_enabled:
+		filtered, stats = select_relevant_pages(
+			body,
+			target_doctype,
+			extra_patterns=load_template_patterns(target_doctype),
+		)
+		if isinstance(page_pre_pass_stats, dict):
+			# Accumulate across all attachments in this render.
+			for key, val in stats.items():
+				page_pre_pass_stats[key] = page_pre_pass_stats.get(key, 0) + int(val or 0)
+		body = filtered
 
 	full_len = len(body)
 	rendered, truncated_chars = _truncate_to_budget(body, budget)
@@ -179,6 +232,9 @@ def render_user_message(
 	supports_vision: bool = False,
 	extracts: dict[str, str] | None = None,
 	pages: dict[str, int] | None = None,
+	target_doctype: str | None = None,
+	page_pre_pass_enabled: bool = False,
+	page_pre_pass_stats: dict[str, Any] | None = None,
 ) -> dict:
 	"""Render a single user-role message dict for :meth:`LLMClient.chat`.
 
@@ -203,6 +259,14 @@ def render_user_message(
 	    with a different OCR config.
 	pages
 	    Optional ``{alias: page_count}`` map for non-image files.
+	target_doctype
+	    Phase 28 G1 — drives the per-DocType regex set used by the
+	    page-aware pre-pass.  ``None`` falls back to the generic set.
+	page_pre_pass_enabled
+	    Phase 28 G1 — when true, elide pages without a recognised signal.
+	page_pre_pass_stats
+	    Optional mutable dict; aggregated pre-pass stats are merged in
+	    so the caller can record them on IDP Document Log.
 	"""
 
 	extracts = extracts or {}
@@ -225,6 +289,9 @@ def render_user_message(
 					record,
 					extracted_text=extracts.get(record.alias),
 					pages=pages.get(record.alias),
+					target_doctype=target_doctype,
+					page_pre_pass_enabled=page_pre_pass_enabled,
+					page_pre_pass_stats=page_pre_pass_stats,
 				)
 			)
 
@@ -249,6 +316,10 @@ def render_history(
 	registry: FileAliasRegistry,
 	*,
 	supports_vision: bool = False,
+	target_doctype: str | None = None,
+	page_pre_pass_enabled: bool = False,
+	page_pre_pass_stats: dict[str, Any] | None = None,
+	strip_thinking_blocks: bool = False,
 ) -> list[dict]:
 	"""Render a list of persisted message dicts into LLM-ready dicts.
 
@@ -259,6 +330,16 @@ def render_history(
 
 	System / assistant / tool messages pass through with minimal change;
 	user messages get the full attachment-rendering treatment.
+
+	Phase 28 G1 — ``page_pre_pass_enabled`` is forwarded into the
+	per-attachment renderer; aggregated stats are merged into
+	``page_pre_pass_stats`` if a dict is supplied.
+
+	Phase 28 G5 — when ``strip_thinking_blocks`` is true, any
+	``<thinking>…</thinking>`` / ``<think>…</think>`` blocks in prior
+	assistant turns are removed before being re-fed to the LLM.  The
+	stripping is purely cosmetic for context — the persisted row keeps
+	the original content for audit.
 	"""
 
 	rendered: list[dict] = []
@@ -272,12 +353,18 @@ def render_history(
 					attachments=attachments,
 					registry=registry,
 					supports_vision=supports_vision,
+					target_doctype=target_doctype,
+					page_pre_pass_enabled=page_pre_pass_enabled,
+					page_pre_pass_stats=page_pre_pass_stats,
 				)
 			)
 			continue
 
 		if role == "assistant":
-			msg: dict[str, Any] = {"role": "assistant", "content": raw.get("content") or ""}
+			assistant_content = raw.get("content") or ""
+			if strip_thinking_blocks and assistant_content:
+				assistant_content = strip_thinking(assistant_content)
+			msg: dict[str, Any] = {"role": "assistant", "content": assistant_content}
 			# Prefer the full tool_calls array (multi-tool-call turns) so
 			# every tool_use_id round-trips intact and matches its tool_result
 			# block.  Fall back to the legacy single tool_call_id/name fields
@@ -454,4 +541,5 @@ __all__ = [
 	"render_image_tag",
 	"render_user_message",
 	"short_mime_tag",
+	"strip_thinking",
 ]

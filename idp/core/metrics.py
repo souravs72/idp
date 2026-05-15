@@ -212,3 +212,174 @@ def get_dashboard(since_hours: int = 24) -> dict:
 	except (TypeError, ValueError):
 		window = 24
 	return dashboard(since_hours=window if window > 0 else None)
+
+
+# ---------------------------------------------------------------------------
+# Phase 28 — Token-Efficiency regression check (weekly)
+# ---------------------------------------------------------------------------
+
+
+_TE_FIELDS = (
+	"tokens_per_extracted_field",
+	"attachment_text_chars_sent",
+	"attachment_text_chars_total",
+	"vision_calls_in_request",
+	"cached_tokens",
+	"model_tier",
+)
+_DEFAULT_TE_REGRESSION_PCT = 15
+
+
+def _avg_tokens_per_field(rows: list[dict]) -> float | None:
+	"""Return the mean ``tokens_per_extracted_field`` across *rows*.
+
+	None when the metric is missing on every row (older installs, or a
+	week without any LLM-touched extractions).
+	"""
+
+	values: list[float] = []
+	for r in rows:
+		val = r.get("tokens_per_extracted_field")
+		if val is None or val == "":
+			continue
+		try:
+			values.append(float(val))
+		except (TypeError, ValueError):
+			continue
+	if not values:
+		return None
+	return sum(values) / len(values)
+
+
+def weekly_te_summary() -> dict:
+	"""Compute this-week vs. previous-week TE metrics from IDP Document Log."""
+
+	this_week = _fetch(
+		list(_TE_FIELDS) + ["creation"],
+		_window_filter(24 * 7),
+	)
+	from frappe.utils import add_to_date, now_datetime
+
+	prev_lower = add_to_date(now_datetime(), hours=-24 * 14)
+	prev_upper = add_to_date(now_datetime(), hours=-24 * 7)
+	prev_week = frappe.get_all(
+		"IDP Document Log",
+		filters={"creation": ["between", [prev_lower, prev_upper]]},
+		fields=list(_TE_FIELDS) + ["creation"],
+		limit=0,
+	)
+
+	cur_avg = _avg_tokens_per_field(this_week)
+	prev_avg = _avg_tokens_per_field(prev_week)
+	delta_pct: float | None = None
+	if cur_avg is not None and prev_avg and prev_avg > 0:
+		delta_pct = (cur_avg - prev_avg) / prev_avg * 100.0
+	return {
+		"this_week": {
+			"rows": len(this_week),
+			"avg_tokens_per_field": cur_avg,
+		},
+		"previous_week": {
+			"rows": len(prev_week),
+			"avg_tokens_per_field": prev_avg,
+		},
+		"delta_pct": delta_pct,
+	}
+
+
+def weekly_te_regression_check() -> dict:
+	"""Phase 28 — emit an Email Alert when TE regresses week-over-week.
+
+	Wired into ``hooks.scheduler_events.weekly``.  Compares the average
+	``tokens_per_extracted_field`` over the last 7 days to the prior
+	7-day window; when the increase exceeds
+	``IDP Settings.te_regression_alert_pct`` (default 15) an Email Alert
+	is enqueued for System Managers.
+
+	The job is best-effort: any failure is logged and swallowed so a
+	misconfigured SMTP setup never breaks the scheduler.
+	"""
+
+	try:
+		summary = weekly_te_summary()
+	except Exception:
+		logger.exception("weekly TE summary failed")
+		return {"status": "error", "stage": "summary"}
+
+	delta_pct = summary.get("delta_pct")
+	if delta_pct is None:
+		return {"status": "skipped", "reason": "insufficient_data", **summary}
+
+	try:
+		threshold = int(
+			frappe.db.get_single_value("IDP Settings", "te_regression_alert_pct")
+			or _DEFAULT_TE_REGRESSION_PCT
+		)
+	except Exception:
+		threshold = _DEFAULT_TE_REGRESSION_PCT
+
+	if delta_pct <= threshold:
+		return {"status": "ok", "threshold_pct": threshold, **summary}
+
+	# Regression detected — emit a System-Manager-targeted email alert.
+	try:
+		recipients = _system_manager_emails()
+		if recipients:
+			cur = summary["this_week"]["avg_tokens_per_field"]
+			prev = summary["previous_week"]["avg_tokens_per_field"]
+			subject = (
+				f"IDP token-efficiency regression: +{delta_pct:.1f}% "
+				f"(threshold {threshold}%)"
+			)
+			message = (
+				"<p>Weekly IDP token-efficiency check has detected a "
+				"regression in <b>tokens_per_extracted_field</b>.</p>"
+				f"<ul>"
+				f"<li>This week: <b>{cur:.2f}</b> (rows: {summary['this_week']['rows']})</li>"
+				f"<li>Previous week: <b>{prev:.2f}</b> (rows: {summary['previous_week']['rows']})</li>"
+				f"<li>Change: <b>+{delta_pct:.1f}%</b> (alert threshold: {threshold}%)</li>"
+				"</ul>"
+				"<p>Investigate recent changes to extraction templates, "
+				"mapper version, or LLM routes.  See <i>IDP Document Log</i> "
+				"for per-document detail.</p>"
+			)
+			frappe.sendmail(
+				recipients=recipients,
+				subject=subject,
+				message=message,
+				delayed=False,
+				retry=1,
+			)
+	except Exception:
+		logger.exception("weekly TE regression alert email failed")
+		return {"status": "alerted_but_email_failed", "threshold_pct": threshold, **summary}
+
+	return {"status": "alerted", "threshold_pct": threshold, **summary}
+
+
+def _system_manager_emails() -> list[str]:
+	"""Return the email addresses of users with the System Manager role."""
+
+	try:
+		users = frappe.get_all(
+			"Has Role",
+			filters={"role": "System Manager", "parenttype": "User"},
+			fields=["parent"],
+			limit=0,
+		)
+	except Exception:
+		return []
+	emails: list[str] = []
+	for row in users:
+		parent = row.get("parent")
+		if not parent or parent in {"Administrator", "Guest"}:
+			continue
+		try:
+			user_doc = frappe.db.get_value(
+				"User", parent, ["email", "enabled"], as_dict=True
+			)
+		except Exception:
+			continue
+		if user_doc and user_doc.get("enabled") and user_doc.get("email"):
+			emails.append(user_doc["email"])
+	return emails

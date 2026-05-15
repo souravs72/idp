@@ -23,12 +23,20 @@ returns the snapshot.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from idp.core.logger import get_logger
 from idp.llm.tools.base import ToolContext, ToolResult, ToolSpec
 
 logger = get_logger("idp.llm.tools.registry")
+
+# Phase 28 G6 — rough char/token ratio used to convert the
+# admin-configured ``max_output_tokens`` into a byte-budget for the
+# serialised tool result.  4 chars/token is a deliberate over-estimate
+# (Anthropic + OpenAI tokenisers usually clear that on English ASCII)
+# so we err on the side of letting *more* data through.
+_CHARS_PER_TOKEN = 4
 
 
 _REGISTRY: dict[str, ToolSpec] = {}
@@ -180,7 +188,7 @@ def dispatch(name: str, arguments: dict | None, ctx: ToolContext) -> ToolResult:
 
 	# Allow handlers to return a plain dict for ergonomics.
 	if isinstance(result, dict):
-		return ToolResult(
+		result = ToolResult(
 			success=bool(result.get("success", True)),
 			data=result.get("data"),
 			error=result.get("error"),
@@ -194,7 +202,100 @@ def dispatch(name: str, arguments: dict | None, ctx: ToolContext) -> ToolResult:
 			error_code="BAD_TOOL_RESULT",
 			stop_processing=True,
 		)
+	# Phase 28 G6 — enforce per-tool output cap.  The cap is read from
+	# ``IDP Tool Configuration.max_output_tokens`` at dispatch time so
+	# admins can tune it without redeploying code.  When the serialised
+	# result exceeds the cap we truncate ``data`` and set
+	# ``stop_processing=True`` with a user-visible message so the LLM
+	# doesn't keep churning on the same call.
+	cap = _resolve_max_output_tokens(name, spec.max_output_tokens)
+	if cap is not None and cap > 0:
+		result = _enforce_output_cap(result, name, cap)
 	return result
+
+
+def _resolve_max_output_tokens(tool_name: str, spec_cap: int | None) -> int | None:
+	"""Look up the effective ``max_output_tokens`` for *tool_name*.
+
+	Precedence (highest first):
+	1. ``IDP Tool Configuration.max_output_tokens`` (admin override).
+	2. The ``ToolSpec.max_output_tokens`` default (rarely set in code).
+	3. ``None`` — no cap.
+	"""
+
+	try:
+		import frappe
+	except ImportError:
+		return spec_cap
+	try:
+		val = frappe.db.get_value(
+			"IDP Tool Configuration",
+			{"tool_name": tool_name},
+			"max_output_tokens",
+		)
+	except Exception:
+		return spec_cap
+	if val is None or val == 0:
+		return spec_cap
+	try:
+		return int(val)
+	except (TypeError, ValueError):
+		return spec_cap
+
+
+def _enforce_output_cap(result: ToolResult, tool_name: str, max_tokens: int) -> ToolResult:
+	"""Truncate *result.data* when its serialised size exceeds the cap."""
+
+	if not result.success or result.data is None:
+		# Errors and empty results are tiny — no need to measure.
+		return result
+	try:
+		serialised = json.dumps(result.data, default=str, ensure_ascii=False)
+	except (TypeError, ValueError):
+		# Unserialisable — bail with a user-facing error so we don't
+		# silently smuggle huge blobs through the LLM channel.
+		return ToolResult.fail(
+			f"tool {tool_name!r} produced a non-JSON-serialisable result",
+			error_code="BAD_TOOL_RESULT",
+			stop_processing=True,
+		)
+	char_budget = max(max_tokens * _CHARS_PER_TOKEN, 64)
+	if len(serialised) <= char_budget:
+		return result
+	# Over budget — truncate, surface the cut, and stop the loop so the
+	# LLM doesn't immediately re-invoke the same tool expecting more.
+	truncated_repr = serialised[:char_budget].rstrip() + "…[truncated by max_output_tokens]"
+	logger.warning(
+		"tool %r output truncated: %d chars → %d (max_output_tokens=%d)",
+		tool_name,
+		len(serialised),
+		char_budget,
+		max_tokens,
+	)
+	new_data: dict[str, Any] = {
+		"truncated": True,
+		"original_size_chars": len(serialised),
+		"truncated_repr": truncated_repr,
+	}
+	# Preserve a couple of widely-consumed shallow fields when they exist
+	# so the LLM still has something structured to reason about.
+	if isinstance(result.data, dict):
+		for key in ("count", "total", "next_offset", "doctype", "name"):
+			if key in result.data:
+				new_data[key] = result.data[key]
+	return ToolResult(
+		success=True,
+		data=new_data,
+		stop_processing=True,
+		card=result.card,
+		error=(
+			f"Output from {tool_name!r} exceeded max_output_tokens "
+			f"({max_tokens}); the response was truncated and the "
+			"conversation stopped to avoid token waste.  Re-run with a "
+			"narrower query or paginate."
+		),
+		error_code="OUTPUT_TOO_LARGE",
+	)
 
 
 # ---------------------------------------------------------------------------

@@ -18,6 +18,78 @@ from idp.extractors.base import BaseExtractor, ExtractionResult
 
 logger = get_logger("idp.extractors")
 
+# Phase 28 G3 — vision-gating heuristic.  We escalate to OCR (a vision-call
+# proxy on the cost side) only when the pypdf extract is genuinely sparse.
+# Defaults match the roadmap; both are overridable from IDP Settings.
+_DEFAULT_VISION_TEXT_THRESHOLD = 200  # chars
+_DEFAULT_ALPHANUMERIC_RATIO = 0.05
+
+
+def _alphanumeric_ratio(text: str) -> float:
+	"""Fraction of *text* that is letters or digits.
+
+	Pure white-space / line-noise pypdf dumps from scanned PDFs score
+	near zero, while real text (even tables) easily clears 0.05.
+	"""
+
+	if not text:
+		return 0.0
+	total = len(text)
+	if total == 0:
+		return 0.0
+	hits = sum(1 for ch in text if ch.isalnum())
+	return hits / total
+
+
+def _read_vision_gating_settings() -> tuple[int, float]:
+	"""Return ``(text_threshold_chars, min_alpha_ratio)`` from IDP Settings.
+
+	Returns the documented defaults when Frappe is unavailable or the
+	Phase 28 fields are missing.  Never raises.
+	"""
+
+	try:
+		import frappe
+	except ImportError:
+		return _DEFAULT_VISION_TEXT_THRESHOLD, _DEFAULT_ALPHANUMERIC_RATIO
+	try:
+		threshold = int(
+			frappe.db.get_single_value("IDP Settings", "vision_text_threshold")
+			or _DEFAULT_VISION_TEXT_THRESHOLD
+		)
+	except Exception:
+		threshold = _DEFAULT_VISION_TEXT_THRESHOLD
+	# Ratio is not yet a configurable field — kept as a constant so the
+	# rollback flag (IDP Settings.page_pre_pass_enabled / settings off)
+	# keeps it stable across upgrades.
+	return max(threshold, 0), _DEFAULT_ALPHANUMERIC_RATIO
+
+
+def needs_vision_fallback(text: str, page_count: int) -> bool:
+	"""Phase 28 G3 — decide whether to escalate to OCR / vision.
+
+	Returns True when:
+	* Total extracted chars are below ``IDP Settings.vision_text_threshold``
+	  (default 200), OR
+	* The alphanumeric ratio of the pypdf dump is below 0.05 (so the
+	  text exists but is junk — page furniture, ligature noise).
+
+	The historical "50 chars/page" heuristic is preserved as a third
+	criterion so existing extractions don't regress.
+	"""
+
+	threshold, min_alpha = _read_vision_gating_settings()
+	stripped = (text or "").strip()
+	if len(stripped) < threshold:
+		return True
+	if _alphanumeric_ratio(stripped) < min_alpha:
+		return True
+	# Legacy guard — sparse text per page (scanned PDFs with stray text
+	# in the header).  Kept so callers on older settings see no change.
+	if len(stripped) < (50 * max(page_count, 1)):
+		return True
+	return False
+
 
 # ---------------------------------------------------------------------------
 # PDF
@@ -49,8 +121,10 @@ class PDFExtractor(BaseExtractor):
 		tables: list[list[list[str]]] = []
 		confidence: float | None = None
 
-		# If text is sparse (< 50 chars per page on average), treat as scanned
-		is_scanned = len(text.strip()) < (50 * max(page_count, 1))
+		# Phase 28 G3 — vision-gating heuristic: escalate to OCR only when
+		# the pypdf extract is below the configured char threshold OR has
+		# a degenerately low alphanumeric ratio (line-noise scans).
+		is_scanned = needs_vision_fallback(text, page_count)
 
 		if is_scanned:
 			logger.info(f"PDF appears scanned, falling back to OCR | file={file_url}")

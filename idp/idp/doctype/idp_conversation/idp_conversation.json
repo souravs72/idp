@@ -26,6 +26,9 @@
   "last_message_on",
   "attachments_section",
   "attachments",
+  "phase28_section",
+  "summary_digest",
+  "summary_up_to_seq",
   "metadata_section",
   "metadata"
  ],
@@ -151,6 +154,28 @@
    "fieldtype": "Table",
    "label": "Attachments",
    "options": "IDP Conversation Attachment"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "phase28_section",
+   "fieldtype": "Section Break",
+   "label": "Transcript Digest (Phase 28)"
+  },
+  {
+   "description": "Compressed ~200-token digest of messages with sequence <= summary_up_to_seq. Recomputed only when new messages cross the IDP Settings.summarise_after_messages boundary.",
+   "fieldname": "summary_digest",
+   "fieldtype": "Long Text",
+   "label": "Summary Digest",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Highest IDP Message.sequence already folded into summary_digest. Messages with sequence > this value are still rendered verbatim.",
+   "fieldname": "summary_up_to_seq",
+   "fieldtype": "Int",
+   "label": "Summary Up To Seq",
+   "non_negative": 1,
+   "read_only": 1
   },
   {
    "collapsible": 1,

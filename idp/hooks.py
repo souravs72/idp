@@ -162,6 +162,11 @@ scheduler_events = {
 	],
 	"weekly": [
 		"idp.advanced.fine_tuning.weekly_export",
+		# Phase 28 — TE regression watchdog.  Compares this-week's
+		# avg ``tokens_per_extracted_field`` to last week's and emails
+		# System Managers when the delta exceeds
+		# ``IDP Settings.te_regression_alert_pct`` (default 15%).
+		"idp.core.metrics.weekly_te_regression_check",
 	],
 }
 

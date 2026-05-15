@@ -22,8 +22,10 @@ Strategy:
 
 from __future__ import annotations
 
+from dataclasses import asdict, fields as _dc_fields, is_dataclass
 from typing import Any
 
+from idp.core.cache import cache_get, cache_set
 from idp.core.exceptions import LLMError
 from idp.core.logger import get_logger
 from idp.llm.prompts import build_system_prompt, build_user_message
@@ -33,6 +35,69 @@ from idp.mappers.base import MappedDocument
 logger = get_logger("idp.mappers.hybrid")
 
 DEFAULT_THRESHOLD = 0.70
+
+# Phase 28 G2 — mapper output cache.  Default off, default mapper_version=1,
+# default TTL 24h.  All three are overridable via IDP Settings.
+_DEFAULT_MAPPER_CACHE_TTL_SECONDS: float = 24 * 60 * 60
+_DEFAULT_MAPPER_VERSION: int = 1
+
+
+def _read_mapper_cache_settings() -> tuple[bool, int, float]:
+	"""Return ``(enabled, mapper_version, ttl_seconds)`` from IDP Settings.
+
+	Returns conservative defaults (disabled, v1, 24h) when Frappe is
+	unavailable (pure-mode tests) or the Phase 28 fields are missing on
+	legacy installs.  Never raises.
+	"""
+
+	try:
+		import frappe
+	except ImportError:
+		return False, _DEFAULT_MAPPER_VERSION, _DEFAULT_MAPPER_CACHE_TTL_SECONDS
+	try:
+		enabled = bool(frappe.db.get_single_value("IDP Settings", "mapper_cache_enabled"))
+	except Exception:
+		enabled = False
+	try:
+		version = int(
+			frappe.db.get_single_value("IDP Settings", "mapper_version") or _DEFAULT_MAPPER_VERSION
+		)
+	except Exception:
+		version = _DEFAULT_MAPPER_VERSION
+	try:
+		hours = float(frappe.db.get_single_value("IDP Settings", "mapper_cache_ttl_hours") or 24)
+	except Exception:
+		hours = 24.0
+	return enabled, version, max(hours, 0.0) * 3600.0
+
+
+def _build_mapper_cache_key(file_sha256: str, target_doctype: str, mapper_version: int) -> str:
+	return f"idp:mapper:{file_sha256}:{target_doctype}:{mapper_version}"
+
+
+def _mapped_to_dict(mapped: MappedDocument) -> dict:
+	"""Convert a :class:`MappedDocument` to a JSON-safe dict for caching."""
+
+	if is_dataclass(mapped):
+		return asdict(mapped)
+	return {
+		"doctype": getattr(mapped, "doctype", ""),
+		"header": dict(getattr(mapped, "header", {}) or {}),
+		"items": list(getattr(mapped, "items", []) or []),
+		"taxes": list(getattr(mapped, "taxes", []) or []),
+		"unmapped_fields": list(getattr(mapped, "unmapped_fields", []) or []),
+		"confidence_scores": dict(getattr(mapped, "confidence_scores", {}) or {}),
+		"warnings": list(getattr(mapped, "warnings", []) or []),
+		"link_resolutions": dict(getattr(mapped, "link_resolutions", {}) or {}),
+	}
+
+
+def _dict_to_mapped(payload: dict) -> MappedDocument:
+	"""Inverse of :func:`_mapped_to_dict` — tolerant of missing keys."""
+
+	allowed = {f.name for f in _dc_fields(MappedDocument)}
+	kwargs = {k: v for k, v in (payload or {}).items() if k in allowed}
+	return MappedDocument(**kwargs)
 
 
 class HybridFieldMapper:
@@ -64,7 +129,30 @@ class HybridFieldMapper:
 		industry: str | None = None,
 		user: str | None = None,
 		source_lang: str | list[str] | tuple[str, ...] | None = None,
+		file_sha256: str | None = None,
 	) -> MappedDocument:
+		# --- 0. Phase 28 G2 — mapper output cache lookup ------------------------
+		# Cache state surfaced via the ``mapper_cache_state`` attribute on
+		# the returned MappedDocument (and a warning string) so callers can
+		# record it on the IDP Document Log row.  When ``file_sha256`` is
+		# not supplied the cache is bypassed entirely — small-file callers
+		# can opt in by hashing once and passing the digest.
+		cache_enabled, mapper_version, mapper_cache_ttl = _read_mapper_cache_settings()
+		cache_key: str | None = None
+		cache_state = "bypass"
+		if cache_enabled and file_sha256:
+			cache_key = _build_mapper_cache_key(file_sha256, target_doctype, mapper_version)
+			cached = cache_get(cache_key)
+			if cached is not None:
+				try:
+					hit = _dict_to_mapped(cached)
+					hit.warnings.append("hybrid: mapper cache hit")
+					setattr(hit, "mapper_cache_state", "hit")
+					return hit
+				except Exception as exc:  # pragma: no cover - defensive
+					logger.warning(f"mapper cache decode failed; ignoring hit: {exc}")
+			cache_state = "miss"
+
 		# --- 1. Rule-based pass --------------------------------------------------
 		rule_kwargs: dict[str, Any] = {"company": company}
 		if source_lang:
@@ -86,6 +174,12 @@ class HybridFieldMapper:
 			rule_result.warnings.append(
 				f"hybrid: rule pass sufficient (avg_conf={avg_conf:.2f} >= {threshold:.2f})"
 			)
+			setattr(rule_result, "mapper_cache_state", cache_state)
+			if cache_key is not None:
+				try:
+					cache_set(cache_key, _mapped_to_dict(rule_result), ttl_seconds=mapper_cache_ttl)
+				except Exception as exc:  # pragma: no cover - defensive
+					logger.warning(f"mapper cache write failed: {exc}")
 			return rule_result
 
 		# --- 3. LLM fallback -----------------------------------------------------
@@ -110,6 +204,9 @@ class HybridFieldMapper:
 				output_language=output_language,
 				llm_client=self.llm_client,
 			)
+			# Don't cache LLM-failure paths — they are typically transient
+			# (rate limits, network) and we want the next call to retry.
+			setattr(rule_result, "mapper_cache_state", cache_state)
 			return rule_result
 
 		# --- 4. Merge ------------------------------------------------------------
@@ -124,6 +221,12 @@ class HybridFieldMapper:
 			output_language=output_language,
 			llm_client=self.llm_client,
 		)
+		setattr(merged, "mapper_cache_state", cache_state)
+		if cache_key is not None:
+			try:
+				cache_set(cache_key, _mapped_to_dict(merged), ttl_seconds=mapper_cache_ttl)
+			except Exception as exc:  # pragma: no cover - defensive
+				logger.warning(f"mapper cache write failed: {exc}")
 		return merged
 
 	# ------------------------------------------------------------------------

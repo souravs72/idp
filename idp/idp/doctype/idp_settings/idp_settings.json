@@ -80,7 +80,17 @@
   "enable_chatbot_ui",
   "enable_legacy_ui",
   "column_break_phase11_chatbot",
-  "streaming_enabled"
+  "streaming_enabled",
+  "phase28_section",
+  "page_pre_pass_enabled",
+  "mapper_cache_enabled",
+  "mapper_cache_ttl_hours",
+  "vision_text_threshold",
+  "column_break_phase28",
+  "summarise_after_messages",
+  "strip_thinking_blocks",
+  "mapper_version",
+  "te_regression_alert_pct"
  ],
  "fields": [
   {
@@ -564,6 +574,76 @@
    "fieldname": "streaming_enabled",
    "fieldtype": "Check",
    "label": "Streaming Enabled"
+  },
+  {
+   "fieldname": "phase28_section",
+   "fieldtype": "Section Break",
+   "label": "Token-Efficiency Deep Cuts (Phase 28)"
+  },
+  {
+   "default": "1",
+   "description": "Page-aware regex pre-pass: pages without a recognised signal (amount, date, GSTIN, IFSC, account number, invoice no.) are replaced with a placeholder in the LLM context. Original text is preserved in storage.",
+   "fieldname": "page_pre_pass_enabled",
+   "fieldtype": "Check",
+   "label": "Page Pre-Pass Enabled"
+  },
+  {
+   "default": "1",
+   "description": "Cache the hybrid mapper's output keyed by (file_hash, target_doctype, mapper_version). Re-uploading the same bytes within TTL skips the rule pass and, when confidence is sufficient, the LLM as well.",
+   "fieldname": "mapper_cache_enabled",
+   "fieldtype": "Check",
+   "label": "Mapper Output Cache Enabled"
+  },
+  {
+   "default": "24",
+   "description": "Mapper output cache time-to-live in hours. 0 disables the cache.",
+   "fieldname": "mapper_cache_ttl_hours",
+   "fieldtype": "Int",
+   "label": "Mapper Cache TTL (hours)",
+   "non_negative": 1
+  },
+  {
+   "default": "200",
+   "description": "Vision-gating heuristic: PaddleOCR / Ollama vision is invoked only when pypdf-extracted text length falls below this character count (or when alphanumeric ratio is < 5%). 0 disables the gate (always run vision).",
+   "fieldname": "vision_text_threshold",
+   "fieldtype": "Int",
+   "label": "Vision Text Threshold (chars)",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "column_break_phase28",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "8",
+   "description": "Sliding-window transcript summariser: when the conversation grows past this number of messages, older messages are compressed into a digest via the cheap-tier model. 0 disables the digest.",
+   "fieldname": "summarise_after_messages",
+   "fieldtype": "Int",
+   "label": "Summarise After N Messages",
+   "non_negative": 1
+  },
+  {
+   "default": "1",
+   "description": "Strip Anthropic extended-thinking blocks from prior assistant turns when rebuilding the LLM context. Original content remains in IDP Message for audit/replay.",
+   "fieldname": "strip_thinking_blocks",
+   "fieldtype": "Check",
+   "label": "Strip Thinking Blocks"
+  },
+  {
+   "default": "1",
+   "description": "Bumped manually when the rule mapper schema changes. Forms part of the mapper-output cache key so stale cached results are evicted on schema bumps.",
+   "fieldname": "mapper_version",
+   "fieldtype": "Int",
+   "label": "Mapper Version",
+   "non_negative": 1
+  },
+  {
+   "default": "15",
+   "description": "Weekly metrics regression alert threshold: when tokens_per_extracted_field rises by more than this percent versus the prior 7-day window, an Email Alert is sent to the budget alert recipients.",
+   "fieldname": "te_regression_alert_pct",
+   "fieldtype": "Int",
+   "label": "TE Regression Alert (%)",
+   "non_negative": 1
   }
  ],
  "issingle": 1,
