@@ -44,8 +44,23 @@
     <!-- Header fields -->
     <div v-if="headerFields.length" class="mb-4 grid gap-3 sm:grid-cols-2">
       <div v-for="field in headerFields" :key="field.fieldname">
-        <label class="text-[11px] font-medium text-gray-600 dark:text-gray-400">
-          {{ formatLabel(field) }}
+        <label class="flex items-center gap-1.5 text-[11px] font-medium text-gray-600 dark:text-gray-400">
+          <!-- Phase 29 — confidence band dot replaces numeric % -->
+          <ConfidenceDot
+            v-if="showConfidenceDots"
+            :band="field.confidence_band"
+            :value="field.confidence"
+          />
+          <button
+            v-if="field.source_region"
+            type="button"
+            class="cursor-pointer text-left hover:underline focus:underline focus:outline-none"
+            :title="`Open source on page ${field.source_region.page ?? '?'}`"
+            @click="onFocusSource(field)"
+          >
+            {{ formatLabel(field) }}
+          </button>
+          <span v-else>{{ formatLabel(field) }}</span>
         </label>
         <input
           v-if="!editing || field.editable === false"
@@ -256,16 +271,37 @@ import { useConversationStore } from '@/stores/conversation'
 import ItemMappingTable from './ItemMappingTable.vue'
 import TaxMappingTable from './TaxMappingTable.vue'
 import GenericChildTable from './GenericChildTable.vue'
+import ConfidenceDot from './ConfidenceDot.vue'
 
 const props = defineProps({
   message: { type: Object, required: true },
 })
-const emit = defineEmits(['confirmed'])
+const emit = defineEmits(['confirmed', 'focus-source'])
 
 const store = useConversationStore()
 const { confirm, busy: agentBusy } = useAgent()
 
 const card = computed(() => parseJSON(props.message.rendered_card_payload) || {})
+
+// Phase 29 — global toggle for the confidence-dot UI.  Defaults to on
+// (matching ``IDP Settings.show_confidence_dots`` default) and can be
+// flipped to fall back to numeric percentages without redeploying.
+const showConfidenceDots = computed(() => {
+  const s = store.settings?.show_confidence_dots
+  return s == null ? true : !!Number(s)
+})
+
+// Phase 29 — bubble the click-to-source intent up to ChatView so the
+// right-hand PdfPreview panel can render the highlighted region.
+function onFocusSource(field) {
+  if (!field || !field.source_region) return
+  emit('focus-source', {
+    file_id: card.value?.file_id || null,
+    field: field.fieldname,
+    page: field.source_region.page,
+    bbox: field.source_region.bbox,
+  })
+}
 
 // Hide only the noisy mirror fields the user explicitly called out:
 // party_name duplicates supplier/customer, conversion_rate is constant

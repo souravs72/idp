@@ -61,7 +61,15 @@
           <td
             class="border border-gray-300 px-2 py-1 text-center text-gray-500 dark:border-gray-700 dark:text-gray-400"
           >
-            <div>{{ (row.index ?? 0) + 1 }}</div>
+            <div class="inline-flex items-center gap-1">
+              <ConfidenceDot
+                v-if="row.confidence_band || typeof row.confidence === 'number'"
+                :band="row.confidence_band"
+                :value="typeof row.confidence === 'number' ? row.confidence : null"
+                size="sm"
+              />
+              <span>{{ (row.index ?? 0) + 1 }}</span>
+            </div>
             <div
               v-if="row.source_page"
               class="text-[10px] text-gray-400"
@@ -99,6 +107,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import ConfidenceDot from './ConfidenceDot.vue'
 
 const props = defineProps({
   rows: { type: Array, required: true, default: () => [] },

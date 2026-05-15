@@ -141,6 +141,16 @@ _PARAMETERS_SCHEMA = {
 			"description": "List of {doctype, name, ...} that need creation first.",
 			"items": {"type": "object", "additionalProperties": True},
 		},
+		"source_regions": {
+			"type": "object",
+			"description": (
+				"Phase 29 — optional per-field source attribution.  "
+				"Keyed by fieldname (or ``items[N].fieldname`` for child "
+				"rows), each value is ``{page, bbox?, mapper}``.  "
+				"Surfaced in the UI as a click-to-source affordance."
+			),
+			"additionalProperties": True,
+		},
 		"summary": {
 			"type": "string",
 			"description": "Short user-facing summary of what is about to be created.",
@@ -193,6 +203,7 @@ def propose_create_document(arguments: dict, ctx: ToolContext) -> ToolResult:
 	missing_masters: list[dict] = list(args.get("missing_masters") or [])
 	file_id = args.get("file_id")
 	source_pages = _normalise_source_pages(args.get("source_pages"))
+	source_regions: dict = args.get("source_regions") or {}
 
 	# Phase 25 — resolve the primary child table name + its row schema
 	# from the target DocType meta.  Falls back to ``items`` when the
@@ -205,8 +216,16 @@ def propose_create_document(arguments: dict, ctx: ToolContext) -> ToolResult:
 	# will produce.
 	business_rule_warnings = _run_business_rules(doctype, header, items_raw, taxes_raw, ctx.company)
 
-	# Header — emit as ordered list with provenance.
-	header_rows = _build_header_rows(header, confidence_scores)
+	# Header — emit as ordered list with provenance.  Phase 29 attaches
+	# a per-field ``confidence_band`` (green/amber/red) and any captured
+	# ``source`` region (page + bbox + mapper) so the UI can render dots
+	# and a click-to-source affordance.
+	header_rows = _build_header_rows(
+		header,
+		confidence_scores,
+		doctype=doctype,
+		source_regions=source_regions,
+	)
 	# Phase 24 — guarantee headline totals (``total``, ``net_total``,
 	# ``grand_total``, ``total_taxes_and_charges``, ``rounded_total``)
 	# always show up in the header strip, even when the LLM forgot to
@@ -226,12 +245,17 @@ def propose_create_document(arguments: dict, ctx: ToolContext) -> ToolResult:
 	# UI render a generic editable child-table grid.
 	page_size = _clamp_page_size(args.get("page_size"))
 	if is_item_table:
-		items_payload = _build_items_payload(items_raw, page_size=page_size)
+		items_payload = _build_items_payload(
+			items_raw,
+			page_size=page_size,
+			doctype=doctype,
+			source_regions=source_regions,
+		)
 	else:
 		items_payload = _build_generic_rows_payload(items_raw, page_size=page_size)
 
 	# Taxes — same treatment but always one page (rarely > 10 rows).
-	taxes_payload = _build_taxes_payload(taxes_raw, company=ctx.company)
+	taxes_payload = _build_taxes_payload(taxes_raw, company=ctx.company, doctype=doctype)
 
 	totals = _extract_totals(header)
 
@@ -294,19 +318,37 @@ def propose_create_document(arguments: dict, ctx: ToolContext) -> ToolResult:
 # ---------------------------------------------------------------------------
 
 
-def _build_header_rows(header: dict, confidence_scores: dict) -> list[dict]:
+def _build_header_rows(
+	header: dict,
+	confidence_scores: dict,
+	*,
+	doctype: str | None = None,
+	source_regions: dict | None = None,
+) -> list[dict]:
+	from idp.llm.confidence import band_for
+
+	regions = source_regions or {}
 	rows: list[dict] = []
 	for fieldname, value in header.items():
 		conf, source = _split_confidence(confidence_scores.get(fieldname))
-		rows.append(
-			{
-				"fieldname": fieldname,
-				"value": value,
-				"confidence": conf,
-				"source": source,
-				"editable": True,
+		row: dict[str, Any] = {
+			"fieldname": fieldname,
+			"value": value,
+			"confidence": conf,
+			"confidence_band": band_for(conf, doctype),
+			"source": source,
+			"editable": True,
+		}
+		region = regions.get(fieldname)
+		if isinstance(region, dict) and region:
+			# Pass-through with minimal normalisation.  The UI tolerates
+			# a missing ``bbox`` (shows a "no region recorded" tooltip).
+			row["source_region"] = {
+				"page": region.get("page"),
+				"bbox": region.get("bbox"),
+				"mapper": region.get("mapper") or source,
 			}
-		)
+		rows.append(row)
 	return rows
 
 
@@ -331,7 +373,13 @@ def _split_confidence(entry: Any) -> tuple[float | None, str | None]:
 # ---------------------------------------------------------------------------
 
 
-def _build_items_payload(items: list[dict], *, page_size: int) -> dict:
+def _build_items_payload(
+	items: list[dict],
+	*,
+	page_size: int,
+	doctype: str | None = None,
+	source_regions: dict | None = None,
+) -> dict:
 	"""Build the paginated items block (§24.2).
 
 	Runs the §24.1 matcher in a single pass over the *full* items list
@@ -343,7 +391,10 @@ def _build_items_payload(items: list[dict], *, page_size: int) -> dict:
 	match_results = _run_item_matcher(items)
 
 	first_page = items[:page_size]
-	rows = [_build_item_row(idx, row, match_results) for idx, row in enumerate(first_page)]
+	rows = [
+		_build_item_row(idx, row, match_results, doctype=doctype, source_regions=source_regions)
+		for idx, row in enumerate(first_page)
+	]
 	return {
 		"page": 1,
 		"page_size": page_size,
@@ -430,7 +481,16 @@ def _run_item_matcher(items: list[dict]) -> list[dict]:
 		return out
 
 
-def _build_item_row(idx: int, row: dict, match_results: list[dict]) -> dict:
+def _build_item_row(
+	idx: int,
+	row: dict,
+	match_results: list[dict],
+	*,
+	doctype: str | None = None,
+	source_regions: dict | None = None,
+) -> dict:
+	from idp.llm.confidence import band_for
+
 	if not isinstance(row, dict):
 		row = {}
 	mr = match_results[idx] if idx < len(match_results) else {}
@@ -450,18 +510,29 @@ def _build_item_row(idx: int, row: dict, match_results: list[dict]) -> dict:
 		for c in candidates
 	]
 
-	return {
+	confidence = mr.get("confidence")
+	region_key = f"items[{idx}]"
+	region = (source_regions or {}).get(region_key)
+	out = {
 		"index": idx,
 		"data": row,
 		"status": status,
 		"erpnext_item": resolved_name,
 		"match_reason": mr.get("match_reason"),
-		"confidence": mr.get("confidence"),
+		"confidence": confidence,
+		"confidence_band": band_for(confidence, doctype),
 		"match_candidates": candidates,
 		"item_mapping_suggestions": suggestions,
 		# Phase 25 — per-row PDF page reference for traceability.
 		"source_page": _row_source_page(row),
 	}
+	if isinstance(region, dict) and region:
+		out["source_region"] = {
+			"page": region.get("page"),
+			"bbox": region.get("bbox"),
+			"mapper": region.get("mapper"),
+		}
+	return out
 
 
 def _resolve_item(item_code: str) -> tuple[str | None, str]:
@@ -488,13 +559,14 @@ def _resolve_item(item_code: str) -> tuple[str | None, str]:
 # ---------------------------------------------------------------------------
 
 
-def _build_taxes_payload(taxes: list[dict], *, company: str | None) -> dict:
+def _build_taxes_payload(taxes: list[dict], *, company: str | None, doctype: str | None = None) -> dict:
 	"""Build the per-row tax payload using the §24.3 matcher.
 
 	Falls back to a per-row :func:`_resolve_account` lookup when the
 	matcher (or Frappe) is unavailable so unit tests / CLI runs still
 	produce a valid card.
 	"""
+	from idp.llm.confidence import band_for
 
 	tax_results = _run_tax_matcher(taxes, company=company)
 
@@ -532,6 +604,7 @@ def _build_taxes_payload(taxes: list[dict], *, company: str | None) -> dict:
 				"status": status,
 				"match_reason": mr.get("match_reason"),
 				"confidence": mr.get("confidence"),
+				"confidence_band": band_for(mr.get("confidence"), doctype),
 				"match_candidates": candidates,
 				"tax_mapping_suggestions": suggestions,
 				"editable": True,

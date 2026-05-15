@@ -90,7 +90,9 @@
   "summarise_after_messages",
   "strip_thinking_blocks",
   "mapper_version",
-  "te_regression_alert_pct"
+  "te_regression_alert_pct",
+  "phase29_section",
+  "show_confidence_dots"
  ],
  "fields": [
   {
@@ -644,6 +646,18 @@
    "fieldtype": "Int",
    "label": "TE Regression Alert (%)",
    "non_negative": 1
+  },
+  {
+   "fieldname": "phase29_section",
+   "fieldtype": "Section Break",
+   "label": "Provenance & Confidence Surface (Phase 29)"
+  },
+  {
+   "default": "1",
+   "description": "Render confidence as green/amber/red dots in ConfirmationCard and child tables. Disable to fall back to legacy numeric percentage display.",
+   "fieldname": "show_confidence_dots",
+   "fieldtype": "Check",
+   "label": "Show Confidence Dots"
   }
  ],
  "issingle": 1,

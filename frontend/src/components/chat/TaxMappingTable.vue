@@ -126,11 +126,18 @@
 							</button>
 						</div>
 					</td>
-					<!-- Status -->
+					<!-- Status (with Phase 29 confidence dot) -->
 					<td class="border border-gray-300 px-2 py-1 text-center dark:border-gray-700">
-						<span :class="statusBadgeClass(row.status)">
-							{{ row.status || "New" }}
-						</span>
+						<div class="inline-flex items-center gap-1.5">
+							<ConfidenceDot
+								:band="row.confidence_band"
+								:value="typeof row.confidence === 'number' ? row.confidence : null"
+								size="sm"
+							/>
+							<span :class="statusBadgeClass(row.status)">
+								{{ row.status || "New" }}
+							</span>
+						</div>
 					</td>
 				</tr>
 			</tbody>
@@ -170,6 +177,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { searchAccounts } from "@/utils/api";
+import ConfidenceDot from "./ConfidenceDot.vue";
 
 const props = defineProps({
 	rows: { type: Array, default: () => [] },

@@ -14,7 +14,10 @@
   "llm_section",
   "llm_fallback_threshold",
   "phase28_section",
-  "page_pre_pass_patterns"
+  "page_pre_pass_patterns",
+  "phase29_section",
+  "confidence_amber_threshold",
+  "confidence_red_threshold"
  ],
  "fields": [
   {
@@ -77,6 +80,27 @@
    "fieldname": "page_pre_pass_patterns",
    "fieldtype": "Long Text",
    "label": "Page Pre-Pass Patterns (JSON)"
+  },
+  {
+   "fieldname": "phase29_section",
+   "fieldtype": "Section Break",
+   "label": "Confidence Bands (Phase 29)"
+  },
+  {
+   "default": "0.75",
+   "description": "Per-DocType amber threshold. Scores at or above this render as a green dot; between amber and red, as amber; below red, as red. Leave blank to inherit the global default (0.75).",
+   "fieldname": "confidence_amber_threshold",
+   "fieldtype": "Float",
+   "label": "Confidence Amber Threshold",
+   "precision": "3"
+  },
+  {
+   "default": "0.55",
+   "description": "Per-DocType red threshold. Scores below this render as a red dot, regardless of mapper source. Leave blank to inherit the global default (0.55).",
+   "fieldname": "confidence_red_threshold",
+   "fieldtype": "Float",
+   "label": "Confidence Red Threshold",
+   "precision": "3"
   }
  ],
  "index_web_pages_for_search": 1,

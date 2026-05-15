@@ -38,6 +38,17 @@ class MappedDocument:
 	confidence_scores: dict = field(default_factory=dict)  # {fieldname: float}
 	warnings: list[str] = field(default_factory=list)
 	link_resolutions: dict = field(default_factory=dict)  # {fieldname: {original, resolved}}
+	# Phase 29 — Provenance & Confidence Surface:
+	# Optional per-field source attribution populated from OCR / hybrid
+	# mapper bboxes when available.  Each entry is keyed by the parent
+	# fieldname (e.g. ``"supplier"``) or a child-row coordinate string
+	# (e.g. ``"items[0].item_code"``) and carries::
+	#
+	#     {"page": int, "bbox": [x0, y0, x1, y1], "mapper": "rule|llm|hybrid"}
+	#
+	# ``bbox`` may be absent for LLM-only fields where no source region
+	# was recorded; the UI tooltip surfaces this case.
+	source_regions: dict = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------

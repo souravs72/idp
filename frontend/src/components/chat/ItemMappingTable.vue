@@ -88,9 +88,11 @@
 						No items extracted.
 					</td>
 				</tr>
-				<tr
+				<template
 					v-for="row in rows"
 					:key="row.index ?? row.row_index ?? row?.data?.item_code"
+				>
+				<tr
 					class="odd:bg-white even:bg-gray-50 transition-colors hover:bg-cyan-50 dark:odd:bg-gray-900 dark:even:bg-gray-800 dark:hover:bg-cyan-950"
 				>
 					<!-- Extracted: combined Item (code + name) -->
@@ -166,13 +168,89 @@
 							</button>
 						</div>
 					</td>
-					<!-- Status -->
+					<!-- Status (with Phase 29 confidence dot + diff toggle) -->
 					<td class="border border-gray-300 px-2 py-1 text-center dark:border-gray-700">
-						<span :class="statusBadgeClass(row.status)">
-							{{ row.status || "New" }}
-						</span>
+						<div class="inline-flex items-center gap-1.5">
+							<ConfidenceDot
+								:band="row.confidence_band"
+								:value="typeof row.confidence === 'number' ? row.confidence : null"
+								size="sm"
+							/>
+							<span :class="statusBadgeClass(row.status)">
+								{{ row.status || "New" }}
+							</span>
+							<button
+								v-if="row.status === 'Existing'"
+								type="button"
+								class="rounded px-1 text-[10px] text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+								:aria-expanded="isExpanded(row.index)"
+								:aria-label="isExpanded(row.index) ? 'Hide diff' : 'Show diff'"
+								@click="toggleExpanded(row.index)"
+							>
+								{{ isExpanded(row.index) ? "▴" : "▾" }}
+							</button>
+						</div>
 					</td>
 				</tr>
+				<!-- Phase 29 — Extracted | ERPNext diff for existing matches -->
+				<tr
+					v-if="row.status === 'Existing' && isExpanded(row.index)"
+					class="bg-amber-50/40 dark:bg-amber-950/30"
+				>
+					<td
+						colspan="7"
+						class="border border-gray-300 px-2 py-2 dark:border-gray-700"
+					>
+						<div class="text-[10px] uppercase tracking-wide text-gray-500">
+							Field-by-field comparison
+						</div>
+						<table class="mt-1 w-full border-collapse text-[11px]">
+							<thead>
+								<tr class="text-left text-gray-500">
+									<th class="py-0.5 pr-2 font-medium">Field</th>
+									<th class="py-0.5 pr-2 font-medium">Extracted</th>
+									<th class="py-0.5 font-medium">ERPNext</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr
+									v-for="d in diffPairs(row)"
+									:key="d.label"
+									:class="
+										d.disagree
+											? 'bg-red-50 dark:bg-red-950/40'
+											: ''
+									"
+								>
+									<td class="py-0.5 pr-2 text-gray-600 dark:text-gray-400">
+										{{ d.label }}
+									</td>
+									<td
+										class="py-0.5 pr-2"
+										:class="
+											d.disagree
+												? 'font-medium text-red-700 dark:text-red-300'
+												: 'text-gray-700 dark:text-gray-200'
+										"
+									>
+										{{ d.extracted || "—" }}
+									</td>
+									<td
+										class="py-0.5"
+										:class="
+											d.disagree
+												? 'font-medium text-red-700 dark:text-red-300'
+												: 'text-gray-700 dark:text-gray-200'
+										"
+									>
+										{{ d.erpnext || "—" }}
+									</td>
+								</tr>
+							</tbody>
+						</table>
+					</td>
+				</tr>
+				</template>
 			</tbody>
 		</table>
 	</div>
@@ -222,11 +300,56 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { searchItems } from "@/utils/api";
+import ConfidenceDot from "./ConfidenceDot.vue";
 
 const props = defineProps({
 	rows: { type: Array, default: () => [] },
 	editing: { type: Boolean, default: false },
 });
+
+// Phase 29 — row-level expansion for the Extracted | ERPNext diff view.
+const expandedRows = reactive({});
+
+function isExpanded(idx) {
+	return !!expandedRows[idx];
+}
+
+function toggleExpanded(idx) {
+	expandedRows[idx] = !expandedRows[idx];
+}
+
+// Phase 29 — keys to surface in the diff view.  Restricted to the
+// columns the user sees in the Extracted strip so the comparison is
+// apples-to-apples; further cells could be added without code changes.
+const DIFF_KEYS = [
+	{ key: "item_code", label: "Code" },
+	{ key: "item_name", label: "Name" },
+	{ key: "qty", label: "Qty" },
+	{ key: "uom", label: "UOM" },
+	{ key: "rate", label: "Rate" },
+];
+
+function diffPairs(row) {
+	const extractedData = extracted(row) || {};
+	const erpnext = row.erpnext_item_doc || {};
+	return DIFF_KEYS.map(({ key, label }) => {
+		const ex = extractedData[key];
+		// ``erpnext_item_doc`` is best-effort; for now compare against
+		// the resolved item code only — full record diff lands when the
+		// matcher persists the full doc.
+		const en = key === "item_code" ? row.erpnext_item : erpnext[key];
+		return {
+			label,
+			extracted: ex == null ? "" : String(ex),
+			erpnext: en == null ? "" : String(en),
+			disagree:
+				ex != null &&
+				en != null &&
+				String(ex).trim().toLowerCase() !==
+					String(en).trim().toLowerCase(),
+		};
+	});
+}
 
 const emit = defineEmits(["edit", "edit-stock"]);
 

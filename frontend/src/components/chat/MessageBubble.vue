@@ -125,6 +125,7 @@
         v-if="hasCard && !isErrorCard"
         :message="message"
         @confirmed="$emit('confirmed', $event)"
+        @focus-source="$emit('focus-source', $event)"
       />
 
       <!-- Attachments -->
@@ -161,7 +162,7 @@ const props = defineProps({
   message: { type: Object, required: true },
 })
 
-defineEmits(['confirmed'])
+defineEmits(['confirmed', 'focus-source'])
 
 const ROLE_LABEL = {
   user: 'You',

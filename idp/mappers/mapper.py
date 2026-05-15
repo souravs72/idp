@@ -437,7 +437,92 @@ class FieldMapper:
 		# --- Resolve Link fields ---
 		self._resolve_links(result, schema, company)
 
+		# --- Phase 29: capture per-field source regions when OCR
+		# provided bboxes. Best-effort; failures never block mapping.
+		try:
+			self._capture_source_regions(result, extracted)
+		except Exception as exc:  # pragma: no cover — defensive
+			logger.debug(f"source_regions capture failed: {exc}")
+
 		return result
+
+	# ==================================================================
+	# Phase 29 — Provenance capture
+	# ==================================================================
+
+	def _capture_source_regions(
+		self,
+		result: MappedDocument,
+		extracted: ExtractionResult,
+	) -> None:
+		"""Best-effort lookup of OCR bboxes for each mapped header value.
+
+		For every header value we hold, we scan ``extracted.ocr_results``
+		(populated by the Paddle path) for the first text block whose
+		text contains the value as a substring (case-insensitive).  When
+		we find one we record::
+
+		    result.source_regions[fieldname] = {
+		        "page": <1-based page number>,
+		        "bbox": [x0, y0, x1, y1],
+		        "mapper": "rule",
+		    }
+
+		LLM-only fields and values that don't appear verbatim in any OCR
+		block leave ``source_regions[fieldname]`` unset — the UI surfaces
+		this case via a tooltip.
+		"""
+		ocr_results = getattr(extracted, "ocr_results", None)
+		if not ocr_results:
+			return
+
+		def _poly_to_xyxy(poly: list) -> list[float] | None:
+			"""Convert a 4-point polygon to ``[x0, y0, x1, y1]``."""
+			try:
+				xs = [float(p[0]) for p in poly]
+				ys = [float(p[1]) for p in poly]
+				return [min(xs), min(ys), max(xs), max(ys)]
+			except (TypeError, ValueError, IndexError):
+				return None
+
+		# Build a flat list of (page_no, text_lower, xyxy) entries we
+		# can scan once per field.  Skip results that don't expose the
+		# expected attributes (e.g. minimal stubs in tests).
+		flat: list[tuple[int, str, list[float]]] = []
+		for ocr in ocr_results:
+			page_no = getattr(ocr, "page_number", 1) or 1
+			blocks = getattr(ocr, "text_blocks", None) or []
+			for tb in blocks:
+				text = getattr(tb, "text", None)
+				bbox_poly = getattr(tb, "bbox", None)
+				if not text or not bbox_poly:
+					continue
+				xyxy = _poly_to_xyxy(bbox_poly)
+				if xyxy is None:
+					continue
+				flat.append((int(page_no), str(text).lower(), xyxy))
+
+		if not flat:
+			return
+
+		for fieldname, value in result.header.items():
+			if value is None or value == "":
+				continue
+			needle = str(value).strip().lower()
+			if not needle:
+				continue
+			# Skip tiny or numeric-only needles that would match
+			# nearly anything ("1", "0.0") and pollute the panel.
+			if len(needle) < 3:
+				continue
+			for page_no, text_lc, xyxy in flat:
+				if needle in text_lc:
+					result.source_regions[fieldname] = {
+						"page": page_no,
+						"bbox": xyxy,
+						"mapper": "rule",
+					}
+					break
 
 	# ==================================================================
 	# Keyword resolution (Phase 22 multilingual)

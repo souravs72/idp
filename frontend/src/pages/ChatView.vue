@@ -100,6 +100,7 @@
           :key="msg.name"
           :message="msg"
           @confirmed="onConfirmed"
+          @focus-source="onFocusSource"
         />
         <ThinkingIndicator />
         <div
@@ -133,6 +134,47 @@
       </footer>
     </main>
 
+    <!-- Phase 29 — click-to-source PDF preview panel.  Renders only
+         when a field with a recorded bbox is clicked. -->
+    <aside
+      v-if="focusSource"
+      class="flex w-[420px] max-w-[40vw] flex-col border-l border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+    >
+      <div class="flex items-center justify-between border-b border-gray-200 px-3 py-2 dark:border-gray-700">
+        <div class="min-w-0">
+          <div class="truncate text-xs font-semibold text-gray-700 dark:text-gray-200">
+            Source: {{ focusSource.field || 'document' }}
+          </div>
+          <div class="truncate text-[10px] text-gray-500 dark:text-gray-400">
+            {{ focusSourceFileName }}
+            <span v-if="focusSource.page">· page {{ focusSource.page }}</span>
+          </div>
+        </div>
+        <button
+          type="button"
+          class="rounded p-1 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
+          aria-label="Close source preview"
+          @click="focusSource = null"
+        >
+          ✕
+        </button>
+      </div>
+      <div class="flex-1 overflow-auto p-3">
+        <PdfPreview
+          v-if="focusSourceFileUrl"
+          :file-url="focusSourceFileUrl"
+          :page="focusSource.page || 1"
+          :bbox="focusSource.bbox || null"
+        />
+        <div
+          v-else
+          class="rounded border border-dashed border-gray-300 p-4 text-xs text-gray-500 dark:border-gray-700"
+        >
+          Could not resolve the source attachment for this field.
+        </div>
+      </div>
+    </aside>
+
     <NewConversationDialog
       :open="dialogOpen"
       :prefill="dialogPrefill"
@@ -151,6 +193,7 @@ import MessageBubble from '@/components/chat/MessageBubble.vue'
 import ChatInput from '@/components/chat/ChatInput.vue'
 import ThinkingIndicator from '@/components/chat/ThinkingIndicator.vue'
 import NewConversationDialog from '@/components/chat/NewConversationDialog.vue'
+import PdfPreview from '@/components/chat/PdfPreview.vue'
 
 import { useConversationStore } from '@/stores/conversation'
 import { useConversation } from '@/composables/useConversation'
@@ -170,6 +213,12 @@ const { send } = useAgent()
 
 const dialogPrefill = ref(null)
 const startingConversation = ref(false)
+
+// Phase 29 — click-to-source side panel.
+// Holds `{ file_id, file_url?, field, page, bbox }` of the most-recently
+// clicked confidence dot.  Cleared when the user closes the panel or
+// switches conversation so we don't leak the previous PDF render.
+const focusSource = ref(null)
 
 const status = ref('Active')
 const dialogOpen = ref(false)
@@ -320,6 +369,49 @@ function onConfirmed() {
   // this hook lets us refresh sidebar metadata after submit.
   refreshSessions({ status: status.value })
 }
+
+// Phase 29 — receive `focus-source` events from ConfirmationCardUI via
+// MessageBubble.  Payload shape: { file_id, field, page, bbox }.
+function onFocusSource(payload) {
+  if (!payload) {
+    focusSource.value = null
+    return
+  }
+  focusSource.value = { ...payload }
+}
+
+const focusAttachment = computed(() => {
+  const fs = focusSource.value
+  if (!fs) return null
+  const attachments = store.currentDetail?.attachments || []
+  if (fs.file_url) {
+    // Direct URL provided — find a name for the header label.
+    return (
+      attachments.find((a) => a.file_url === fs.file_url) || {
+        file_url: fs.file_url,
+        file_name: fs.file_url,
+      }
+    )
+  }
+  if (fs.file_id) {
+    return attachments.find((a) => a.file_id === fs.file_id) || null
+  }
+  return null
+})
+
+const focusSourceFileUrl = computed(() => focusAttachment.value?.file_url || '')
+const focusSourceFileName = computed(
+  () => focusAttachment.value?.file_name || focusAttachment.value?.file_url || '',
+)
+
+// Clear the source panel whenever the active conversation changes — the
+// previously focused field belongs to a different document.
+watch(
+  () => store.currentId,
+  () => {
+    focusSource.value = null
+  },
+)
 
 async function onCreated(out) {
   if (out?.conversation_id) {

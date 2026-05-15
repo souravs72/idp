@@ -89,6 +89,8 @@ def _mapped_to_dict(mapped: MappedDocument) -> dict:
 		"confidence_scores": dict(getattr(mapped, "confidence_scores", {}) or {}),
 		"warnings": list(getattr(mapped, "warnings", []) or []),
 		"link_resolutions": dict(getattr(mapped, "link_resolutions", {}) or {}),
+		# Phase 29 — provenance pass-through.
+		"source_regions": dict(getattr(mapped, "source_regions", {}) or {}),
 	}
 
 
@@ -328,6 +330,9 @@ class HybridFieldMapper:
 			confidence_scores=dict(rule_result.confidence_scores),
 			warnings=list(rule_result.warnings),
 			link_resolutions=dict(rule_result.link_resolutions),
+			# Phase 29 — preserve any provenance the rule mapper captured.
+			# LLM-only fields leave the bbox unset.
+			source_regions=dict(getattr(rule_result, "source_regions", {}) or {}),
 		)
 
 		for fieldname, value in llm_header.items():
