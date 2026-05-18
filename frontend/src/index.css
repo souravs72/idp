@@ -2,6 +2,10 @@
 /* For license information, please see license.txt */
 
 @import 'frappe-ui/style.css';
+/* Phase 33 — Mobile & Accessibility overrides.  Must precede the
+ * @tailwind directives per CSS @import rules; specificity is handled
+ * inside a11y.css so Tailwind utilities do not clobber it. */
+@import './assets/a11y.css';
 
 @tailwind base;
 @tailwind components;

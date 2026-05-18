@@ -46,6 +46,7 @@
         class="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded border border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
         :class="{ 'opacity-50': uploading }"
         title="Attach file (or drag and drop into this box)"
+        aria-label="Attach file"
       >
         <input
           ref="fileInput"
@@ -53,6 +54,7 @@
           class="hidden"
           multiple
           :disabled="uploading || disabled"
+          aria-label="Attach file"
           @change="onFileChange"
         />
         <span aria-hidden="true">📎</span>
@@ -64,6 +66,7 @@
         rows="2"
         class="flex-1 resize-none rounded border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
         :placeholder="placeholder"
+        aria-label="Type a message"
         @keydown="onKeydown"
       />
 
@@ -88,8 +91,8 @@
 
     <div class="mt-1.5 flex items-center justify-between">
       <span class="text-[11px] text-gray-400">
-        Enter to send · Shift+Enter for newline · drag &amp; drop files anywhere
-        in this box
+        Enter (or ⌘/Ctrl+Enter) to send · Shift+Enter for newline · drag
+        &amp; drop files anywhere in this box
       </span>
       <span
         v-if="uploading"
@@ -151,6 +154,15 @@ const canSubmit = computed(() => {
 })
 
 function onKeydown(e) {
+  // Phase 33 — a11y keyboard nav.  Cmd/Ctrl+Enter always submits, even
+  // when the cursor is on a continuation line (we don't strip the
+  // newline since the textarea state hasn't been mutated yet).  Plain
+  // Enter still submits (Shift+Enter inserts a newline).
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    e.preventDefault()
+    onSubmit()
+    return
+  }
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
     onSubmit()

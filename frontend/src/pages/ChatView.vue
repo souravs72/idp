@@ -2,8 +2,26 @@
 <!-- For license information, please see license.txt -->
 
 <template>
-  <div class="flex h-screen w-full overflow-hidden bg-gray-100 dark:bg-gray-950">
+  <div class="idp-chat-shell flex h-screen w-full overflow-hidden bg-gray-100 dark:bg-gray-950">
+    <!-- Phase 33 — Skip link.  Anchors to the message region so a
+         keyboard / screen-reader user can bypass the sidebar nav.  The
+         link is visually hidden until focused, but always in the tab
+         order. -->
+    <a href="#idp-messages" class="idp-skip-link">Skip to messages</a>
+
+    <!-- Phase 33 — Mobile drawer overlay.  Below 768px the sidebar is
+         positioned fixed and slides in/out; the overlay catches taps
+         outside to close it. -->
+    <div
+      v-if="mobileSidebarOpen"
+      class="idp-drawer-overlay"
+      aria-hidden="true"
+      @click="mobileSidebarOpen = false"
+    />
+
     <ConversationList
+      class="idp-sidebar"
+      :class="{ 'idp-sidebar--open': mobileSidebarOpen }"
       :sessions="store.sessions"
       :active-id="store.currentId"
       :loading="store.sessionsLoading"
@@ -12,7 +30,7 @@
       :collapsed="sidebarCollapsed"
       :search-enabled="sidebarSearchEnabled"
       :delete-enabled="conversationDeleteEnabled"
-      @select="onSelect"
+      @select="onSelectMobileClose"
       @new="startNewConversation"
       @status-change="onStatusChange"
       @toggle="sidebarCollapsed = !sidebarCollapsed"
@@ -24,7 +42,30 @@
       <header
         class="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-900"
       >
-        <div class="min-w-0">
+        <!-- Phase 33 — Hamburger only visible on mobile (CSS-gated). -->
+        <button
+          type="button"
+          class="idp-hamburger mr-2 rounded p-1 text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+          aria-label="Open conversation list"
+          :aria-expanded="mobileSidebarOpen ? 'true' : 'false'"
+          aria-controls="idp-sidebar"
+          @click="mobileSidebarOpen = !mobileSidebarOpen"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            class="h-5 w-5"
+            aria-hidden="true"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M2 5a1 1 0 0 1 1-1h14a1 1 0 1 1 0 2H3a1 1 0 0 1-1-1Zm0 5a1 1 0 0 1 1-1h14a1 1 0 1 1 0 2H3a1 1 0 0 1-1-1Zm1 4a1 1 0 1 0 0 2h14a1 1 0 1 0 0-2H3Z"
+              clip-rule="evenodd"
+            />
+          </svg>
+        </button>
+        <div class="min-w-0 flex-1">
           <div class="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
             {{ headerTitle }}
           </div>
@@ -77,8 +118,12 @@
 
       <div
         v-else
+        id="idp-messages"
         ref="scrollEl"
-        class="relative flex-1 space-y-4 overflow-y-auto bg-gray-100 p-4 dark:bg-gray-950"
+        role="region"
+        aria-label="Conversation messages"
+        tabindex="-1"
+        class="idp-messages relative flex-1 space-y-4 overflow-y-auto bg-gray-100 p-4 dark:bg-gray-950"
         @scroll="onScroll"
       >
         <div
@@ -132,7 +177,7 @@
             class="max-w-[80%] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
           >
             <span class="whitespace-pre-wrap">{{ store.streamingState.text }}</span>
-            <span class="ml-0.5 inline-block animate-pulse text-gray-400">▍</span>
+            <span class="ml-0.5 inline-block animate-pulse text-gray-400" aria-hidden="true">▍</span>
             <div
               v-if="store.streamingState.cancelling"
               class="mt-1 text-[10px] italic text-gray-500"
@@ -145,8 +190,22 @@
         <div
           v-if="store.agentState.lastError"
           class="rounded border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+          role="alert"
         >
           {{ store.agentState.lastError }}
+        </div>
+
+        <!-- Phase 33 — Screen-reader announcement region for streaming
+             assistant prose.  Updated at most every ~500ms so screen
+             readers don't get spammed token-by-token.  Visually hidden
+             but read aloud as content lands. -->
+        <div
+          class="sr-only"
+          role="status"
+          aria-live="polite"
+          aria-atomic="false"
+        >
+          {{ liveAnnouncement }}
         </div>
 
         <button
@@ -271,6 +330,41 @@ const {
 
 // Phase 31 — sidebar collapse / settings-gated UI flags.
 const sidebarCollapsed = ref(false)
+
+// Phase 33 — mobile drawer state.  On < 768px the sidebar is hidden by
+// default and slides in when the hamburger is tapped; on desktop the
+// drawer state is irrelevant (CSS resets ``transform`` to identity).
+const mobileSidebarOpen = ref(false)
+
+// Phase 33 — Throttled aria-live announcement of streaming assistant
+// prose.  We mirror the streaming text into ``liveAnnouncement`` at
+// most every 500ms so a screen-reader narrates the message as it
+// lands without being spammed token-by-token.
+const liveAnnouncement = ref('')
+let liveAnnouncementTimer = null
+let lastAnnouncedText = ''
+
+function scheduleLiveAnnouncement() {
+  if (liveAnnouncementTimer != null) return
+  liveAnnouncementTimer = window.setTimeout(() => {
+    liveAnnouncementTimer = null
+    const text = store.streamingState?.text || ''
+    if (text && text !== lastAnnouncedText) {
+      lastAnnouncedText = text
+      liveAnnouncement.value = text
+    }
+  }, 500)
+}
+
+watch(
+  () => store.streamingState?.text,
+  () => scheduleLiveAnnouncement(),
+)
+
+function onSelectMobileClose(id) {
+  mobileSidebarOpen.value = false
+  onSelect(id)
+}
 
 function flag(key, fallback = true) {
   const v = settings.value?.[key]

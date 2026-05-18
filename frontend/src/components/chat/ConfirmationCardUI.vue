@@ -3,7 +3,11 @@
 
 <template>
   <div
-    class="rounded-lg border border-amber-300 bg-amber-50 p-4 shadow-sm dark:border-amber-700 dark:bg-amber-950"
+    class="idp-confirmation-card rounded-lg border border-amber-300 bg-amber-50 p-4 shadow-sm dark:border-amber-700 dark:bg-amber-950"
+    role="region"
+    :aria-label="`Confirmation card: ${card.title || card.doctype || 'document'}`"
+    tabindex="0"
+    @keydown="onCardKeydown"
   >
     <!-- Phase 31 G17 — bulk-action header.  Renders once, above the
          first card of a multi-card turn (≥3 cards). -->
@@ -113,6 +117,7 @@
             type="button"
             class="ml-auto rounded p-0.5 text-gray-400 hover:bg-amber-100 hover:text-amber-700 disabled:opacity-50 dark:hover:bg-amber-900 dark:hover:text-amber-200"
             :title="`Re-extract ${formatLabel(field)} from source`"
+            :aria-label="`Re-extract ${formatLabel(field)} from source`"
             :disabled="!!reExtractBusy[field.fieldname]"
             @click="onReExtract(field)"
           >
@@ -258,14 +263,22 @@
       </ul>
     </div>
 
-    <!-- Action buttons -->
-    <div v-if="actions.length" class="flex flex-wrap gap-2">
+    <!-- Action buttons.  Phase 33 — sticky to the viewport bottom on
+         mobile (respecting safe-area-inset-bottom) so the primary
+         actions are always thumb-reachable on phones. -->
+    <div
+      v-if="actions.length"
+      class="idp-card-actions flex flex-wrap gap-2"
+      role="group"
+      aria-label="Confirmation actions"
+    >
       <button
         v-for="action in actions"
         :key="action.id"
         :disabled="busy"
         class="rounded px-3 py-1.5 text-xs font-medium disabled:opacity-50"
         :class="actionStyle(action)"
+        :data-action-id="action.id"
         @click="invoke(action.id)"
       >
         {{ action.label || action.id }}
@@ -566,6 +579,56 @@ const busy = computed(() => agentBusy.value)
 const bulkBusy = ref(false)
 const bulkUom = ref('')
 const bulkResult = ref('')
+
+// Phase 33 — Keyboard nav on the card itself.
+//
+//   * Enter on the card root (when no edit field has focus) toggles
+//     Edit mode so a keyboard user can correct extractions without
+//     reaching for a mouse.
+//   * Esc cancels an open Edit session (matches the existing Cancel
+//     action button semantics).
+//   * Cmd/Ctrl+Enter triggers the primary action (submit if present,
+//     otherwise save_draft, otherwise the first available action).
+function preferredAction() {
+  const ids = actions.value.map((a) => a.id)
+  if (ids.includes('submit')) return 'submit'
+  if (ids.includes('save_draft')) return 'save_draft'
+  return ids[0]
+}
+
+function onCardKeydown(e) {
+  // Only act on keys that originated from the card root, not from a
+  // child input/textarea where the user is typing.  We still want
+  // Cmd/Ctrl+Enter to work everywhere though.
+  const tag = (e.target?.tagName || '').toLowerCase()
+  const isField = tag === 'input' || tag === 'textarea' || tag === 'select'
+
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    const id = preferredAction()
+    if (!id || busy.value) return
+    e.preventDefault()
+    invoke(id)
+    return
+  }
+
+  if (e.key === 'Escape') {
+    if (editing.value) {
+      e.preventDefault()
+      invoke('cancel')
+    }
+    return
+  }
+
+  if (e.key === 'Enter' && !isField && !e.shiftKey) {
+    // Enter on the card root toggles Edit mode when an Edit action is
+    // available.  Ignored while a child field is focused so typing
+    // Enter in a textbox doesn't accidentally exit edit mode.
+    const hasEdit = actions.value.some((a) => a.id === 'edit')
+    if (!hasEdit) return
+    e.preventDefault()
+    invoke('edit')
+  }
+}
 
 function actionStyle(a) {
   switch (a.id) {

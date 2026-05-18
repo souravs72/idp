@@ -80,23 +80,29 @@
 				>
 					<!-- Extracted -->
 					<td
+						data-label="Account"
 						class="border border-gray-300 px-2 py-1 text-gray-700 dark:border-gray-700 dark:text-gray-300"
 					>
 						{{ formatCell(row?.extracted?.account) }}
 					</td>
 					<td
+						data-label="Rate"
 						class="border border-gray-300 px-2 py-1 text-right text-gray-700 dark:border-gray-700 dark:text-gray-300"
 					>
 						{{ formatRate(row?.extracted?.rate) }}
 					</td>
 					<td
+						data-label="Tax Amount"
 						class="border border-gray-300 px-2 py-1 text-right text-gray-700 dark:border-gray-700 dark:text-gray-300"
 					>
 						{{ formatCell(row?.extracted?.tax_amount) }}
 					</td>
 
 					<!-- ERPNext Account: searchable dropdown (gated by editing) -->
-					<td class="border border-gray-300 px-2 py-1 dark:border-gray-700">
+					<td
+						data-label="Match"
+						class="border border-gray-300 px-2 py-1 dark:border-gray-700"
+					>
 						<div
 							class="flex items-center gap-1"
 							:ref="(el) => setAnchor(row.row_index, el)"
@@ -127,7 +133,10 @@
 						</div>
 					</td>
 					<!-- Status (with Phase 29 confidence dot) -->
-					<td class="border border-gray-300 px-2 py-1 text-center dark:border-gray-700">
+					<td
+						data-label="Status"
+						class="border border-gray-300 px-2 py-1 text-center dark:border-gray-700"
+					>
 						<div class="inline-flex items-center gap-1.5">
 							<ConfidenceDot
 								:band="row.confidence_band"

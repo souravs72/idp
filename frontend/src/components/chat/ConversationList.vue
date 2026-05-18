@@ -3,8 +3,10 @@
 
 <template>
   <aside
+    id="idp-sidebar"
     class="flex h-full flex-col border-r border-gray-200 bg-gray-50 transition-[width] duration-150 ease-out dark:border-gray-700 dark:bg-gray-950"
     :class="collapsed ? 'w-12' : 'w-72'"
+    aria-label="Conversations"
   >
     <!-- ============================================================ -->
     <!-- Header: collapse toggle + (when expanded) title and + New      -->
@@ -17,9 +19,11 @@
         type="button"
         class="rounded p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
         :title="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+        :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+        :aria-expanded="collapsed ? 'false' : 'true'"
         @click="$emit('toggle')"
       >
-        <span class="text-base leading-none">{{ collapsed ? '»' : '«' }}</span>
+        <span class="text-base leading-none" aria-hidden="true">{{ collapsed ? '»' : '«' }}</span>
       </button>
 
       <template v-if="!collapsed">
@@ -44,9 +48,10 @@
         class="m-2 rounded bg-blue-600 px-1 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         :disabled="starting"
         title="New conversation"
+        aria-label="New conversation"
         @click="$emit('new')"
       >
-        +
+        <span aria-hidden="true">+</span>
       </button>
     </template>
 

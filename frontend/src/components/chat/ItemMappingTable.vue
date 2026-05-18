@@ -97,6 +97,7 @@
 				>
 					<!-- Extracted: combined Item (code + name) -->
 					<td
+						data-label="Item"
 						class="border border-gray-300 px-2 py-1 text-gray-700 dark:border-gray-700 dark:text-gray-300"
 					>
 						<div class="font-medium">{{ formatItem(extracted(row)) }}</div>
@@ -112,21 +113,25 @@
 						</div>
 					</td>
 					<td
+						data-label="Qty"
 						class="border border-gray-300 px-2 py-1 text-right text-gray-700 dark:border-gray-700 dark:text-gray-300"
 					>
 						{{ formatCell(extracted(row).qty) }}
 					</td>
 					<td
+						data-label="UOM"
 						class="border border-gray-300 px-2 py-1 text-gray-700 dark:border-gray-700 dark:text-gray-300"
 					>
 						{{ formatCell(extracted(row).uom) }}
 					</td>
 					<td
+						data-label="Rate"
 						class="border border-gray-300 px-2 py-1 text-right text-gray-700 dark:border-gray-700 dark:text-gray-300"
 					>
 						{{ formatCell(extracted(row).rate) }}
 					</td>
 					<td
+						data-label="Stock?"
 						class="border border-gray-300 px-2 py-1 text-center text-gray-700 dark:border-gray-700 dark:text-gray-300"
 					>
 						<input
@@ -140,7 +145,10 @@
 					</td>
 
 					<!-- ERPNext Item: searchable dropdown (gated by edit mode) -->
-					<td class="border border-gray-300 px-2 py-1 dark:border-gray-700">
+					<td
+						data-label="Match"
+						class="border border-gray-300 px-2 py-1 dark:border-gray-700"
+					>
 						<div
 							class="flex items-center gap-1"
 							:ref="(el) => setAnchor(row.index, el)"
@@ -171,7 +179,10 @@
 						</div>
 					</td>
 					<!-- Status (with Phase 29 confidence dot + diff toggle) -->
-					<td class="border border-gray-300 px-2 py-1 text-center dark:border-gray-700">
+					<td
+						data-label="Status"
+						class="border border-gray-300 px-2 py-1 text-center dark:border-gray-700"
+					>
 						<div class="inline-flex items-center gap-1.5">
 							<ConfidenceDot
 								:band="row.confidence_band"
