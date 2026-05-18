@@ -89,7 +89,15 @@
   "mapper_version",
   "te_regression_alert_pct",
   "phase29_section",
-  "show_confidence_dots"
+  "show_confidence_dots",
+  "phase31_section",
+  "enable_cost_footer",
+  "enable_preflight_warning",
+  "enable_suggested_prompts",
+  "column_break_phase31",
+  "enable_sidebar_search",
+  "enable_bulk_actions",
+  "enable_conversation_delete"
  ],
  "fields": [
   {
@@ -637,6 +645,57 @@
    "fieldname": "show_confidence_dots",
    "fieldtype": "Check",
    "label": "Show Confidence Dots"
+  },
+  {
+   "fieldname": "phase31_section",
+   "fieldtype": "Section Break",
+   "label": "Conversation UX Polish (Phase 31)"
+  },
+  {
+   "default": "1",
+   "description": "Show a persistent cost/tokens/duration chip at the bottom of the chat surface.",
+   "fieldname": "enable_cost_footer",
+   "fieldtype": "Check",
+   "label": "Enable Cost Footer"
+  },
+  {
+   "default": "1",
+   "description": "Open a pre-flight confirmation dialog when an estimated turn would exceed the remaining daily token budget.",
+   "fieldname": "enable_preflight_warning",
+   "fieldtype": "Check",
+   "label": "Enable Pre-flight Cost Warning"
+  },
+  {
+   "default": "1",
+   "description": "Show three suggested prompt chips above the composer on empty conversations.",
+   "fieldname": "enable_suggested_prompts",
+   "fieldtype": "Check",
+   "label": "Enable Suggested Prompts"
+  },
+  {
+   "fieldname": "column_break_phase31",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "description": "Show a sidebar search box and filter chips for conversations.",
+   "fieldname": "enable_sidebar_search",
+   "fieldtype": "Check",
+   "label": "Enable Sidebar Search"
+  },
+  {
+   "default": "1",
+   "description": "Render bulk-action header when a single turn produces 3+ confirmation cards.",
+   "fieldname": "enable_bulk_actions",
+   "fieldtype": "Check",
+   "label": "Enable Bulk Card Actions"
+  },
+  {
+   "default": "1",
+   "description": "Allow users to delete conversations from the sidebar. When disabled, only archive is available.",
+   "fieldname": "enable_conversation_delete",
+   "fieldtype": "Check",
+   "label": "Enable Conversation Delete"
   }
  ],
  "issingle": 1,

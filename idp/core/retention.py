@@ -202,6 +202,100 @@ def purge_temp_files(max_age_hours: int | None = None, directory: str | None = N
 # ---------------------------------------------------------------------------
 
 
+def archive_stale_conversations(older_than_days: int | None = None) -> dict:
+	"""Phase 31 G18 — archive ``IDP Conversation`` rows older than threshold.
+
+	A conversation is eligible for auto-archive when:
+
+	* its ``status`` is still ``Active``,
+	* it has not been touched (``modified``) for at least
+	  *older_than_days*,
+	* it is **not** flagged as ``legal_hold`` (when that field exists).
+
+	Threshold defaults to ``IDP Settings.active_retention_days`` (90
+	days for fresh installs).  Idempotent: re-running is a no-op once
+	all stale rows are archived.
+
+	Returns ``{conversations_archived, threshold_days, cutoff}``.
+	"""
+
+	try:
+		settings = frappe.get_cached_doc("IDP Settings")
+	except Exception:
+		settings = None
+
+	threshold = older_than_days
+	if threshold is None:
+		try:
+			threshold = int(getattr(settings, "active_retention_days", None) or 0)
+		except (TypeError, ValueError):
+			threshold = 0
+
+	if not threshold or threshold <= 0:
+		return {"conversations_archived": 0, "threshold_days": threshold or 0}
+
+	try:
+		from frappe.utils import add_to_date, now_datetime
+	except Exception:  # pragma: no cover — pure-mode fallback
+		return {"conversations_archived": 0, "threshold_days": threshold}
+
+	cutoff = add_to_date(now_datetime(), days=-threshold)
+
+	# Build the candidate set with permission-free ``db.sql_list`` so
+	# we don't accidentally honour ``Active``-only get_list filters
+	# that some Frappe versions inject.
+	try:
+		# Only filter on legal_hold when the column actually exists —
+		# the field is reserved for a future patch and may be absent
+		# on older installs.
+		has_legal_hold = frappe.db.has_column(
+			"IDP Conversation", "legal_hold"
+		) if hasattr(frappe.db, "has_column") else False
+	except Exception:
+		has_legal_hold = False
+
+	conditions = [
+		"`status` = 'Active'",
+		"`modified` < %(cutoff)s",
+	]
+	if has_legal_hold:
+		conditions.append("COALESCE(`legal_hold`, 0) = 0")
+
+	where_clause = " AND ".join(conditions)
+	archived = 0
+	try:
+		rows = frappe.db.sql(
+			f"SELECT name FROM `tabIDP Conversation` WHERE {where_clause}",
+			{"cutoff": cutoff},
+			as_dict=True,
+		) or []
+		for row in rows:
+			try:
+				frappe.db.set_value(
+					"IDP Conversation",
+					row["name"],
+					"status",
+					"Archived",
+					update_modified=False,
+				)
+				archived += 1
+			except Exception:
+				logger.warning(
+					"archive_stale_conversations: failed for %s",
+					row.get("name"),
+					exc_info=True,
+				)
+		frappe.db.commit()
+	except Exception:
+		logger.warning("archive_stale_conversations: SQL path failed", exc_info=True)
+
+	return {
+		"conversations_archived": archived,
+		"threshold_days": threshold,
+		"cutoff": str(cutoff),
+	}
+
+
 def daily() -> dict:
 	"""Daily scheduled task invoked by Frappe's scheduler.
 
@@ -213,6 +307,8 @@ def daily() -> dict:
 		"archived": archive_stale_logs(),
 		"pruned": prune_old_logs(),
 		"temp_files": purge_temp_files(),
+		# Phase 31 G18 — auto-archive long-idle conversations.
+		"conversations_archived": archive_stale_conversations(),
 	}
 	logger.info("IDP retention: daily run finished: %s", report)
 	return report

@@ -393,3 +393,74 @@ export function applyToAllRows({
     },
   })
 }
+
+// ---------------------------------------------------------------------------
+// Phase 31 — Conversation UX Polish
+// ---------------------------------------------------------------------------
+
+export function estimateTurn({
+  conversationId,
+  content = '',
+  attachments = [],
+} = {}) {
+  return frappeRequest({
+    url: '/api/method/idp.api.conversation.estimate_turn',
+    method: 'POST',
+    params: {
+      conversation_id: conversationId || undefined,
+      content,
+      attachments: JSON.stringify(attachments || []),
+    },
+  })
+}
+
+export function suggestedPrompts() {
+  return frappeRequest({
+    url: '/api/method/idp.api.conversation.suggested_prompts',
+  })
+}
+
+export function searchConversations({
+  query = '',
+  status = null,
+  targetDoctype = null,
+  hasAttachments = false,
+  dateRange = null,
+  limit = 50,
+} = {}) {
+  return frappeRequest({
+    url: '/api/method/idp.api.conversation.search_conversations',
+    params: {
+      query: query || '',
+      status: status || undefined,
+      target_doctype: targetDoctype || undefined,
+      has_attachments: hasAttachments ? 1 : 0,
+      date_range: dateRange || undefined,
+      limit: limit || 50,
+    },
+  })
+}
+
+export function deleteConversation(conversationId) {
+  return frappeRequest({
+    url: '/api/method/idp.api.conversation.delete_conversation',
+    method: 'POST',
+    params: { conversation_id: conversationId },
+  })
+}
+
+export function reExtractField({
+  conversationId,
+  messageId,
+  fieldName,
+} = {}) {
+  return frappeRequest({
+    url: '/api/method/idp.api.conversation.re_extract_field',
+    method: 'POST',
+    params: {
+      conversation_id: conversationId,
+      message_id: messageId,
+      field_name: fieldName,
+    },
+  })
+}

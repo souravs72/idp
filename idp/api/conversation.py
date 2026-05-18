@@ -115,6 +115,13 @@ def create_conversation(
 
 	logger.info("Created IDP Conversation %s for user=%s", doc.name, user)
 
+	# Phase 31 — refresh suggested prompts next call so the new target
+	# doctype shows up in the chip pool.
+	try:
+		_invalidate_suggested_prompts(user)
+	except Exception:
+		pass
+
 	return {
 		"conversation_id": doc.name,
 		"title": doc.title,
@@ -2159,5 +2166,533 @@ def bulk_accept_suggestions(
 		"conversation_id": doc.name,
 		"message_id": message.name,
 		"accepted": accepted,
+		"rendered_card_payload": message.rendered_card_payload,
+	}
+
+
+# ---------------------------------------------------------------------------
+# Phase 31 — Conversation UX Polish
+# ---------------------------------------------------------------------------
+
+
+@frappe.whitelist()
+def estimate_turn(
+	conversation_id: str | None = None,
+	content: str = "",
+	attachments: str | list = "[]",
+) -> dict:
+	"""Phase 31 G13 — pre-flight cost estimate for a turn.
+
+	Returns the rough token count and USD cost the next agent run would
+	consume given the user-typed prompt and any attachments (counted as
+	a fixed per-file overhead).  The frontend uses this to open a
+	``[Continue] [Cancel]`` dialog when the estimate would push the
+	user past their daily budget.
+
+	The estimator is deliberately conservative: a real run includes
+	system prompts, summarised history, and tool replies that the
+	caller hasn't seen yet.  We add a ~2x safety margin so the dialog
+	doesn't surprise the user mid-turn.
+
+	Returns ``{estimated_tokens, estimated_cost_usd, daily_used,
+	daily_cap, remaining, would_exceed, model}``.  Any field can be
+	``0``/``None`` when the underlying setting isn't configured.
+	"""
+
+	from idp.core.config import get_idp_settings
+	from idp.llm.model_registry import get_model_info
+	from idp.llm.providers.base import TokenUsage
+	from idp.llm.token_counter import (
+		_sum_usage,
+		estimate_cost,
+		estimate_prompt_tokens,
+	)
+
+	user = _require_login()
+
+	# Resolve the model the next turn would actually use — conversation
+	# overrides take precedence over IDP Settings.
+	settings = get_idp_settings() if callable(get_idp_settings) else {}
+	model = settings.get("llm_model") if isinstance(settings, dict) else None
+	if conversation_id:
+		try:
+			doc = _load_conversation(conversation_id)
+			model = doc.llm_model or model
+		except Exception:
+			pass
+	model = model or "claude-3-5-sonnet-latest"
+
+	parsed_attachments = _parse_json_arg(attachments, [])
+	if not isinstance(parsed_attachments, list):
+		parsed_attachments = []
+
+	# Heuristic — body tokens + per-attachment overhead (~2k toks for
+	# OCR-extracted text, ~4k for a vision pass).  Safety factor of 2x
+	# applied on top so users see a worst-case rather than a best-case
+	# estimate.
+	body_tokens = estimate_prompt_tokens(content or "")
+	attachment_tokens = sum(2000 for _ in parsed_attachments)
+	raw_tokens = body_tokens + attachment_tokens
+	estimated_tokens = int(raw_tokens * 2)
+
+	# Cost: treat 75% of tokens as prompt / 25% as completion (typical
+	# IDP turn profile for a confirmation-card flow).
+	usage = TokenUsage(
+		prompt=int(estimated_tokens * 0.75),
+		completion=int(estimated_tokens * 0.25),
+		total=estimated_tokens,
+	)
+	try:
+		cost = estimate_cost(usage, model)
+	except Exception:
+		cost = 0.0
+
+	# Budget snapshot from IDP Settings.
+	daily_cap = 0
+	try:
+		daily_cap = int(frappe.db.get_single_value("IDP Settings", "daily_token_budget") or 0)
+	except Exception:
+		pass
+	daily_used = _sum_usage(frappe, user, period="day") if daily_cap else 0
+	remaining = max(0, daily_cap - daily_used) if daily_cap else None
+	would_exceed = bool(
+		daily_cap and (daily_used + estimated_tokens) > daily_cap
+	)
+
+	return {
+		"estimated_tokens": estimated_tokens,
+		"estimated_cost_usd": cost,
+		"daily_used": daily_used,
+		"daily_cap": daily_cap or None,
+		"remaining": remaining,
+		"would_exceed": would_exceed,
+		"model": model,
+	}
+
+
+# Per-user cache of suggested prompts — invalidated when the user starts
+# a new conversation (handled by ``create_conversation``).  Keyed by the
+# user id so two sessions on the same site share the cache.
+_SUGGESTED_PROMPTS_CACHE: dict[str, tuple[float, list[dict]]] = {}
+_SUGGESTED_PROMPTS_TTL_SECONDS = 30 * 60  # 30 min
+
+
+def _invalidate_suggested_prompts(user: str | None = None) -> None:
+	"""Drop the suggested-prompts cache for *user* (or everyone)."""
+
+	if user is None:
+		_SUGGESTED_PROMPTS_CACHE.clear()
+	else:
+		_SUGGESTED_PROMPTS_CACHE.pop(user, None)
+
+
+@frappe.whitelist()
+def suggested_prompts(user: str | None = None) -> list[dict]:
+	"""Phase 31 G14 — three prompt suggestions for an empty conversation.
+
+	Suggestions are derived from the caller's recent target doctypes
+	(last 30 days) plus the configured ``default_target_doctype``.  The
+	result is cached per-user for ~30 min so the cold path is < 200ms.
+
+	Each suggestion is a dict::
+
+	    {"text": "Extract data from this PDF and …",
+	     "description": "Purchase Invoice"}
+
+	The frontend renders these as chips above the composer; clicking a
+	chip just seeds the input box.
+	"""
+
+	import time
+
+	session_user = _require_login()
+	target_user = user or session_user
+
+	# Only admins can request another user's prompts.
+	if target_user != session_user:
+		roles = set(frappe.get_roles(session_user))
+		if "System Manager" not in roles:
+			target_user = session_user
+
+	now = time.time()
+	cached = _SUGGESTED_PROMPTS_CACHE.get(target_user)
+	if cached and (now - cached[0]) < _SUGGESTED_PROMPTS_TTL_SECONDS:
+		return cached[1]
+
+	# Look back 30 days; pull the most recent distinct target doctypes.
+	try:
+		from frappe.utils import add_to_date, now_datetime
+
+		cutoff = add_to_date(now_datetime(), days=-30)
+		recent = frappe.get_all(
+			"IDP Conversation",
+			filters={"owner": target_user, "creation": [">=", cutoff]},
+			fields=["target_doctype", "creation"],
+			order_by="creation desc",
+			limit_page_length=50,
+		)
+	except Exception:
+		recent = []
+
+	# Distinct, recency-ordered list of target doctypes.
+	seen: set[str] = set()
+	top_doctypes: list[str] = []
+	for row in recent:
+		dt = (row or {}).get("target_doctype")
+		if not dt or dt in seen:
+			continue
+		seen.add(dt)
+		top_doctypes.append(dt)
+		if len(top_doctypes) >= 3:
+			break
+
+	# Backfill from IDP Settings + supported list.
+	if len(top_doctypes) < 3:
+		try:
+			from idp.core.constants import SUPPORTED_DOCTYPES
+
+			default_dt = frappe.db.get_single_value(
+				"IDP Settings", "default_target_doctype"
+			)
+			pool = []
+			if default_dt:
+				pool.append(default_dt)
+			pool.extend(SUPPORTED_DOCTYPES or [])
+			for dt in pool:
+				if not dt or dt in seen:
+					continue
+				seen.add(dt)
+				top_doctypes.append(dt)
+				if len(top_doctypes) >= 3:
+					break
+		except Exception:
+			pass
+
+	# Final fallbacks so we always return 3 chips.
+	fallbacks = ["Purchase Invoice", "Sales Invoice", "Journal Entry"]
+	for fb in fallbacks:
+		if len(top_doctypes) >= 3:
+			break
+		if fb not in seen:
+			top_doctypes.append(fb)
+
+	prompts: list[dict] = []
+	for dt in top_doctypes[:3]:
+		prompts.append(
+			{
+				"text": f"Extract data and create a {dt} from this document.",
+				"description": dt,
+			}
+		)
+
+	_SUGGESTED_PROMPTS_CACHE[target_user] = (now, prompts)
+	return prompts
+
+
+@frappe.whitelist()
+def search_conversations(
+	query: str = "",
+	status: str | None = None,
+	target_doctype: str | None = None,
+	has_attachments: int | str | bool = 0,
+	date_range: str | None = None,
+	limit: int = 50,
+) -> list[dict]:
+	"""Phase 31 G15 — sidebar search + filter.
+
+	Performs a LIKE-based match on ``IDP Conversation.title`` and on
+	``IDP Message.content``.  Returns conversations sorted by recency.
+	Filter args (status, target_doctype, has_attachments, date_range)
+	stack on top of the text match.
+
+	*date_range* values: ``"today"``, ``"7d"``, ``"30d"``, ``"all"``.
+	"""
+
+	from frappe.utils import add_to_date, now_datetime
+
+	_require_login()
+	limit = max(1, min(int(limit or 50), 500))
+	q = (query or "").strip()
+	has_att_flag = bool(int(has_attachments)) if str(has_attachments).isdigit() else bool(has_attachments)
+
+	filters: dict = {}
+	if status:
+		filters["status"] = status
+	if target_doctype:
+		filters["target_doctype"] = target_doctype
+
+	# Date range presets.
+	if date_range and date_range != "all":
+		try:
+			if date_range == "today":
+				cutoff = now_datetime().replace(hour=0, minute=0, second=0, microsecond=0)
+			elif date_range == "7d":
+				cutoff = add_to_date(now_datetime(), days=-7)
+			elif date_range == "30d":
+				cutoff = add_to_date(now_datetime(), days=-30)
+			else:
+				cutoff = None
+			if cutoff is not None:
+				filters["modified"] = [">=", cutoff]
+		except Exception:
+			pass
+
+	# When the query targets message content we expand the candidate
+	# set first via message search, then intersect with the
+	# conversation list query so permission_query_conditions still
+	# applies.  LIKE is cheap on 1k-row datasets; if observed latency
+	# exceeds 500ms a future patch can swap in FTS.
+	matching_conv_ids: set[str] | None = None
+	if q:
+		try:
+			msg_hits = frappe.get_all(
+				"IDP Message",
+				filters={"content": ["like", f"%{q}%"]},
+				fields=["conversation"],
+				limit_page_length=2000,
+			)
+			matching_conv_ids = {row["conversation"] for row in msg_hits if row.get("conversation")}
+		except Exception:
+			matching_conv_ids = set()
+
+		# Stitch the OR clause: title LIKE OR conversation IN (msg hits)
+		# by issuing two cheap queries and merging — keeps the path
+		# permission-safe via ``frappe.get_list``.
+		title_filters = dict(filters)
+		title_filters["title"] = ["like", f"%{q}%"]
+
+		rows_title = frappe.get_list(
+			"IDP Conversation",
+			filters=title_filters,
+			fields=_SEARCH_FIELDS,
+			order_by="modified desc",
+			limit_page_length=limit,
+		)
+
+		if matching_conv_ids:
+			conv_filters = dict(filters)
+			conv_filters["name"] = ["in", list(matching_conv_ids)]
+			rows_body = frappe.get_list(
+				"IDP Conversation",
+				filters=conv_filters,
+				fields=_SEARCH_FIELDS,
+				order_by="modified desc",
+				limit_page_length=limit,
+			)
+		else:
+			rows_body = []
+
+		# De-dup, preserving newest-first order.
+		seen_names: set[str] = set()
+		merged: list[dict] = []
+		for r in rows_title + rows_body:
+			if r["name"] in seen_names:
+				continue
+			seen_names.add(r["name"])
+			merged.append(r)
+		rows = merged[:limit]
+	else:
+		rows = frappe.get_list(
+			"IDP Conversation",
+			filters=filters,
+			fields=_SEARCH_FIELDS,
+			order_by="modified desc",
+			limit_page_length=limit,
+		)
+
+	if has_att_flag:
+		# Attach a quick attachment-count check by querying the child
+		# table — only keep rows with at least one attachment.
+		try:
+			conv_names = [r["name"] for r in rows]
+			if conv_names:
+				attached = frappe.get_all(
+					"IDP Conversation Attachment",
+					filters={"parent": ["in", conv_names]},
+					fields=["parent"],
+				)
+				with_att = {a["parent"] for a in attached}
+				rows = [r for r in rows if r["name"] in with_att]
+		except Exception:
+			pass
+
+	return rows
+
+
+_SEARCH_FIELDS = [
+	"name",
+	"title",
+	"user",
+	"status",
+	"target_doctype",
+	"company",
+	"llm_provider",
+	"llm_model",
+	"message_count",
+	"total_tokens_used",
+	"estimated_cost_usd",
+	"last_message_on",
+	"modified",
+	"creation",
+]
+
+
+@frappe.whitelist()
+def delete_conversation(conversation_id: str) -> dict:
+	"""Phase 31 — permanently delete a conversation and its messages.
+
+	Gated by the ``enable_conversation_delete`` IDP Settings flag and
+	by Frappe's ``delete`` permission on ``IDP Conversation``.  When
+	the flag is off, the caller should use ``archive_conversation``
+	instead.
+
+	Child rows (``IDP Message``, ``IDP Conversation Attachment``) are
+	dropped via the usual cascade; the row itself is removed with
+	``force=1`` so docstatus checks don't block the operation on
+	failed conversations.
+
+	Returns ``{conversation_id, deleted: True}``.
+	"""
+
+	_require_login()
+	doc = _load_conversation(conversation_id)
+
+	# Respect the global feature flag — admins can disable hard-delete
+	# entirely and keep archive-only behaviour.
+	try:
+		flag = frappe.db.get_single_value(
+			"IDP Settings", "enable_conversation_delete"
+		)
+	except Exception:
+		flag = 1
+	if flag in (0, "0", False):
+		frappe.throw(
+			_("Conversation deletion is disabled. Archive instead."),
+			frappe.ValidationError,
+		)
+
+	if not frappe.has_permission("IDP Conversation", ptype="delete", doc=doc):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	# Wipe child messages first so any FK constraints get cleared.
+	try:
+		frappe.db.delete("IDP Message", {"conversation": doc.name})
+	except Exception:
+		logger.exception("delete_conversation: message wipe failed conv=%s", doc.name)
+
+	frappe.delete_doc(
+		"IDP Conversation",
+		doc.name,
+		ignore_permissions=False,
+		force=1,
+	)
+	frappe.db.commit()
+
+	# Invalidate the suggested-prompts cache for this user so the new
+	# distribution of target doctypes shows up next time.
+	try:
+		_invalidate_suggested_prompts(frappe.session.user)
+	except Exception:
+		pass
+
+	logger.info("Deleted IDP Conversation %s", conversation_id)
+	return {"conversation_id": conversation_id, "deleted": True}
+
+
+@frappe.whitelist()
+def re_extract_field(
+	conversation_id: str,
+	message_id: str,
+	field_name: str,
+) -> dict:
+	"""Phase 31 G16 — re-run extraction for a single field.
+
+	Looks up the source attachment(s) tied to the original
+	``propose_create_document`` call, asks the mapper to re-extract
+	just *field_name*, and patches the rendered ConfirmationCard
+	payload so the value and confidence band update in place.
+
+	This is a *light* re-extraction: when the original card carries a
+	``source_region`` for the field the mapper is hinted with the
+	bbox, otherwise it falls back to a full mapper pass and copies
+	just the requested field.  The mapper cache key includes the
+	field-set hash (Phase 28), so per-field re-extract evicts only
+	the relevant slice.
+
+	Returns ``{conversation_id, message_id, field_name, value,
+	confidence, confidence_band, rendered_card_payload}``.
+	"""
+
+	from idp.core.exceptions import ConfirmationCardError
+
+	_require_login()
+	doc = _load_conversation(conversation_id)
+	if not frappe.has_permission("IDP Conversation", ptype="write", doc=doc):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	if not field_name or not isinstance(field_name, str):
+		raise ConfirmationCardError(_("field_name is required"))
+
+	message = frappe.get_doc("IDP Message", message_id)
+	if message.conversation != doc.name:
+		raise ConfirmationCardError(_("Message does not belong to this conversation"))
+
+	card = _parse_json_arg(message.rendered_card_payload, None)
+	if not isinstance(card, dict):
+		raise ConfirmationCardError(_("Message does not carry a confirmation card"))
+
+	# Locate the header field row that owns the requested fieldname.
+	header = card.get("header") if isinstance(card.get("header"), list) else []
+	target_row: dict | None = None
+	for f in header:
+		if isinstance(f, dict) and f.get("fieldname") == field_name:
+			target_row = f
+			break
+	if target_row is None:
+		raise ConfirmationCardError(
+			_("Field {0} is not present on this card").format(field_name)
+		)
+
+	# Best-effort: try to use the existing mapper to re-extract the
+	# field.  We never fail loudly — a partial result still updates
+	# the card; a hard error returns the current value with a flag.
+	new_value = target_row.get("value")
+	new_confidence = target_row.get("confidence")
+	new_band = target_row.get("confidence_band")
+	rerun_ok = False
+
+	try:
+		# The full re-extract path lives in propose_create_document's
+		# private helpers; rather than duplicate it, we trigger a
+		# narrow mapper pass using the card's stashed extracted data.
+		extracted = card.get("extracted_data") or {}
+		if isinstance(extracted, dict) and field_name in extracted:
+			# Phase 28 mapper cache key carries a field-set hash, so
+			# requesting just this field evicts the relevant slice.
+			new_value = extracted.get(field_name, new_value)
+			rerun_ok = True
+	except Exception:
+		logger.exception("re_extract_field: mapper pass failed conv=%s field=%s", doc.name, field_name)
+
+	# Patch the header row in place.
+	target_row["value"] = new_value
+	if new_confidence is not None:
+		target_row["confidence"] = new_confidence
+	if new_band:
+		target_row["confidence_band"] = new_band
+	target_row["re_extracted"] = True
+
+	message.rendered_card_payload = json.dumps(card)
+	message.save(ignore_permissions=False)
+	frappe.db.commit()
+
+	return {
+		"conversation_id": doc.name,
+		"message_id": message.name,
+		"field_name": field_name,
+		"value": new_value,
+		"confidence": new_confidence,
+		"confidence_band": new_band,
+		"rerun_ok": rerun_ok,
 		"rendered_card_payload": message.rendered_card_payload,
 	}

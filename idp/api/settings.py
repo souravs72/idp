@@ -65,4 +65,17 @@ def get_settings() -> dict:
 			"csv": is_feature_enabled("enable_csv"),
 			"docx": is_feature_enabled("enable_docx"),
 		},
+		# Phase 29 — confidence dot toggle exposed at the top level so
+		# the chat surface can read it without a second roundtrip.
+		"show_confidence_dots": settings.get("show_confidence_dots", 1),
+		# Phase 31 — UX polish feature flags.
+		"enable_cost_footer": settings.get("enable_cost_footer", 1),
+		"enable_preflight_warning": settings.get("enable_preflight_warning", 1),
+		"enable_suggested_prompts": settings.get("enable_suggested_prompts", 1),
+		"enable_sidebar_search": settings.get("enable_sidebar_search", 1),
+		"enable_bulk_actions": settings.get("enable_bulk_actions", 1),
+		"enable_conversation_delete": settings.get("enable_conversation_delete", 1),
+		# Daily token cap surfaced so the cost footer can render the
+		# remaining budget without a separate fetch.
+		"daily_token_budget": settings.get("daily_token_budget", 0),
 	}

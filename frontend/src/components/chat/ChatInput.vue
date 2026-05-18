@@ -109,7 +109,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { uploadDocument } from '@/utils/api'
 
 const props = defineProps({
@@ -249,4 +249,22 @@ function onSubmit() {
   pending.value = []
   emit('send', payload)
 }
+
+// Phase 31 G14 — listen for suggested-prompt chip clicks dispatched
+// from ChatView.  We pre-fill the composer so the user can review and
+// edit before sending.
+function onPrefillEvent(ev) {
+  const text = ev?.detail?.text
+  if (typeof text === 'string' && text.length) {
+    draft.value = text
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('idp:chat-input:prefill', onPrefillEvent)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('idp:chat-input:prefill', onPrefillEvent)
+})
 </script>

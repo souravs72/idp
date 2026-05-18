@@ -5,6 +5,49 @@
   <div
     class="rounded-lg border border-amber-300 bg-amber-50 p-4 shadow-sm dark:border-amber-700 dark:bg-amber-950"
   >
+    <!-- Phase 31 G17 — bulk-action header.  Renders once, above the
+         first card of a multi-card turn (≥3 cards). -->
+    <div
+      v-if="showBulkHeader"
+      class="mb-3 flex flex-wrap items-center justify-between gap-2 rounded border border-amber-400 bg-amber-100 px-3 py-2 text-[11px] text-amber-900 dark:border-amber-700 dark:bg-amber-900 dark:text-amber-100"
+    >
+      <div class="flex items-center gap-2">
+        <span aria-hidden="true">📋</span>
+        <span class="font-medium">
+          {{ turnCardSiblings.length }} confirmation cards in this turn
+        </span>
+      </div>
+      <div class="flex flex-wrap items-center gap-1">
+        <button
+          type="button"
+          class="rounded bg-emerald-600 px-2 py-0.5 text-white hover:bg-emerald-700 disabled:opacity-50"
+          :disabled="bulkTurnBusy"
+          @click="onTurnConfirmOK"
+        >
+          Confirm OK only
+        </button>
+        <button
+          type="button"
+          class="rounded bg-amber-600 px-2 py-0.5 text-white hover:bg-amber-700 disabled:opacity-50"
+          :disabled="bulkTurnBusy"
+          @click="onTurnConfirmAll"
+        >
+          Confirm all
+        </button>
+        <button
+          type="button"
+          class="rounded border border-amber-300 bg-white px-2 py-0.5 text-amber-900 hover:bg-amber-50 disabled:opacity-50 dark:border-amber-700 dark:bg-gray-900 dark:text-amber-100"
+          :disabled="bulkTurnBusy"
+          @click="onTurnReviewWarnings"
+        >
+          Review warnings
+        </button>
+        <span v-if="bulkTurnResult" class="ml-1 text-[10px]">
+          {{ bulkTurnResult }}
+        </span>
+      </div>
+    </div>
+
     <div class="mb-3 flex items-start justify-between gap-3">
       <div>
         <div class="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
@@ -61,6 +104,21 @@
             {{ formatLabel(field) }}
           </button>
           <span v-else>{{ formatLabel(field) }}</span>
+          <!-- Phase 31 G16 — per-field re-extract.  Asks the backend to
+               re-pull this single field from the source attachment and
+               patch it onto the persisted card.  Hidden when the card
+               is read-only (submitted / no actions). -->
+          <button
+            v-if="reExtractEnabled && !card.submitted && actions.length"
+            type="button"
+            class="ml-auto rounded p-0.5 text-gray-400 hover:bg-amber-100 hover:text-amber-700 disabled:opacity-50 dark:hover:bg-amber-900 dark:hover:text-amber-200"
+            :title="`Re-extract ${formatLabel(field)} from source`"
+            :disabled="!!reExtractBusy[field.fieldname]"
+            @click="onReExtract(field)"
+          >
+            <span v-if="reExtractBusy[field.fieldname]" aria-hidden="true">⏳</span>
+            <span v-else aria-hidden="true">↻</span>
+          </button>
         </label>
         <input
           v-if="!editing || field.editable === false"
@@ -266,8 +324,10 @@ import {
   bulkMatchItems,
   bulkAcceptSuggestions,
   applyToAllRows,
+  reExtractField,
 } from '@/utils/api'
 import { useConversationStore } from '@/stores/conversation'
+import { useSettings } from '@/composables/useSettings'
 import ItemMappingTable from './ItemMappingTable.vue'
 import TaxMappingTable from './TaxMappingTable.vue'
 import GenericChildTable from './GenericChildTable.vue'
@@ -280,6 +340,63 @@ const emit = defineEmits(['confirmed', 'focus-source'])
 
 const store = useConversationStore()
 const { confirm, busy: agentBusy } = useAgent()
+const { settings } = useSettings()
+
+// Phase 31 G16 — gate the per-field re-extract button.
+const reExtractEnabled = computed(() => {
+  const v = settings.value?.enable_bulk_actions
+  // ``enable_bulk_actions`` covers both bulk and re-extract per the
+  // roadmap §31.4 / §31.5 acceptance.  Default on.
+  if (v == null) return true
+  return !!Number(v)
+})
+
+// Phase 31 G17 — bulk-action header surfaces when 3+ ConfirmationCard
+// messages appear consecutively in the same assistant turn.  We
+// approximate "same turn" as "consecutive assistant card messages,
+// uninterrupted by a user message".
+const turnCardSiblings = computed(() => {
+  const all = store.visibleMessages || []
+  const selfName = props.message.name
+  const idx = all.findIndex((m) => m.name === selfName)
+  if (idx < 0) return []
+  // Walk backwards to the nearest user message.
+  let start = idx
+  for (let i = idx - 1; i >= 0; i -= 1) {
+    if (all[i].role === 'user') break
+    start = i
+  }
+  // Walk forwards to the next user message.
+  let end = idx
+  for (let i = idx + 1; i < all.length; i += 1) {
+    if (all[i].role === 'user') break
+    end = i
+  }
+  const out = []
+  for (let i = start; i <= end; i += 1) {
+    const m = all[i]
+    if (m.role !== 'assistant') continue
+    if (!m.rendered_card_payload) continue
+    out.push(m)
+  }
+  return out
+})
+
+const showBulkHeader = computed(() => {
+  if (!reExtractEnabled.value) return false
+  if (!turnCardSiblings.value.length) return false
+  if (turnCardSiblings.value.length < 3) return false
+  // Only render the banner on the first sibling so we don't repeat it
+  // above every card.
+  return turnCardSiblings.value[0]?.name === props.message.name
+})
+
+const bulkTurnBusy = ref(false)
+const bulkTurnResult = ref('')
+
+// Per-field re-extract spinner state.  Keyed by fieldname so multiple
+// rows can spin independently.
+const reExtractBusy = ref({})
 
 const card = computed(() => parseJSON(props.message.rendered_card_payload) || {})
 
@@ -687,5 +804,142 @@ function applyCardPatch(out) {
   const payload = out?.rendered_card_payload
   if (!payload || typeof store.patchMessage !== 'function') return
   store.patchMessage(props.message.name, { rendered_card_payload: payload })
+}
+
+// ---------------------------------------------------------------------------
+// Phase 31 G16 — per-field re-extract
+// ---------------------------------------------------------------------------
+
+async function onReExtract(field) {
+  if (!field?.fieldname) return
+  if (reExtractBusy.value[field.fieldname]) return
+  reExtractBusy.value = {
+    ...reExtractBusy.value,
+    [field.fieldname]: true,
+  }
+  try {
+    const out = await reExtractField({
+      conversationId: store.currentId,
+      messageId: props.message.name,
+      fieldName: field.fieldname,
+    })
+    applyCardPatch(out)
+  } catch (err) {
+    lastError.value = err?.message || String(err)
+  } finally {
+    const next = { ...reExtractBusy.value }
+    delete next[field.fieldname]
+    reExtractBusy.value = next
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 31 G17 — bulk-turn confirmation actions.
+// ---------------------------------------------------------------------------
+
+function hasBlockingWarnings(msg) {
+  const payload = parseJSON(msg?.rendered_card_payload)
+  const warnings = payload?.warnings
+  if (!Array.isArray(warnings)) return false
+  // A "blocking" warning is anything tagged ``severity: 'error'`` OR
+  // anything in the legacy ``revalidation_warnings`` bucket.  Plain
+  // string warnings are treated as informational.
+  for (const w of warnings) {
+    if (typeof w === 'string') continue
+    if (w?.severity === 'error') return true
+    if (w?.blocking) return true
+  }
+  return false
+}
+
+function turnSiblingIds(filterFn) {
+  const out = []
+  for (const m of turnCardSiblings.value) {
+    if (filterFn && !filterFn(m)) continue
+    out.push(m.name)
+  }
+  return out
+}
+
+async function submitMany(ids) {
+  if (!ids.length) return { ok: 0, fail: 0 }
+  let ok = 0
+  let fail = 0
+  for (const id of ids) {
+    try {
+      await confirm({ messageId: id, action: 'submit', edits: null })
+      ok += 1
+    } catch (_err) {
+      fail += 1
+    }
+  }
+  return { ok, fail }
+}
+
+async function onTurnConfirmOK() {
+  if (bulkTurnBusy.value) return
+  bulkTurnBusy.value = true
+  bulkTurnResult.value = ''
+  try {
+    const ids = turnSiblingIds((m) => !hasBlockingWarnings(m))
+    if (!ids.length) {
+      bulkTurnResult.value = 'No clean cards.'
+      return
+    }
+    const { ok, fail } = await submitMany(ids)
+    bulkTurnResult.value = `Submitted ${ok}${fail ? ` · ${fail} failed` : ''}.`
+    emit('confirmed', { action: 'submit', result: null })
+  } finally {
+    bulkTurnBusy.value = false
+  }
+}
+
+async function onTurnConfirmAll() {
+  if (bulkTurnBusy.value) return
+  bulkTurnBusy.value = true
+  bulkTurnResult.value = ''
+  try {
+    const ids = turnSiblingIds()
+    if (!ids.length) {
+      bulkTurnResult.value = 'Nothing to confirm.'
+      return
+    }
+    const blocking = turnSiblingIds(hasBlockingWarnings).length
+    if (blocking) {
+      const proceed = window.confirm(
+        `${blocking} card(s) have warnings. Submit anyway?`,
+      )
+      if (!proceed) return
+    }
+    const { ok, fail } = await submitMany(ids)
+    bulkTurnResult.value = `Submitted ${ok}${fail ? ` · ${fail} failed` : ''}.`
+    emit('confirmed', { action: 'submit', result: null })
+  } finally {
+    bulkTurnBusy.value = false
+  }
+}
+
+function onTurnReviewWarnings() {
+  // Scroll to the first sibling that carries a blocking warning so the
+  // user can inspect it manually.  Falls back to the first card with
+  // any warnings, then to the first card.
+  const blocking = turnCardSiblings.value.find(hasBlockingWarnings)
+  const target =
+    blocking ||
+    turnCardSiblings.value.find((m) => {
+      const p = parseJSON(m.rendered_card_payload)
+      return Array.isArray(p?.warnings) && p.warnings.length
+    }) ||
+    turnCardSiblings.value[0]
+  if (!target) return
+  // The DOM id pattern follows MessageBubble — fall back to a generic
+  // ``[data-message-id]`` lookup if needed.
+  const el =
+    document.getElementById(`msg-${target.name}`) ||
+    document.querySelector(`[data-message-id="${target.name}"]`)
+  if (el && typeof el.scrollIntoView === 'function') {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+  bulkTurnResult.value = ''
 }
 </script>

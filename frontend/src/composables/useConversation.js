@@ -13,9 +13,11 @@ import { useConversationStore } from '@/stores/conversation'
 import {
   archiveConversation as apiArchive,
   createConversation as apiCreate,
+  deleteConversation as apiDelete,
   getChatDefaults as apiGetDefaults,
   getConversation as apiGet,
   listConversations as apiList,
+  searchConversations as apiSearch,
 } from '@/utils/api'
 
 export function useConversation() {
@@ -83,6 +85,42 @@ export function useConversation() {
   }
 
   /**
+   * Phase 31 — hard-delete a conversation and all its messages.
+   *
+   * Backend enforces the ``enable_conversation_delete`` IDP Settings
+   * flag and Frappe ``delete`` permission.  The composable also drops
+   * the row from the sidebar and clears the active conversation when
+   * the deleted one was open.
+   */
+  async function deleteConversation(conversationId) {
+    const out = await apiDelete(conversationId)
+    store.sessions = store.sessions.filter((s) => s.name !== conversationId)
+    if (store.currentId === conversationId) {
+      store.clearCurrent()
+    }
+    return out
+  }
+
+  /**
+   * Phase 31 — sidebar search + filter.  Same payload shape as
+   * ``refreshSessions`` so callers can swap it in transparently when
+   * the user types into the search box.
+   */
+  async function searchSessions(opts = {}) {
+    store.sessionsLoading = true
+    try {
+      const rows = await apiSearch(opts)
+      store.setSessions(rows || [])
+      return rows || []
+    } catch (err) {
+      lastError.value = err?.message || String(err)
+      throw err
+    } finally {
+      store.sessionsLoading = false
+    }
+  }
+
+  /**
    * Fetch chat defaults from IDP Settings.  Returns a snapshot like:
    *   {
    *     llm_provider, llm_model, target_doctype, ocr_language,
@@ -138,6 +176,8 @@ export function useConversation() {
     loadConversation,
     createConversation,
     archiveConversation,
+    deleteConversation,
+    searchSessions,
     getDefaults,
     quickStart,
   }

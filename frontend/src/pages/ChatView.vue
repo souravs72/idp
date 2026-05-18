@@ -9,9 +9,15 @@
       :loading="store.sessionsLoading"
       :current-status="status"
       :starting="startingConversation"
+      :collapsed="sidebarCollapsed"
+      :search-enabled="sidebarSearchEnabled"
+      :delete-enabled="conversationDeleteEnabled"
       @select="onSelect"
       @new="startNewConversation"
       @status-change="onStatusChange"
+      @toggle="sidebarCollapsed = !sidebarCollapsed"
+      @search="onSidebarSearch"
+      @delete="onDeleteConversation"
     />
 
     <main class="flex flex-1 flex-col overflow-hidden">
@@ -38,12 +44,6 @@
           >
             Archive
           </button>
-          <router-link
-            to="/"
-            class="text-[11px] text-blue-700 hover:underline dark:text-blue-300"
-          >
-            ← Back to upload
-          </router-link>
         </div>
       </header>
 
@@ -92,6 +92,22 @@
             Drop a document into the box below or type a question — for
             example,
             <em>“extract data and create a Purchase Invoice from this PDF.”</em>
+          </div>
+
+          <!-- Phase 31 G14 — suggested prompt chips. -->
+          <div
+            v-if="suggestedPromptChips.length"
+            class="mt-3 flex flex-wrap justify-center gap-1.5"
+          >
+            <button
+              v-for="(p, i) in suggestedPromptChips"
+              :key="i"
+              type="button"
+              class="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] text-blue-800 hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-200 dark:hover:bg-blue-900"
+              @click="onPickSuggested(p)"
+            >
+              {{ p }}
+            </button>
           </div>
         </div>
 
@@ -152,8 +168,11 @@
         @cancel="onCancel"
       />
 
+      <!-- Phase 31 G12 — token / cost chip footer.  Falls back to the
+           legacy plain footer when ``enable_cost_footer`` is disabled. -->
+      <CostFooter v-if="costFooterEnabled" />
       <footer
-        v-if="footerStats"
+        v-else-if="footerStats"
         class="border-t border-gray-200 bg-white px-4 py-1 text-[11px] text-gray-500 dark:border-gray-700 dark:bg-gray-900"
       >
         {{ footerStats }}
@@ -220,11 +239,15 @@ import ThinkingIndicator from '@/components/chat/ThinkingIndicator.vue'
 import ProgressBanner from '@/components/chat/ProgressBanner.vue'
 import NewConversationDialog from '@/components/chat/NewConversationDialog.vue'
 import PdfPreview from '@/components/chat/PdfPreview.vue'
+import CostFooter from '@/components/chat/CostFooter.vue'
 
 import { useConversationStore } from '@/stores/conversation'
 import { useConversation } from '@/composables/useConversation'
 import { useAgent } from '@/composables/useAgent'
 import { useConversationRealtime } from '@/composables/useRealtimeEvents'
+import { useSettings } from '@/composables/useSettings'
+import { useCost } from '@/composables/useCost'
+import { useSuggestedPrompts } from '@/composables/useSuggestedPrompts'
 import { cancelTurn } from '@/utils/api'
 
 const store = useConversationStore()
@@ -234,9 +257,43 @@ const {
   refreshSessions,
   loadConversation,
   archiveConversation,
+  deleteConversation,
+  searchSessions,
   quickStart,
 } = useConversation()
 const { send } = useAgent()
+const { settings, load: loadSettings } = useSettings()
+const { confirmIfNeeded } = useCost()
+const {
+  prompts: suggestedPrompts,
+  load: loadSuggestedPrompts,
+} = useSuggestedPrompts()
+
+// Phase 31 — sidebar collapse / settings-gated UI flags.
+const sidebarCollapsed = ref(false)
+
+function flag(key, fallback = true) {
+  const v = settings.value?.[key]
+  if (v == null) return fallback
+  return !!Number(v)
+}
+
+const sidebarSearchEnabled = computed(() => flag('enable_sidebar_search'))
+const conversationDeleteEnabled = computed(
+  () => flag('enable_conversation_delete'),
+)
+const costFooterEnabled = computed(() => flag('enable_cost_footer'))
+
+const suggestedPromptChips = computed(() => {
+  if (!flag('enable_suggested_prompts')) return []
+  const list = suggestedPrompts.value
+  return Array.isArray(list) ? list.slice(0, 6) : []
+})
+
+// Track the last-applied sidebar search payload so refreshSessions and
+// status-change handlers can re-run it (otherwise the unfiltered list
+// would silently replace the filtered results).
+const activeSearch = ref(null)
 
 const dialogPrefill = ref(null)
 const startingConversation = ref(false)
@@ -406,7 +463,58 @@ async function onSelect(id) {
 
 async function onStatusChange(value) {
   status.value = value
-  await refreshSessions({ status: value })
+  if (activeSearch.value) {
+    await searchSessions({ ...activeSearch.value, status: value })
+  } else {
+    await refreshSessions({ status: value })
+  }
+}
+
+// Phase 31 G15 — sidebar search/filter.  An empty payload (no query +
+// default chips) reverts to the plain list to keep parity with the
+// pre-Phase-31 behaviour.
+async function onSidebarSearch(payload) {
+  const isEmpty =
+    !payload?.query && payload?.dateRange === 'all' && !payload?.hasAttachments
+  if (isEmpty) {
+    activeSearch.value = null
+    await refreshSessions({ status: status.value })
+    return
+  }
+  activeSearch.value = payload
+  await searchSessions(payload)
+}
+
+async function onDeleteConversation(row) {
+  if (!row?.name) return
+  const title = row.title || `Conversation ${row.name}`
+  if (!window.confirm(`Delete "${title}"? This cannot be undone.`)) return
+  try {
+    await deleteConversation(row.name)
+    if (route.params.id === row.name) {
+      router.replace({ name: 'ChatHome' })
+    }
+    if (activeSearch.value) {
+      await searchSessions({ ...activeSearch.value, status: status.value })
+    } else {
+      await refreshSessions({ status: status.value })
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[ChatView] delete failed', err)
+    window.alert(err?.message || 'Failed to delete conversation.')
+  }
+}
+
+// Phase 31 G14 — clicking a suggested prompt chip drops the text into
+// the composer.  ChatInput exposes a custom event API, so we instead
+// dispatch a window-level event that the input listens for; this keeps
+// the chip free of tight coupling to ChatInput's internals.
+function onPickSuggested(text) {
+  if (!text) return
+  window.dispatchEvent(
+    new CustomEvent('idp:chat-input:prefill', { detail: { text } }),
+  )
 }
 
 async function onArchive() {
@@ -423,9 +531,21 @@ async function onArchive() {
 }
 
 async function onSend({ content, attachments }) {
+  // Phase 31 G13 — pre-flight cost check.  Cancelling the modal aborts
+  // the send and consumes no token budget.
+  const proceed = await confirmIfNeeded({
+    conversationId: store.currentId,
+    content,
+    attachments,
+  })
+  if (!proceed) return
   try {
     await send({ content, attachments })
-    await refreshSessions({ status: status.value })
+    if (activeSearch.value) {
+      await searchSessions({ ...activeSearch.value, status: status.value })
+    } else {
+      await refreshSessions({ status: status.value })
+    }
   } catch (err) {
     // surfaced via store.agentState.lastError
   }
@@ -535,6 +655,15 @@ async function startNewConversation() {
 }
 
 onMounted(async () => {
+  // Load IDP Settings before fetching sessions so the feature-flag
+  // computeds resolve before the sidebar renders.
+  try {
+    await loadSettings()
+  } catch (_) {
+    // Non-fatal — gated UI falls back to its built-in defaults.
+  }
   await refreshSessions({ status: status.value })
+  // Fire-and-forget; chips render once the cache populates.
+  loadSuggestedPrompts()
 })
 </script>
