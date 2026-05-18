@@ -794,14 +794,26 @@ def confirm_card(
 		message.save(ignore_permissions=False)
 
 		# Post a short assistant acknowledgement so the chat surface
-		# reflects what happened.
+		# reflects what happened.  Embed the document name as a
+		# Markdown link (renderMarkdown turns ``[label](https://…)``
+		# into a clickable anchor) so the user can jump straight to
+		# the new record.  The two-positional-arg signature is kept
+		# so existing translations of these phrases still apply —
+		# only the second argument changes from plain text to a
+		# Markdown link.
+		doc_url = created_info.get("url")
+		doc_name_ref = (
+			f"[{created_info['name']}]({doc_url})"
+			if doc_url
+			else created_info["name"]
+		)
 		ack_text = (
 			_("{0} {1} created and submitted.").format(
-				created_info["doctype"], created_info["name"]
+				created_info["doctype"], doc_name_ref
 			)
 			if action == "submit"
 			else _("{0} {1} saved as draft.").format(
-				created_info["doctype"], created_info["name"]
+				created_info["doctype"], doc_name_ref
 			)
 		)
 		ack_doc = frappe.new_doc("IDP Message")
