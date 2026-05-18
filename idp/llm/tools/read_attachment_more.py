@@ -16,7 +16,7 @@ cache the full extraction on the conversation row.
 from __future__ import annotations
 
 from idp.llm.file_alias import get_registry
-from idp.llm.tools.base import ToolContext, ToolResult, tool
+from idp.llm.tools.base import ToolContext, ToolResult, publish_progress, tool
 
 DEFAULT_CHUNK = 10_000
 MAX_CHUNK = 30_000
@@ -93,6 +93,15 @@ def read_attachment_more(arguments: dict, ctx: ToolContext) -> ToolResult:
 			error_code="EXTRACTION_FAILED",
 			stop_processing=True,
 		)
+
+	publish_progress(
+		ctx,
+		tool_name="read_attachment_more",
+		user_visible_message=(
+			f"Reading more of {record.file_name or alias} from offset {offset}…"
+		),
+		stage="read_more_start",
+	)
 
 	result = extract_content(record.file_url, lang="en")
 	body = result.text or ""

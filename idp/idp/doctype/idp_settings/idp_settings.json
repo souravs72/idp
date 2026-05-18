@@ -77,9 +77,6 @@
   "column_break_phase11_retention",
   "auto_purge_failed_after_days",
   "phase11_chatbot_section",
-  "enable_chatbot_ui",
-  "enable_legacy_ui",
-  "column_break_phase11_chatbot",
   "streaming_enabled",
   "phase28_section",
   "page_pre_pass_enabled",
@@ -551,24 +548,6 @@
    "fieldname": "phase11_chatbot_section",
    "fieldtype": "Section Break",
    "label": "Chatbot UI"
-  },
-  {
-   "default": "1",
-   "description": "Expose the conversational /idp/chat UI. When off, users are routed to the legacy SPA at /idp.",
-   "fieldname": "enable_chatbot_ui",
-   "fieldtype": "Check",
-   "label": "Enable Chatbot UI"
-  },
-  {
-   "default": "1",
-   "description": "Keep the legacy SPA available at /idp alongside the new chat UI. Turn off once users have migrated.",
-   "fieldname": "enable_legacy_ui",
-   "fieldtype": "Check",
-   "label": "Enable Legacy UI"
-  },
-  {
-   "fieldname": "column_break_phase11_chatbot",
-   "fieldtype": "Column Break"
   },
   {
    "default": "1",

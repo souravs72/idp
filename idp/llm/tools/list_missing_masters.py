@@ -15,7 +15,7 @@ calls ``create_master`` once per missing entry before retrying
 
 from __future__ import annotations
 
-from idp.llm.tools.base import ToolContext, ToolResult, tool
+from idp.llm.tools.base import ToolContext, ToolResult, publish_progress, tool
 
 _PARAMETERS_SCHEMA = {
 	"type": "object",
@@ -23,6 +23,23 @@ _PARAMETERS_SCHEMA = {
 		"doctype": {"type": "string", "description": "Target ERPNext DocType."},
 		"header": {"type": "object", "additionalProperties": True},
 		"items": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
+		"taxes": {
+			"type": "array",
+			"description": "Tax rows from the proposed mapping (each carries an Account-name in 'account_head' or 'account').",
+			"items": {"type": "object", "additionalProperties": True},
+		},
+		"child_tables": {
+			"type": "object",
+			"description": (
+				"Optional generic bag of child rows keyed by parent fieldname "
+				"(e.g. 'payment_schedule'). Use when checking child tables "
+				"other than items/taxes."
+			),
+			"additionalProperties": {
+				"type": "array",
+				"items": {"type": "object", "additionalProperties": True},
+			},
+		},
 	},
 	"required": ["doctype", "header"],
 	"additionalProperties": False,
@@ -50,10 +67,23 @@ def list_missing_masters(arguments: dict, ctx: ToolContext) -> ToolResult:
 		)
 	header = args.get("header") or {}
 	items = args.get("items") or []
+	taxes = args.get("taxes") or []
+	extra_child_tables = args.get("child_tables") or {}
 	if not isinstance(header, dict):
 		header = {}
 	if not isinstance(items, list):
 		items = []
+	if not isinstance(taxes, list):
+		taxes = []
+	if not isinstance(extra_child_tables, dict):
+		extra_child_tables = {}
+
+	publish_progress(
+		ctx,
+		tool_name="list_missing_masters",
+		user_visible_message=f"Checking {doctype} masters (suppliers / items / accounts)…",
+		stage="lookup_start",
+	)
 
 	try:
 		import frappe
@@ -117,16 +147,57 @@ def list_missing_masters(arguments: dict, ctx: ToolContext) -> ToolResult:
 	for fieldname, link_doctype in header_links.items():
 		_check(fieldname, link_doctype, header.get(fieldname))
 
-	# Items child rows — schema lookup uses the *parent* fieldname (e.g. "items").
-	for row in items:
-		if not isinstance(row, dict):
-			continue
-		# Find which child-table this row most likely belongs to: prefer the
-		# one whose link fields appear in the row.
-		for _ct_field, link_map in child_links.items():
-			for fieldname, link_doctype in link_map.items():
-				if fieldname in row:
-					_check(fieldname, link_doctype, row.get(fieldname))
+	# ------------------------------------------------------------------
+	# Walk every supplied child table against its schema-declared Link
+	# fields.  We accept the legacy ``items`` + roadmap-§30 ``taxes``
+	# arguments plus a generic ``child_tables`` bag for forward
+	# compatibility.  Roadmap §30 fix: previously only ``items`` was
+	# iterated, so unmapped tax accounts and unmapped non-item child
+	# rows were silently missed.
+	# ------------------------------------------------------------------
+	tables_to_check: dict[str, list] = {}
+	if items:
+		tables_to_check["items"] = items
+	if taxes:
+		tables_to_check["taxes"] = taxes
+	for parent_field, rows in extra_child_tables.items():
+		if isinstance(rows, list) and rows:
+			tables_to_check[parent_field] = rows
+
+	def _check_row_against(link_map: dict[str, str], row: dict) -> None:
+		for fieldname, link_doctype in link_map.items():
+			# Direct Link fieldname (e.g. ``item_code``, ``account_head``).
+			if fieldname in row:
+				_check(fieldname, link_doctype, row.get(fieldname))
+				continue
+			# LLM-supplied rows often carry the extracted *label* under a
+			# loose key like ``name``, ``description``, or ``account``.
+			# Map those to the corresponding Link doctype so we still
+			# detect e.g. "IGST" as a missing Account when the LLM
+			# hasn't populated ``account_head`` yet.
+			fallback_keys = _FALLBACK_KEYS_BY_LINK_DOCTYPE.get(link_doctype, ())
+			for k in fallback_keys:
+				val = row.get(k)
+				if isinstance(val, str) and val.strip():
+					_check(fieldname, link_doctype, val)
+					break
+
+	for parent_field, rows in tables_to_check.items():
+		# Prefer the schema-declared link map for this parent fieldname;
+		# fall back to *any* child table if the LLM used a non-standard
+		# parent name.
+		link_map = child_links.get(parent_field) or {}
+		if not link_map:
+			# Try every child-table — useful when the LLM passes
+			# ``taxes`` but the schema names it ``purchase_taxes_and_charges``.
+			merged: dict[str, str] = {}
+			for cm in child_links.values():
+				merged.update(cm)
+			link_map = merged
+		for row in rows:
+			if not isinstance(row, dict):
+				continue
+			_check_row_against(link_map, row)
 
 	return ToolResult.ok(
 		data={
@@ -135,6 +206,19 @@ def list_missing_masters(arguments: dict, ctx: ToolContext) -> ToolResult:
 			"count": len(missing),
 		}
 	)
+
+
+# Loose-key fallbacks keyed by the *target* Link doctype.  When the LLM
+# supplies an item/tax row without populating the canonical Link
+# fieldname, we still want to flag the extracted label so the user gets
+# a missing-master warning instead of a silent pass.
+_FALLBACK_KEYS_BY_LINK_DOCTYPE: dict[str, tuple[str, ...]] = {
+	"Item": ("item_code", "item_name", "name", "description", "code"),
+	"Account": ("account_head", "account", "name"),
+	"Supplier": ("supplier", "supplier_name", "name"),
+	"Customer": ("customer", "customer_name", "name"),
+	"UOM": ("uom", "name"),
+}
 
 
 def _link_fields(field_defs: list[dict]) -> dict[str, str]:

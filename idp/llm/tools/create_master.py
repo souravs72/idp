@@ -10,7 +10,7 @@ declares the minimum required fields the LLM must supply.
 
 from __future__ import annotations
 
-from idp.llm.tools.base import ToolContext, ToolResult, tool
+from idp.llm.tools.base import ToolContext, ToolResult, publish_progress, tool
 
 # {doctype: required_fieldnames}
 _ALLOWED_MASTERS: dict[str, list[str]] = {
@@ -108,6 +108,20 @@ def create_master(arguments: dict, ctx: ToolContext) -> ToolResult:
 			error_code="UNEXPECTED_ERROR",
 			stop_processing=True,
 		)
+
+	# Best-effort label for the progress banner: prefer the primary
+	# identifier field, fall back to whatever the user supplied.
+	probe_label = (
+		fields.get(required[0])
+		or fields.get("name")
+		or doctype
+	)
+	publish_progress(
+		ctx,
+		tool_name="create_master",
+		user_visible_message=f"Creating {doctype} {probe_label!r}…",
+		stage="create_master_start",
+	)
 
 	# ---- Idempotency: if a matching record already exists, reuse it ---------
 	# Most masters use the user-supplied identifier as the primary key

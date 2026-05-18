@@ -11,11 +11,19 @@ are looked up per-model via the model registry rather than assumed.
 
 from __future__ import annotations
 
+import json
+from collections.abc import Iterator
 from typing import Any
 
 from idp.core.exceptions import LLMProviderUnavailableError, LLMResponseParseError
 from idp.core.logger import get_logger
-from idp.llm.providers.base import LLMProvider, LLMResponse, TokenUsage, ToolCall
+from idp.llm.providers.base import (
+	LLMProvider,
+	LLMResponse,
+	StreamDelta,
+	TokenUsage,
+	ToolCall,
+)
 from idp.llm.providers.registry import register_provider
 
 logger = get_logger("idp.llm.ollama")
@@ -87,6 +95,105 @@ class OllamaProvider(LLMProvider):
 			raise LLMResponseParseError(f"Ollama returned non-JSON: {exc}") from exc
 
 		return self._normalise(data, target)
+
+	def stream_complete(
+		self,
+		messages: list[dict],
+		*,
+		tools: list[dict] | None = None,
+		tool_choice: str | dict = "auto",
+		response_format: dict | None = None,
+		temperature: float = 0.0,
+		max_tokens: int = 4_096,
+		model: str | None = None,
+		**extra: Any,
+	) -> Iterator[StreamDelta]:
+		"""Token streaming for Ollama via NDJSON ``/api/chat`` stream.
+
+		Most local models do not surface tool calls during streaming; we
+		stream prose only and assemble tool_calls (if any) from the final
+		chunk.  If the local server doesn't support streaming for the
+		requested model, the loop simply yields one ``final`` delta.
+		"""
+
+		try:
+			import httpx
+		except ImportError as exc:  # pragma: no cover
+			raise LLMProviderUnavailableError("httpx is required for the Ollama provider") from exc
+
+		target = model or self.default_model
+		payload: dict[str, Any] = {
+			"model": target,
+			"messages": messages,
+			"stream": True,
+			"options": {
+				"temperature": temperature,
+				"num_predict": max_tokens,
+			},
+		}
+		if tools:
+			payload["tools"] = tools
+		if response_format and response_format.get("type") == "json_object":
+			payload["format"] = "json"
+		payload.update(extra)
+
+		text_parts: list[str] = []
+		tool_calls: list[ToolCall] = []
+		usage_in = 0
+		usage_out = 0
+		finish_reason = "stop"
+
+		try:
+			with httpx.stream(
+				"POST",
+				f"{self.host_url}/api/chat",
+				json=payload,
+				timeout=self.timeout,
+			) as resp:
+				resp.raise_for_status()
+				for line in resp.iter_lines():
+					if not line:
+						continue
+					try:
+						chunk = json.loads(line)
+					except (ValueError, TypeError):
+						continue
+					msg = chunk.get("message") or {}
+					content = msg.get("content")
+					if content:
+						text_parts.append(content)
+						yield StreamDelta(kind="text", text=content)
+					# Ollama emits tool_calls in the final chunk only.
+					for tc in msg.get("tool_calls") or []:
+						fn = tc.get("function") or {}
+						args = fn.get("arguments")
+						if isinstance(args, str):
+							try:
+								args = json.loads(args)
+							except ValueError:
+								args = {"_raw": args}
+						tool_calls.append(
+							ToolCall(name=fn.get("name", ""), arguments=args or {})
+						)
+					if chunk.get("done"):
+						usage_in = int(chunk.get("prompt_eval_count") or 0)
+						usage_out = int(chunk.get("eval_count") or 0)
+						finish_reason = "stop"
+		except httpx.HTTPError as exc:
+			logger.warning(f"ollama stream aborted: {exc}")
+			yield StreamDelta(kind="error", error=str(exc))
+			return
+
+		response = LLMResponse(
+			content="".join(text_parts) or None,
+			tool_calls=tool_calls,
+			finish_reason=finish_reason,
+			usage=TokenUsage(prompt=usage_in, completion=usage_out),
+			raw={"_idp_streamed": True},
+			model=target,
+			provider="ollama",
+		)
+		yield StreamDelta(kind="final", response=response)
 
 	def count_tokens(self, messages: list[dict], *, model: str | None = None) -> int:
 		text = "\n".join(str(m.get("content", "")) for m in messages)

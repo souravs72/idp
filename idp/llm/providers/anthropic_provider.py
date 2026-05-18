@@ -12,11 +12,18 @@ blocks back into :class:`ToolCall` objects.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from typing import Any
 
 from idp.core.exceptions import LLMProviderUnavailableError, LLMResponseParseError
 from idp.core.logger import get_logger
-from idp.llm.providers.base import LLMProvider, LLMResponse, TokenUsage, ToolCall
+from idp.llm.providers.base import (
+	LLMProvider,
+	LLMResponse,
+	StreamDelta,
+	TokenUsage,
+	ToolCall,
+)
 from idp.llm.providers.registry import register_provider
 
 logger = get_logger("idp.llm.anthropic")
@@ -249,6 +256,167 @@ class AnthropicProvider(LLMProvider):
 
 		raw = client.messages.create(**payload)
 		return self._normalise(raw, payload["model"])
+
+	def stream_complete(
+		self,
+		messages: list[dict],
+		*,
+		tools: list[dict] | None = None,
+		tool_choice: str | dict = "auto",
+		response_format: dict | None = None,
+		temperature: float = 0.0,
+		max_tokens: int = 4_096,
+		model: str | None = None,
+		cache_control: bool | None = None,
+		**extra: Any,
+	) -> Iterator[StreamDelta]:
+		"""Token-by-token streaming for Anthropic Messages-API.
+
+		Uses ``client.messages.stream(...)`` which yields typed SSE events
+		(``content_block_start``, ``content_block_delta``,
+		``content_block_stop``, ``message_delta``, ``message_stop``).  We
+		surface ``text_delta`` chunks as ``StreamDelta(kind="text")``
+		events and re-assemble the final :class:`LLMResponse` from the
+		stream's terminal message so callers get the same shape as
+		non-streaming :meth:`chat`.
+
+		Phase 30 contract: exactly one ``final`` delta is yielded.
+		"""
+
+		client = self._get_client()
+		system, chat = split_system_and_messages(messages)
+		chat = translate_messages_openai_to_anthropic(chat)
+		payload: dict[str, Any] = {
+			"model": model or self.default_model,
+			"messages": chat,
+			"max_tokens": max_tokens,
+			"temperature": temperature,
+		}
+		use_cache = self.cache_control if cache_control is None else bool(cache_control)
+		if system:
+			payload["system"] = _wrap_system_with_cache(system) if use_cache else system
+		if tools:
+			translated = translate_tools_openai_to_anthropic(tools)
+			payload["tools"] = _wrap_tools_with_cache(translated) if use_cache else translated
+			if isinstance(tool_choice, str) and tool_choice in {"auto", "any"}:
+				payload["tool_choice"] = {"type": tool_choice}
+		payload.update(extra)
+
+		# Per-block buffers used to re-assemble the final response.
+		text_parts: list[str] = []
+		tool_blocks: dict[int, dict[str, Any]] = {}
+		stop_reason = "stop"
+		usage_in = 0
+		usage_out = 0
+		cache_read = 0
+		cache_created = 0
+
+		try:
+			with client.messages.stream(**payload) as stream:
+				for event in stream:
+					etype = getattr(event, "type", "")
+					if etype == "content_block_start":
+						block = getattr(event, "content_block", None)
+						btype = getattr(block, "type", "")
+						idx = getattr(event, "index", 0)
+						if btype == "tool_use":
+							tool_blocks[idx] = {
+								"id": getattr(block, "id", "") or "",
+								"name": getattr(block, "name", "") or "",
+								"input_json": "",
+							}
+							yield StreamDelta(
+								kind="tool_use_start",
+								tool_call_index=idx,
+								tool_call_id=tool_blocks[idx]["id"],
+								tool_name=tool_blocks[idx]["name"],
+							)
+					elif etype == "content_block_delta":
+						delta = getattr(event, "delta", None)
+						dtype = getattr(delta, "type", "")
+						idx = getattr(event, "index", 0)
+						if dtype == "text_delta":
+							chunk = getattr(delta, "text", "") or ""
+							if chunk:
+								text_parts.append(chunk)
+								yield StreamDelta(kind="text", text=chunk)
+						elif dtype == "input_json_delta":
+							partial = getattr(delta, "partial_json", "") or ""
+							if idx in tool_blocks:
+								tool_blocks[idx]["input_json"] += partial
+							yield StreamDelta(
+								kind="tool_use_delta",
+								tool_call_index=idx,
+								tool_arguments_delta=partial,
+							)
+					elif etype == "content_block_stop":
+						idx = getattr(event, "index", 0)
+						if idx in tool_blocks:
+							yield StreamDelta(
+								kind="tool_use_stop",
+								tool_call_index=idx,
+								tool_call_id=tool_blocks[idx]["id"],
+								tool_name=tool_blocks[idx]["name"],
+							)
+					elif etype == "message_delta":
+						delta = getattr(event, "delta", None)
+						sr = getattr(delta, "stop_reason", None)
+						if sr:
+							stop_reason = sr
+						usage = getattr(event, "usage", None)
+						if usage is not None:
+							usage_out = int(getattr(usage, "output_tokens", usage_out) or usage_out)
+					elif etype == "message_start":
+						msg = getattr(event, "message", None)
+						usage = getattr(msg, "usage", None) if msg is not None else None
+						if usage is not None:
+							usage_in = int(getattr(usage, "input_tokens", 0) or 0)
+							cache_read = int(
+								getattr(usage, "cache_read_input_tokens", 0) or 0
+							)
+							cache_created = int(
+								getattr(usage, "cache_creation_input_tokens", 0) or 0
+							)
+		except Exception as exc:  # noqa: BLE001 — surface any SDK error
+			logger.warning(f"anthropic stream aborted: {exc}")
+			yield StreamDelta(kind="error", error=str(exc))
+			return
+
+		# Assemble tool calls — Anthropic delivers tool arguments as
+		# streaming JSON fragments; we concatenate and parse once at end.
+		tool_calls: list[ToolCall] = []
+		for idx in sorted(tool_blocks.keys()):
+			block = tool_blocks[idx]
+			raw_json = block.get("input_json") or ""
+			try:
+				args = json.loads(raw_json) if raw_json.strip() else {}
+			except json.JSONDecodeError:
+				args = {"_raw": raw_json}
+			tool_calls.append(
+				ToolCall(name=block["name"], arguments=args, call_id=block["id"])
+			)
+
+		raw: dict[str, Any] = {
+			"usage": {
+				"input_tokens": usage_in,
+				"output_tokens": usage_out,
+			},
+			"stop_reason": stop_reason,
+			"_idp_streamed": True,
+		}
+		if cache_read or cache_created:
+			raw["_idp_cached_tokens"] = cache_read
+			raw["_idp_cache_creation_tokens"] = cache_created
+		response = LLMResponse(
+			content="".join(text_parts) or None,
+			tool_calls=tool_calls,
+			finish_reason=stop_reason,
+			usage=TokenUsage(prompt=usage_in, completion=usage_out),
+			raw=raw,
+			model=payload["model"],
+			provider="anthropic",
+		)
+		yield StreamDelta(kind="final", response=response)
 
 	def count_tokens(self, messages: list[dict], *, model: str | None = None) -> int:
 		# anthropic.count_tokens is available in newer SDKs; fall back to

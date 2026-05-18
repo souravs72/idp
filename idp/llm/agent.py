@@ -113,10 +113,12 @@ class IDPAgent:
 
 		import frappe
 
+		from idp.llm import cancellation as _cancel
 		from idp.llm.client import LLMClient
 		from idp.llm.file_alias import get_registry
 		from idp.llm.message_renderer import render_history, render_user_message
 		from idp.llm.prompts import build_chat_system_prompt
+		from idp.llm.providers.base import StreamDelta
 		from idp.llm.summariser import maybe_summarise, render_digest_as_system_note
 		from idp.llm.tools.base import ToolContext
 		from idp.llm.tools.registry import dispatch, get_provider_schemas, load_tool_registry
@@ -231,9 +233,23 @@ class IDPAgent:
 			)
 		except Exception:
 			strip_thinking_blocks = True
+		# Phase 30 — opt-in token streaming.  When disabled we keep the
+		# legacy ``provider.chat()`` path so the audit-trail is identical
+		# to pre-Phase-30 behaviour.
+		try:
+			streaming_enabled = bool(
+				frappe.db.get_single_value("IDP Settings", "streaming_enabled")
+			)
+		except Exception:
+			streaming_enabled = True
 		# Mutable accumulator the renderer fills in across all attachments
 		# rendered this turn.  Surfaced to the IDP Document Log row below.
 		page_pre_pass_stats: dict[str, int] = {}
+
+		# Phase 30 — register a cancellation token for this run.  The
+		# ``cancel_turn`` HTTP endpoint flips this flag; both the
+		# streaming branch and the iteration boundary poll it.
+		cancel_token = _cancel.register(self.conversation_id)
 
 		for iterations in range(1, self.max_iterations + 1):
 			persisted = self._fetch_history()
@@ -263,6 +279,11 @@ class IDPAgent:
 				)
 			)
 
+			# Honour any cancellation requested between rounds.
+			if cancel_token.cancelled:
+				stop_reason = f"cancelled:{cancel_token.reason or 'user_requested'}"
+				break
+
 			self._publish_event(
 				"idp_conversation_thinking",
 				{
@@ -271,13 +292,43 @@ class IDPAgent:
 				},
 			)
 			t0 = time.time()
-			response = client.chat(
-				messages=messages,
-				tools=schemas if supports_tools else None,
-				tool_choice="auto" if supports_tools else None,
-				user=ctx.user,
-			)
+			use_streaming = streaming_enabled and supports_tools  # tools also work via stream
+			cancelled_mid_stream = False
+			if use_streaming:
+				response = self._stream_round(
+					client=client,
+					messages=messages,
+					tools=schemas if supports_tools else None,
+					tool_choice="auto" if supports_tools else None,
+					user=ctx.user,
+					iteration=iterations,
+					cancel_token=cancel_token,
+				)
+				if response is None:
+					# Cancellation observed mid-stream — persist partial
+					# assistant text (if any) with status=cancelled and
+					# break out of the iteration loop.
+					cancelled_mid_stream = True
+			else:
+				response = client.chat(
+					messages=messages,
+					tools=schemas if supports_tools else None,
+					tool_choice="auto" if supports_tools else None,
+					user=ctx.user,
+				)
 			latency_ms = int((time.time() - t0) * 1000)
+			if cancelled_mid_stream:
+				stop_reason = f"cancelled:{cancel_token.reason or 'user_requested'}"
+				# Persist whatever buffered content the streamer captured
+				# so the user sees their partial reply in the transcript.
+				partial = getattr(self, "_last_stream_buffer", "") or ""
+				self._persist_message(
+					role="assistant",
+					content=partial,
+					latency_ms=latency_ms,
+					status="cancelled",
+				)
+				break
 			usage = getattr(response, "usage", None)
 			cost_usd = float((response.raw or {}).get("_idp_cost_usd") or 0.0)
 			tokens_in = int(getattr(usage, "prompt", 0)) if usage else 0
@@ -436,6 +487,11 @@ class IDPAgent:
 		except Exception:
 			logger.exception("failed to refresh conversation stats")
 
+		# Phase 30 — release the cancellation token; we're past every
+		# point that polls it.  ``run_agent`` also calls deregister in
+		# its except branch when ``run()`` raises before we get here.
+		_cancel.deregister(self.conversation_id)
+
 		self._publish_event(
 			"idp_conversation_complete",
 			{
@@ -528,6 +584,7 @@ class IDPAgent:
 		rendered_card_payload: dict | None = None,
 		stop_processing: bool = False,
 		error: str | None = None,
+		status: str | None = None,
 	) -> dict:
 		"""Insert an :class:`IDPMessage` row and return its as_dict() form."""
 
@@ -563,6 +620,14 @@ class IDPAgent:
 			doc.stop_processing = 1
 		if error:
 			doc.error = error
+		if status:
+			# Field added in Phase 30 — older installs without the
+			# migration patch tolerate the attribute silently because
+			# Frappe Documents accept arbitrary attribute writes.
+			try:
+				doc.status = status
+			except Exception:
+				pass
 		doc.insert(ignore_permissions=True)
 		return doc.as_dict()
 
@@ -632,6 +697,97 @@ class IDPAgent:
 		logger.debug(
 			f"agent emitted terminal assistant message from {tool_name} ({card_type})"
 		)
+
+	def _stream_round(
+		self,
+		*,
+		client: Any,
+		messages: list[dict],
+		tools: list[dict] | None,
+		tool_choice: str | dict | None,
+		user: str,
+		iteration: int,
+		cancel_token: Any,
+	) -> Any:
+		"""Drive a single LLM round via :meth:`LLMClient.stream_chat`.
+
+		Publishes ``idp_conversation_token`` events as text deltas arrive
+		and returns the fully-assembled :class:`LLMResponse` from the
+		stream's terminal ``final`` delta.  When the caller's cancellation
+		token flips mid-stream we return ``None`` and stash the partial
+		text on ``self._last_stream_buffer`` so the agent loop can persist
+		it under ``status="cancelled"``.
+
+		Errors surfaced via ``StreamDelta(kind="error", ...)`` are re-
+		raised so the existing ``run_agent`` error path handles them.
+		"""
+
+		buffer: list[str] = []
+		message_seq = f"{self.conversation_id}:{iteration}"
+		self._last_stream_buffer = ""
+		# Batch realtime emits at ~50 chars to keep socket.io chatty but
+		# not insane on small models.  The roadmap §Risk note covers this.
+		BATCH_CHARS = 24
+		pending: list[str] = []
+		pending_len = 0
+
+		def flush() -> None:
+			nonlocal pending, pending_len
+			if not pending:
+				return
+			chunk = "".join(pending)
+			pending = []
+			pending_len = 0
+			self._publish_event(
+				"idp_conversation_token",
+				{
+					"conversation": self.conversation_id,
+					"message_seq": message_seq,
+					"iteration": iteration,
+					"text": chunk,
+				},
+			)
+
+		final_response = None
+		try:
+			deltas = client.stream_chat(
+				messages=messages,
+				tools=tools,
+				tool_choice=tool_choice or "auto",
+				user=user,
+			)
+			for delta in deltas:
+				if cancel_token.cancelled:
+					flush()
+					self._last_stream_buffer = "".join(buffer)
+					return None
+				if delta.kind == "text" and delta.text:
+					buffer.append(delta.text)
+					pending.append(delta.text)
+					pending_len += len(delta.text)
+					if pending_len >= BATCH_CHARS:
+						flush()
+				elif delta.kind == "tool_use_start":
+					flush()
+					self._publish_event(
+						"idp_conversation_tool_call_start",
+						{
+							"conversation": self.conversation_id,
+							"message_seq": message_seq,
+							"tool_call_id": delta.tool_call_id,
+							"tool_name": delta.tool_name,
+						},
+					)
+				elif delta.kind == "error":
+					flush()
+					raise RuntimeError(delta.error or "stream error")
+				elif delta.kind == "final":
+					flush()
+					final_response = delta.response
+		finally:
+			flush()
+		self._last_stream_buffer = "".join(buffer)
+		return final_response
 
 	def _publish_event(self, event: str, payload: dict) -> None:
 		"""Publish a realtime event to the conversation's subscribers."""

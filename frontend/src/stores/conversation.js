@@ -40,6 +40,25 @@ export const useConversationStore = defineStore('idpConversation', () => {
     lastSummary: null,
   })
 
+  // -- Phase 30: streaming buffer + progress --------------------------------
+  // While a turn is streaming we accumulate prose tokens here and the
+  // chat surface renders an ephemeral assistant bubble keyed by
+  // ``streamingSeq``.  When ``idp_conversation_message`` lands for the
+  // same sequence we wipe the buffer so the persisted row takes over.
+  const streamingState = ref({
+    active: false,
+    sequence: null,
+    iteration: 0,
+    text: '',
+    cancelling: false,
+  })
+  const progressState = ref({
+    message: '',
+    tool: null,
+    stage: null,
+    receivedAt: 0,
+  })
+
   // -- getters --------------------------------------------------------------
   const sortedMessages = computed(() => {
     return [...messages.value].sort((a, b) => {
@@ -142,6 +161,62 @@ export const useConversationStore = defineStore('idpConversation', () => {
       lastError: null,
       lastSummary: null,
     }
+    resetStreaming()
+    resetProgress()
+  }
+
+  // -- Phase 30 mutations ---------------------------------------------------
+  function appendStreamToken(payload) {
+    const seq = payload?.message_seq ?? payload?.sequence ?? null
+    const iteration = payload?.iteration ?? streamingState.value.iteration ?? 0
+    const text = String(payload?.text ?? '')
+    if (!text) return
+    if (!streamingState.value.active || streamingState.value.sequence !== seq) {
+      streamingState.value = {
+        active: true,
+        sequence: seq,
+        iteration,
+        text,
+        cancelling: false,
+      }
+    } else {
+      streamingState.value.text += text
+      streamingState.value.iteration = iteration
+    }
+  }
+
+  function markStreamCancelling() {
+    if (streamingState.value.active) {
+      streamingState.value.cancelling = true
+    }
+  }
+
+  function resetStreaming() {
+    streamingState.value = {
+      active: false,
+      sequence: null,
+      iteration: 0,
+      text: '',
+      cancelling: false,
+    }
+  }
+
+  function setProgress(payload) {
+    progressState.value = {
+      message: String(payload?.user_visible_message ?? ''),
+      tool: payload?.tool ?? null,
+      stage: payload?.stage ?? null,
+      receivedAt: Date.now(),
+    }
+  }
+
+  function resetProgress() {
+    progressState.value = {
+      message: '',
+      tool: null,
+      stage: null,
+      receivedAt: 0,
+    }
   }
 
   return {
@@ -153,6 +228,8 @@ export const useConversationStore = defineStore('idpConversation', () => {
     currentLoading,
     messages,
     agentState,
+    streamingState,
+    progressState,
     // getters
     sortedMessages,
     visibleMessages,
@@ -169,5 +246,11 @@ export const useConversationStore = defineStore('idpConversation', () => {
     setAgentError,
     setAgentSummary,
     resetAgentState,
+    // Phase 30
+    appendStreamToken,
+    markStreamCancelling,
+    resetStreaming,
+    setProgress,
+    resetProgress,
   }
 })

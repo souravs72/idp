@@ -104,11 +104,11 @@
 							<input
 								v-model="localEdits[row.row_index]"
 								class="w-full rounded border border-gray-300 bg-white px-1 py-0.5 text-xs focus:border-amber-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:disabled:bg-gray-800"
-								:placeholder="
-									row.erpnext_account ||
-									row?.extracted?.account ||
-									'Search Account…'
-								"
+								:class="{
+									'border-red-400 placeholder:text-red-500 dark:border-red-500 dark:placeholder:text-red-400':
+										!row.erpnext_account,
+								}"
+								:placeholder="placeholderFor(row)"
 								:disabled="!editing"
 								@input="onSearch(row.row_index, $event.target.value)"
 								@focus="onFocus(row.row_index)"
@@ -323,6 +323,20 @@ function formatCell(v) {
 	if (v === null || v === undefined || v === "") return "—";
 	if (typeof v === "object") return JSON.stringify(v);
 	return String(v);
+}
+
+// Placeholder distinguishes mapped rows (greyed-out resolved Account)
+// from unmapped rows.  Falling back to ``extracted.account`` here would
+// silently render the raw OCR label (e.g. "IGST") inside an empty
+// dropdown — the user then mistakes it for a real ERPNext Account
+// match.  When ``erpnext_account`` is blank we surface an explicit
+// "Unmapped — pick an Account" prompt instead so the action item is
+// obvious.
+function placeholderFor(row) {
+	if (row?.erpnext_account) return row.erpnext_account;
+	const label = row?.extracted?.account || "";
+	if (label) return `Unmapped (${label}) — pick an Account…`;
+	return "Unmapped — pick an Account…";
 }
 
 function formatRate(v) {

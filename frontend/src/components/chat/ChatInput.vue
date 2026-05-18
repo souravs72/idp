@@ -68,11 +68,21 @@
       />
 
       <button
+        v-if="!canCancel"
         type="submit"
         :disabled="!canSubmit"
         class="h-9 rounded bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
       >
         {{ uploading ? 'Uploading…' : disabled ? 'Working…' : 'Send' }}
+      </button>
+      <button
+        v-else
+        type="button"
+        :disabled="cancelling"
+        class="h-9 rounded border border-red-300 bg-white px-4 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:bg-gray-900 dark:text-red-300 dark:hover:bg-red-950"
+        @click="onCancel"
+      >
+        {{ cancelling ? 'Cancelling…' : 'Cancel' }}
       </button>
     </div>
 
@@ -104,13 +114,25 @@ import { uploadDocument } from '@/utils/api'
 
 const props = defineProps({
   disabled: { type: Boolean, default: false },
+  // Phase 30 — when true, the Send button morphs into Cancel and
+  // clicking it emits ``cancel`` so the parent can call
+  // ``idp.api.conversation.cancel_turn``.
+  cancellable: { type: Boolean, default: false },
+  cancelling: { type: Boolean, default: false },
   placeholder: {
     type: String,
     default: 'Ask something or attach a document…',
   },
 })
 
-const emit = defineEmits(['send'])
+const emit = defineEmits(['send', 'cancel'])
+
+const canCancel = computed(() => props.cancellable && props.disabled)
+
+function onCancel() {
+  if (props.cancelling) return
+  emit('cancel')
+}
 
 const draft = ref('')
 const pending = ref([])

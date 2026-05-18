@@ -12,6 +12,7 @@
   "column_break_header",
   "created_on",
   "stop_processing",
+  "status",
   "content_section",
   "content",
   "tool_section",
@@ -78,6 +79,14 @@
    "fieldname": "stop_processing",
    "fieldtype": "Check",
    "label": "Stop Processing"
+  },
+  {
+   "default": "complete",
+   "description": "Persistence state for streamed assistant messages (Phase 30). cancelled = user aborted mid-stream; complete = full response captured.",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "complete\nstreaming\ncancelled\nerror"
   },
   {
    "fieldname": "content_section",
@@ -201,7 +210,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-05-07 12:59:51.000000",
+ "modified": "2026-05-16 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "IDP",
  "name": "IDP Message",

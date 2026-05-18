@@ -11,7 +11,7 @@ again with corrected fields.
 
 from __future__ import annotations
 
-from idp.llm.tools.base import ToolContext, ToolResult, tool
+from idp.llm.tools.base import ToolContext, ToolResult, publish_progress, tool
 
 _PARAMETERS_SCHEMA = {
 	"type": "object",
@@ -69,6 +69,13 @@ def validate_document(arguments: dict, ctx: ToolContext) -> ToolResult:
 		items = []
 
 	company = (args.get("company") or ctx.company or "") or ""
+
+	publish_progress(
+		ctx,
+		tool_name="validate_document",
+		user_visible_message=f"Validating {doctype} against business rules…",
+		stage="validate_start",
+	)
 
 	# Local imports keep cold-start cost low.
 	from idp.mappers.base import MappedDocument

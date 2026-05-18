@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from idp.llm.tools.base import ToolContext, ToolResult, tool
+from idp.llm.tools.base import ToolContext, ToolResult, publish_progress, tool
 
 _PARAMETERS_SCHEMA = {
 	"type": "object",
@@ -82,6 +82,13 @@ def compare_document(arguments: dict, ctx: ToolContext) -> ToolResult:
 			error_code="UNEXPECTED_ERROR",
 			stop_processing=True,
 		)
+
+	publish_progress(
+		ctx,
+		tool_name="compare_document",
+		user_visible_message=f"Comparing against existing {doctype} {name}…",
+		stage="compare_start",
+	)
 
 	try:
 		existing = frappe.get_doc(doctype, name)

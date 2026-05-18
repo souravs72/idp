@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from idp.llm.tools.base import ToolContext, ToolResult, tool
+from idp.llm.tools.base import ToolContext, ToolResult, publish_progress, tool
 
 _DEFAULT_LIMIT = 5
 _MAX_LIMIT = 25
@@ -101,6 +101,13 @@ def find_matching_record(arguments: dict, ctx: ToolContext) -> ToolResult:
 		limit = max(1, min(int(limit), _MAX_LIMIT))
 	except (TypeError, ValueError):
 		limit = _DEFAULT_LIMIT
+
+	publish_progress(
+		ctx,
+		tool_name="find_matching_record",
+		user_visible_message=f"Searching for matching {doctype} records…",
+		stage="search_start",
+	)
 
 	try:
 		import frappe

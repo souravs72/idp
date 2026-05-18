@@ -17,7 +17,7 @@ different fields.
 
 from __future__ import annotations
 
-from idp.llm.tools.base import ToolContext, ToolResult, tool
+from idp.llm.tools.base import ToolContext, ToolResult, publish_progress, tool
 
 _PARAMETERS_SCHEMA = {
 	"type": "object",
@@ -104,6 +104,17 @@ def create_document(arguments: dict, ctx: ToolContext) -> ToolResult:
 			error_code="UNEXPECTED_ERROR",
 			stop_processing=True,
 		)
+
+	publish_progress(
+		ctx,
+		tool_name="create_document",
+		user_visible_message=(
+			f"Submitting {doctype} to ERPNext…"
+			if should_submit
+			else f"Saving {doctype} as draft…"
+		),
+		stage="insert_start",
+	)
 
 	# Build the doc — use frappe.new_doc so default values are applied.
 	try:

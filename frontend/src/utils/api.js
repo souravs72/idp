@@ -286,6 +286,18 @@ export function archiveConversation(conversationId) {
   })
 }
 
+// Phase 30 — request cancellation of the currently-running agent turn.
+// The server flips an in-process cancellation flag; the agent loop polls
+// it between iterations and persists a partial assistant message with
+// ``status = "cancelled"``.
+export function cancelTurn(conversationId) {
+  return frappeRequest({
+    url: '/api/method/idp.api.conversation.cancel_turn',
+    method: 'POST',
+    params: { conversation_id: conversationId },
+  })
+}
+
 export function listAgentTools() {
   return frappeRequest({
     url: '/api/method/idp.api.conversation.list_agent_tools',

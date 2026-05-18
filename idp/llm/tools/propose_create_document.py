@@ -71,7 +71,7 @@ from __future__ import annotations
 from typing import Any
 
 from idp.llm.schemas import CONFIRMATION_CARD_PAYLOAD_VERSION
-from idp.llm.tools.base import ToolContext, ToolResult, tool
+from idp.llm.tools.base import ToolContext, ToolResult, publish_progress, tool
 
 _DEFAULT_PAGE_SIZE = 10
 _MAX_PAGE_SIZE = 100
@@ -204,6 +204,13 @@ def propose_create_document(arguments: dict, ctx: ToolContext) -> ToolResult:
 	file_id = args.get("file_id")
 	source_pages = _normalise_source_pages(args.get("source_pages"))
 	source_regions: dict = args.get("source_regions") or {}
+
+	publish_progress(
+		ctx,
+		tool_name="propose_create_document",
+		user_visible_message=f"Building {doctype} confirmation card…",
+		stage="propose_start",
+	)
 
 	# Phase 25 — resolve the primary child table name + its row schema
 	# from the target DocType meta.  Falls back to ``items`` when the

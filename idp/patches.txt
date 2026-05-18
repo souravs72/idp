@@ -6,3 +6,4 @@
 # Patches added in this section will be executed after doctypes are migrated
 idp.patches.v2_1_x.phase28_token_efficiency
 idp.patches.v2_1_x.phase29_confidence_ui
+idp.patches.v2_1_x.phase30_streaming

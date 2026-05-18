@@ -102,6 +102,29 @@
           @confirmed="onConfirmed"
           @focus-source="onFocusSource"
         />
+        <!-- Phase 30 — progress banner docks ABOVE the streaming
+             bubble per roadmap §30.7. -->
+        <ProgressBanner />
+        <!-- Phase 30 — ephemeral streaming bubble.  Removed by the
+             realtime handlers once the assistant ``IDP Message`` row
+             lands (or the turn errors / completes / is cancelled). -->
+        <div
+          v-if="store.streamingState.active"
+          class="flex justify-start"
+        >
+          <div
+            class="max-w-[80%] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+          >
+            <span class="whitespace-pre-wrap">{{ store.streamingState.text }}</span>
+            <span class="ml-0.5 inline-block animate-pulse text-gray-400">▍</span>
+            <div
+              v-if="store.streamingState.cancelling"
+              class="mt-1 text-[10px] italic text-gray-500"
+            >
+              Cancelling…
+            </div>
+          </div>
+        </div>
         <ThinkingIndicator />
         <div
           v-if="store.agentState.lastError"
@@ -123,7 +146,10 @@
       <ChatInput
         v-if="store.currentId"
         :disabled="store.agentState.running"
+        :cancellable="store.agentState.running"
+        :cancelling="cancelling"
         @send="onSend"
+        @cancel="onCancel"
       />
 
       <footer
@@ -163,8 +189,7 @@
         <PdfPreview
           v-if="focusSourceFileUrl"
           :file-url="focusSourceFileUrl"
-          :page="focusSource.page || 1"
-          :bbox="focusSource.bbox || null"
+          :highlight="pdfHighlight"
         />
         <div
           v-else
@@ -192,6 +217,7 @@ import ConversationList from '@/components/chat/ConversationList.vue'
 import MessageBubble from '@/components/chat/MessageBubble.vue'
 import ChatInput from '@/components/chat/ChatInput.vue'
 import ThinkingIndicator from '@/components/chat/ThinkingIndicator.vue'
+import ProgressBanner from '@/components/chat/ProgressBanner.vue'
 import NewConversationDialog from '@/components/chat/NewConversationDialog.vue'
 import PdfPreview from '@/components/chat/PdfPreview.vue'
 
@@ -199,6 +225,7 @@ import { useConversationStore } from '@/stores/conversation'
 import { useConversation } from '@/composables/useConversation'
 import { useAgent } from '@/composables/useAgent'
 import { useConversationRealtime } from '@/composables/useRealtimeEvents'
+import { cancelTurn } from '@/utils/api'
 
 const store = useConversationStore()
 const route = useRoute()
@@ -269,17 +296,57 @@ useConversationRealtime(conversationIdRef, {
   },
   idp_conversation_message(payload) {
     if (payload.message) store.appendMessage(payload.message)
+    // The persisted row supersedes the streaming buffer for this seq.
+    store.resetStreaming()
+    store.resetProgress()
     nextTick(scrollToBottom)
   },
   idp_conversation_error(payload) {
     store.setAgentError(
       payload.error || `Error (${payload.error_code || 'unknown'})`,
     )
+    store.resetStreaming()
+    store.resetProgress()
   },
   idp_conversation_complete() {
     store.setAgentSummary(null)
+    store.resetStreaming()
+    store.resetProgress()
+  },
+  // Phase 30 — incremental assistant prose deltas.
+  idp_conversation_token(payload) {
+    store.appendStreamToken(payload)
+    nextTick(scrollToBottom)
+  },
+  idp_conversation_tool_call_start(payload) {
+    if (payload?.tool_name) store.setAgentTool(payload.tool_name)
+  },
+  idp_conversation_progress(payload) {
+    store.setProgress(payload)
   },
 })
+
+// -- Phase 30: cancel handling --------------------------------------------
+const cancelling = ref(false)
+async function onCancel() {
+  if (cancelling.value) return
+  if (!store.currentId) return
+  cancelling.value = true
+  store.markStreamCancelling()
+  try {
+    await cancelTurn(store.currentId)
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[ChatView] cancel_turn failed', err)
+  } finally {
+    // Reset the local flag once the agent loop emits ``complete`` /
+    // ``message`` — fall back to a short timeout in case the run had
+    // already terminated server-side before our request landed.
+    setTimeout(() => {
+      cancelling.value = false
+    }, 800)
+  }
+}
 
 // -- routing sync ----------------------------------------------------------
 watch(
@@ -403,6 +470,17 @@ const focusSourceFileUrl = computed(() => focusAttachment.value?.file_url || '')
 const focusSourceFileName = computed(
   () => focusAttachment.value?.file_name || focusAttachment.value?.file_url || '',
 )
+
+// PdfPreview expects a single ``highlight`` prop shaped { page, bbox }
+// — assemble it from the focusSource payload emitted by the card.
+const pdfHighlight = computed(() => {
+  const fs = focusSource.value
+  if (!fs) return null
+  const page = Number(fs.page) || 1
+  const bbox = Array.isArray(fs.bbox) ? fs.bbox : null
+  if (!bbox) return { page, bbox: null }
+  return { page, bbox }
+})
 
 // Clear the source panel whenever the active conversation changes — the
 // previously focused field belongs to a different document.

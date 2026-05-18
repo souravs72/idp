@@ -23,7 +23,7 @@ same vendor.  Ollama is keyless.
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any
 
 from idp.core.exceptions import (
@@ -33,7 +33,7 @@ from idp.core.exceptions import (
 )
 from idp.core.logger import get_logger
 from idp.llm.model_registry import get_model_info
-from idp.llm.providers.base import LLMProvider, LLMResponse
+from idp.llm.providers.base import LLMProvider, LLMResponse, StreamDelta
 from idp.llm.providers.registry import get_provider
 from idp.llm.token_counter import enforce_budget, estimate_cost
 
@@ -263,6 +263,68 @@ class LLMClient:
 		if purpose:
 			response.raw.setdefault("_idp_purpose", purpose)
 		return response
+
+	def stream_chat(
+		self,
+		messages: list[dict],
+		*,
+		tools: list[dict] | None = None,
+		tool_choice: str | dict = "auto",
+		response_format: dict | None = None,
+		temperature: float = 0.0,
+		max_tokens: int | None = None,
+		model: str | None = None,
+		user: str | None = None,
+		purpose: str | None = None,
+		**extra: Any,
+	) -> Iterator[StreamDelta]:
+		"""Phase 30 — stream :class:`StreamDelta` deltas from the provider.
+
+		Mirrors :meth:`chat`'s pre-flight checks (budget + route
+		resolution).  Retries are not applied to streams — a transient
+		failure mid-stream yields a ``StreamDelta(kind="error", ...)``
+		instead, which the agent loop persists with ``status=cancelled``.
+
+		Cost accounting happens after the final delta is yielded so the
+		``response.raw['_idp_cost_usd']`` field is consistent with the
+		non-streaming path.
+		"""
+
+		if max_tokens is None or max_tokens <= 0:
+			max_tokens = self.default_max_tokens
+
+		if model:
+			provider = self.provider
+			target = model
+		else:
+			provider, target = self.resolve_route(purpose)
+
+		estimated = provider.count_tokens(messages, model=target)
+		if user:
+			try:
+				self.on_budget_check(user, estimated + max_tokens)
+			except LLMBudgetExceededError:
+				raise
+			except Exception as exc:
+				logger.debug(f"budget enforcement skipped: {exc}")
+
+		for delta in provider.stream_complete(
+			messages,
+			tools=tools,
+			tool_choice=tool_choice,
+			response_format=response_format,
+			temperature=temperature,
+			max_tokens=max_tokens,
+			model=target,
+			**extra,
+		):
+			if delta.kind == "final" and delta.response is not None:
+				delta.response.raw.setdefault(
+					"_idp_cost_usd", estimate_cost(delta.response.usage, target)
+				)
+				if purpose:
+					delta.response.raw.setdefault("_idp_purpose", purpose)
+			yield delta
 
 	def supports(self, capability: str, *, model: str | None = None) -> bool:
 		"""Quick capability lookup (``vision``, ``tools``, ``json_mode``)."""

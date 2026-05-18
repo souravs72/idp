@@ -148,9 +148,11 @@
 							<input
 								v-model="localEdits[row.index]"
 								class="w-full rounded border border-gray-300 bg-white px-1 py-0.5 text-xs focus:border-amber-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-gray-100 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:disabled:bg-gray-800"
-								:placeholder="
-									row.erpnext_item || extracted(row).code || 'Search Item…'
-								"
+								:class="{
+									'border-red-400 placeholder:text-red-500 dark:border-red-500 dark:placeholder:text-red-400':
+										!row.erpnext_item,
+								}"
+								:placeholder="placeholderFor(row)"
 								:disabled="!editing"
 								@input="onSearch(row.index, $event.target.value)"
 								@focus="onFocus(row.index)"
@@ -499,6 +501,17 @@ function extracted(row) {
 		rate: data.rate ?? data.price ?? data.amount,
 		is_stock_item: data.is_stock_item,
 	};
+}
+
+// Placeholder semantics mirror TaxMappingTable: when ``erpnext_item``
+// is blank (status New / unmapped) we make it explicit instead of
+// silently echoing the extracted item code, which looked identical to
+// a real ERPNext match in the screenshot.
+function placeholderFor(row) {
+	if (row?.erpnext_item) return row.erpnext_item;
+	const label = extracted(row).code || extracted(row).name || "";
+	if (label) return `Unmapped (${label}) — pick an Item…`;
+	return "Unmapped — pick an Item…";
 }
 
 function isStockItemChecked(row) {

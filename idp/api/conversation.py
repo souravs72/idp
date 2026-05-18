@@ -332,6 +332,7 @@ def run_agent(
 	if confirmed is not None and not isinstance(confirmed, dict):
 		frappe.throw(_("user_confirmed_action must be a JSON object"))
 
+	from idp.llm import cancellation as _cancel
 	from idp.llm.agent import IDPAgent
 
 	agent = IDPAgent(doc.name)
@@ -342,6 +343,9 @@ def run_agent(
 			user_confirmed_action=confirmed,
 		)
 	except Exception as exc:  # noqa: BLE001 — wide net by design
+		# Phase 30 — make sure the cancellation registry never leaks a
+		# stale token when ``run()`` raises before its own deregister().
+		_cancel.deregister(doc.name)
 		envelope = _build_friendly_error(exc)
 		logger.exception(
 			"agent run failed conv=%s code=%s exc=%s",
@@ -410,6 +414,32 @@ def run_agent(
 		"cost_usd": result.cost_usd,
 		"new_messages": result.new_messages,
 	}
+
+
+@frappe.whitelist()
+def cancel_turn(conversation_id: str) -> dict:
+	"""Phase 30 — abort the streaming agent turn for *conversation_id*.
+
+	The streaming branch of :class:`IDPAgent` polls the conversation's
+	cancellation token on every delta; flipping the flag here aborts the
+	provider stream within ~one delta interval.  Any partial assistant
+	text is then persisted with ``status=cancelled``.
+
+	Returns ``{cancelled: bool, conversation_id: str}``.  ``cancelled``
+	is ``False`` when no run is currently active (the UI can use this to
+	hide the Cancel button gracefully).
+	"""
+
+	_require_login()
+	doc = _load_conversation(conversation_id)
+	if not frappe.has_permission("IDP Conversation", ptype="write", doc=doc):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	from idp.llm import cancellation as _cancel
+
+	cancelled = _cancel.request_cancel(doc.name, reason="user_requested")
+	logger.info("cancel_turn conv=%s cancelled=%s", doc.name, cancelled)
+	return {"conversation_id": doc.name, "cancelled": cancelled}
 
 
 # ---------------------------------------------------------------------------
@@ -992,7 +1022,13 @@ def _create_erpnext_doc_from_card(
 		if not isinstance(r, dict):
 			continue
 		extracted = r.get("extracted") or {}
-		account = r.get("erpnext_account") or extracted.get("account")
+		# Only use the user-picked / matcher-resolved ERPNext Account.
+		# Do NOT fall back to ``extracted.account`` — that is the raw
+		# OCR label (e.g. "IGST") and is not a valid ERPNext Account
+		# name.  Falling back here would silently slip an unmapped
+		# account past the upstream ``_unmapped_tax_accounts`` blocker
+		# and let ERPNext raise an opaque Row #N validation error.
+		account = (r.get("erpnext_account") or "").strip() or None
 		raw_rate = extracted.get("rate")
 		rate_value: float | None = None
 		if raw_rate not in (None, ""):
@@ -1430,9 +1466,13 @@ def _revalidate_card(
 		if not isinstance(r, dict):
 			continue
 		extracted = r.get("extracted") or {}
+		# Only use the user-picked / matcher-resolved ERPNext Account
+		# here; the raw extracted label (e.g. "IGST") is not a valid
+		# ERPNext Account and would mask an unmapped row during
+		# revalidation.
 		taxes.append(
 			{
-				"account": r.get("erpnext_account") or extracted.get("account"),
+				"account": (r.get("erpnext_account") or "").strip() or None,
 				"rate": extracted.get("rate"),
 				"tax_amount": extracted.get("tax_amount"),
 				"taxable_amount": extracted.get("taxable_amount"),

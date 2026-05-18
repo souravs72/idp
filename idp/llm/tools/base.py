@@ -179,9 +179,50 @@ def tool(
 	return decorator
 
 
+# ---------------------------------------------------------------------------
+# Phase 30 — Progress events
+# ---------------------------------------------------------------------------
+
+
+def publish_progress(
+	ctx: ToolContext,
+	*,
+	tool_name: str,
+	user_visible_message: str,
+	stage: str | None = None,
+) -> None:
+	"""Publish a Phase 30 ``idp_conversation_progress`` realtime event.
+
+	Tools call this to surface short prose strings (e.g. "Reading 3
+	pages…") that the frontend ``ProgressBanner`` displays above the
+	streaming message bubble.  Best-effort: any Frappe / Socket.IO
+	error is swallowed so a transient publish failure never aborts the
+	tool.
+	"""
+
+	try:
+		import frappe
+
+		frappe.publish_realtime(
+			"idp_conversation_progress",
+			{
+				"conversation": ctx.conversation_id,
+				"tool": tool_name,
+				"stage": stage,
+				"user_visible_message": user_visible_message,
+			},
+			doctype="IDP Conversation",
+			docname=ctx.conversation_id,
+		)
+	except Exception:
+		# Progress events are advisory — never let them break a tool.
+		pass
+
+
 __all__ = [
 	"ToolContext",
 	"ToolResult",
 	"ToolSpec",
+	"publish_progress",
 	"tool",
 ]

@@ -23,7 +23,7 @@ from typing import Any
 
 from idp.core.logger import get_logger
 from idp.llm.file_alias import get_registry
-from idp.llm.tools.base import ToolContext, ToolResult, tool
+from idp.llm.tools.base import ToolContext, ToolResult, publish_progress, tool
 
 logger = get_logger("idp.llm.tools.extract_document")
 
@@ -135,11 +135,30 @@ def extract_document(arguments: dict, ctx: ToolContext) -> ToolResult:
 			stop_processing=True,
 		)
 
+	# Phase 30 §27.6 — surface a human-readable progress message before
+	# the (potentially slow) extractor runs.  ``Reading <file>…`` mirrors
+	# the wording the roadmap suggests for the live progress banner.
+	publish_progress(
+		ctx,
+		tool_name="extract_document",
+		user_visible_message=f"Reading {record.file_name or alias}…",
+		stage="extract_start",
+	)
+
 	try:
 		result = extract_content(record.file_url, lang=lang)
 	except Exception as exc:
 		# Re-raise so the dispatcher can map it to the right error_code.
 		raise exc
+
+	publish_progress(
+		ctx,
+		tool_name="extract_document",
+		user_visible_message=(
+			f"Read {int((result.metadata or {}).get('extracted_pages') or (result.metadata or {}).get('page_count') or 1)} page(s); analysing…"
+		),
+		stage="extract_done",
+	)
 
 	body = (result.text or "").strip()
 	full_len = len(body)
