@@ -8,3 +8,4 @@ idp.patches.v2_1_x.phase28_token_efficiency
 idp.patches.v2_1_x.phase29_confidence_ui
 idp.patches.v2_1_x.phase30_streaming
 idp.patches.v2_1_x.phase31_conversation_ux_polish
+idp.patches.v2_1_x.phase32_undo

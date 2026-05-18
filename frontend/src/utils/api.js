@@ -464,3 +464,15 @@ export function reExtractField({
     },
   })
 }
+
+// ---------------------------------------------------------------------------
+// Phase 32 — Reversibility (Undo)
+// ---------------------------------------------------------------------------
+
+export function undoConfirmation({ messageId } = {}) {
+  return frappeRequest({
+    url: '/api/method/idp.api.undo.undo_confirmation',
+    method: 'POST',
+    params: { message_id: messageId },
+  })
+}

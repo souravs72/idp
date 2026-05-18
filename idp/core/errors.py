@@ -111,6 +111,30 @@ ERROR_MAP: dict[str, dict[str, Any]] = {
 		"user_message": "You don't have permission to access that file or record.",
 		"recovery_action": None,
 	},
+	# ---------------------------------------------------------------
+	# Phase 32 — Reversibility (Undo) friendly envelopes.  Undo only
+	# fails for a small, well-defined set of reasons — every one of
+	# them maps to an informational message; recovery is "open the
+	# document and cancel manually" which we don't auto-wire.
+	# ---------------------------------------------------------------
+	"UndoWindowExpiredError": {
+		"user_message": (
+			"The undo window has expired. Open the document to cancel "
+			"manually if needed."
+		),
+		"recovery_action": None,
+	},
+	"UndoNotEligibleError": {
+		"user_message": "This action is not eligible for undo.",
+		"recovery_action": None,
+	},
+	"UndoLinkExistsError": {
+		"user_message": (
+			"Cannot undo: another document references this record. "
+			"Cancel the dependent record first."
+		),
+		"recovery_action": None,
+	},
 }
 
 

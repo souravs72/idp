@@ -97,7 +97,9 @@
   "column_break_phase31",
   "enable_sidebar_search",
   "enable_bulk_actions",
-  "enable_conversation_delete"
+  "enable_conversation_delete",
+  "phase32_section",
+  "undo_window_minutes"
  ],
  "fields": [
   {
@@ -696,6 +698,19 @@
    "fieldname": "enable_conversation_delete",
    "fieldtype": "Check",
    "label": "Enable Conversation Delete"
+  },
+  {
+   "fieldname": "phase32_section",
+   "fieldtype": "Section Break",
+   "label": "Reversibility / Undo (Phase 32)"
+  },
+  {
+   "default": "5",
+   "description": "Window (minutes) after card confirmation during which the originating user (or System Manager) may undo the created ERPNext document. Drafts are deleted; submitted submittable docs are cancelled. Set 0 to disable the feature end-to-end.",
+   "fieldname": "undo_window_minutes",
+   "fieldtype": "Int",
+   "label": "Undo Window (minutes)",
+   "non_negative": 1
   }
  ],
  "issingle": 1,

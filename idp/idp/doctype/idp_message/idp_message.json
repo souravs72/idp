@@ -27,6 +27,10 @@
   "card_section",
   "rendered_card_type",
   "rendered_card_payload",
+  "undo_section",
+  "created_doctype",
+  "created_docname",
+  "undo_deadline",
   "usage_section",
   "tokens_in",
   "tokens_out",
@@ -167,6 +171,34 @@
    "fieldname": "rendered_card_payload",
    "fieldtype": "JSON",
    "label": "Rendered Card Payload"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "undo_section",
+   "fieldtype": "Section Break",
+   "label": "Undo Tracking (Phase 32)"
+  },
+  {
+   "description": "Phase 32 — ERPNext DocType created from this ConfirmationCard (populated by confirm_card).",
+   "fieldname": "created_doctype",
+   "fieldtype": "Link",
+   "label": "Created DocType",
+   "options": "DocType",
+   "read_only": 1
+  },
+  {
+   "description": "Phase 32 — ERPNext document name created from this card.",
+   "fieldname": "created_docname",
+   "fieldtype": "Data",
+   "label": "Created Docname",
+   "read_only": 1
+  },
+  {
+   "description": "Phase 32 — UTC deadline after which the undo action is rejected.",
+   "fieldname": "undo_deadline",
+   "fieldtype": "Datetime",
+   "label": "Undo Deadline",
+   "read_only": 1
   },
   {
    "collapsible": 1,

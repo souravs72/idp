@@ -35,5 +35,6 @@ declare module 'vue' {
     StatusBadge: typeof import('./src/components/StatusBadge.vue')['default']
     TaxMappingTable: typeof import('./src/components/chat/TaxMappingTable.vue')['default']
     ThinkingIndicator: typeof import('./src/components/chat/ThinkingIndicator.vue')['default']
+    UndoBanner: typeof import('./src/components/chat/UndoBanner.vue')['default']
   }
 }

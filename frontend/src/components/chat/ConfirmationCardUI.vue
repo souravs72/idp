@@ -273,35 +273,43 @@
     </div>
     <div
       v-else-if="card.submitted && card.created_doc"
-      class="rounded bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
     >
-      Submitted as
-      <a
-        v-if="card.created_doc.url"
-        :href="card.created_doc.url"
-        target="_blank"
-        rel="noopener"
-        class="underline"
+      <div
+        class="rounded bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
       >
-        {{ card.created_doc.doctype }} {{ card.created_doc.name }}
-      </a>
-      <span v-else>{{ card.created_doc.doctype }} {{ card.created_doc.name }}</span>.
+        Submitted as
+        <a
+          v-if="card.created_doc.url"
+          :href="card.created_doc.url"
+          target="_blank"
+          rel="noopener"
+          class="underline"
+        >
+          {{ card.created_doc.doctype }} {{ card.created_doc.name }}
+        </a>
+        <span v-else>{{ card.created_doc.doctype }} {{ card.created_doc.name }}</span>.
+      </div>
+      <UndoBanner :message="props.message" :card="card" @undone="onUndone" />
     </div>
     <div
       v-else-if="card.draft_saved && card.created_doc"
-      class="rounded bg-gray-100 px-3 py-2 text-[11px] text-gray-700 dark:bg-gray-800 dark:text-gray-200"
     >
-      Saved as draft
-      <a
-        v-if="card.created_doc.url"
-        :href="card.created_doc.url"
-        target="_blank"
-        rel="noopener"
-        class="underline"
+      <div
+        class="rounded bg-gray-100 px-3 py-2 text-[11px] text-gray-700 dark:bg-gray-800 dark:text-gray-200"
       >
-        {{ card.created_doc.doctype }} {{ card.created_doc.name }}
-      </a>
-      <span v-else>{{ card.created_doc.doctype }} {{ card.created_doc.name }}</span>.
+        Saved as draft
+        <a
+          v-if="card.created_doc.url"
+          :href="card.created_doc.url"
+          target="_blank"
+          rel="noopener"
+          class="underline"
+        >
+          {{ card.created_doc.doctype }} {{ card.created_doc.name }}
+        </a>
+        <span v-else>{{ card.created_doc.doctype }} {{ card.created_doc.name }}</span>.
+      </div>
+      <UndoBanner :message="props.message" :card="card" @undone="onUndone" />
     </div>
     <div
       v-else-if="card.draft_saved"
@@ -332,6 +340,7 @@ import ItemMappingTable from './ItemMappingTable.vue'
 import TaxMappingTable from './TaxMappingTable.vue'
 import GenericChildTable from './GenericChildTable.vue'
 import ConfidenceDot from './ConfidenceDot.vue'
+import UndoBanner from './UndoBanner.vue'
 
 const props = defineProps({
   message: { type: Object, required: true },
@@ -604,6 +613,29 @@ async function loadPage(target) {
     lastError.value = err?.message || String(err)
   } finally {
     itemsLoading.value = false
+  }
+}
+
+// Phase 32 — when UndoBanner reports a successful reversal, patch the
+// locally-held message payload so the banner disappears and the
+// receipt re-renders with an "Undone" pill.  The server has already
+// stamped ``card.undone = true`` and inserted a follow-up assistant
+// message, but the realtime channel can lag — overlaying the change
+// here makes the UI feel instant.
+function onUndone(result) {
+  try {
+    const next = { ...(card.value || {}) }
+    next.undone = true
+    next.undo_result = {
+      action: result?.action || 'cancelled',
+      doctype: result?.doctype,
+      docname: result?.docname,
+    }
+    next.actions = []
+    props.message.rendered_card_payload = JSON.stringify(next)
+  } catch (err) {
+    // Non-fatal — realtime will catch up shortly.
+    lastError.value = err?.message || String(err)
   }
 }
 

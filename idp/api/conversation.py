@@ -797,6 +797,31 @@ def confirm_card(
 			card["draft_saved"] = True
 		else:
 			card["submitted"] = True
+
+		# Phase 32 — record the created doc reference plus undo deadline
+		# on the IDP Message that anchors the ConfirmationCard.  The
+		# deadline is also mirrored into the card payload so the
+		# frontend can render the undo banner without an extra round
+		# trip.  A zero/negative ``undo_window_minutes`` disables the
+		# feature globally — leave the fields blank in that case.
+		from idp.api.undo import get_undo_window_minutes
+
+		window_min = get_undo_window_minutes()
+		deadline = None
+		if window_min > 0:
+			deadline = frappe.utils.add_to_date(
+				frappe.utils.now_datetime(), minutes=window_min
+			)
+			message.created_doctype = created_info["doctype"]
+			message.created_docname = created_info["name"]
+			message.undo_deadline = deadline
+			card["undo"] = {
+				"deadline": frappe.utils.get_datetime_str(deadline),
+				"window_minutes": window_min,
+				"created_doctype": created_info["doctype"],
+				"created_docname": created_info["name"],
+			}
+
 		message.rendered_card_payload = json.dumps(card, default=str)
 		message.save(ignore_permissions=False)
 
