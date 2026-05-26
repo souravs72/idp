@@ -27,9 +27,6 @@ component renders nothing so the user sees the legacy plain footer.
       <span v-if="cost > 0">${{ costLabel }}</span>
       <span v-if="messageCount">· {{ messageCount }} msg</span>
     </div>
-    <div v-if="capLabel" class="text-gray-500 dark:text-gray-500">
-      {{ capLabel }}
-    </div>
   </div>
 </template>
 
@@ -65,12 +62,5 @@ const costLabel = computed(() => {
   const n = cost.value || 0
   if (n < 0.01) return n.toFixed(4)
   return n.toFixed(3)
-})
-
-const capLabel = computed(() => {
-  const cap = Number(settings.value?.daily_token_budget || 0)
-  if (!cap) return ''
-  const used = tokens.value
-  return `${used} / ${cap} today`
 })
 </script>

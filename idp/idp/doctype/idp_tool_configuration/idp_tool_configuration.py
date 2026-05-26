@@ -27,13 +27,13 @@ class IDPToolConfiguration(Document):
 
     def _invalidate_caches(self) -> None:
         try:
-            from idp.llm.tools.access import invalidate_tool_config_cache
+            from idp.tools.access import invalidate_tool_config_cache
 
             invalidate_tool_config_cache(self.tool_name)
         except Exception:
             pass
         try:
-            from idp.llm.tools.registry_cache import invalidate_tool_registry_cache
+            from idp.tools.registry_cache import invalidate_tool_registry_cache
 
             invalidate_tool_registry_cache()
         except Exception:

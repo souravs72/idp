@@ -126,7 +126,7 @@ print("Logger tests passed")
 ### Test 2.1 — Data models import
 
 ```python
-from idp.idp.ocr_engine import (
+from idp.ocr.engine import (
     TextBlock, Table, LayoutRegion, LayoutAnalysis, OCRResult,
 )
 
@@ -154,7 +154,7 @@ print("Data model tests passed")
 ### Test 2.2 — OCR engine graceful error (PaddleOCR not installed)
 
 ```python
-from idp.idp.ocr_engine import get_ocr_engine, get_structure_engine
+from idp.ocr.engine import get_ocr_engine, get_structure_engine
 from idp.core.exceptions import OCRError
 
 try:
@@ -179,7 +179,7 @@ print("OCR engine error handling tests passed")
 ```python
 import tempfile, os
 from PIL import Image
-from idp.idp.ocr_engine import preprocess_image
+from idp.ocr.engine import preprocess_image
 
 # Create a small test image
 img = Image.new("RGB", (200, 100), color="white")
@@ -1314,7 +1314,7 @@ print("Cleanup done")
 ### Test 7.1 — Data model imports
 
 ```python
-from idp.idp.comparison import (
+from idp.comparison.engine import (
     ComparisonResult, FieldComparison, ItemComparison,
     compare_with_record, find_matching_record,
 )
@@ -1342,7 +1342,7 @@ print("Data model import tests passed")
 ### Test 7.2 — Type-aware value comparison (dates)
 
 ```python
-from idp.idp.comparison import _compare_dates
+from idp.comparison.engine import _compare_dates
 
 # Same date, different formats
 cmp = _compare_dates("posting_date", "Date", "2026-04-01", "2026-04-01")
@@ -1364,7 +1364,7 @@ print("Date comparison tests passed")
 ### Test 7.3 — Type-aware value comparison (numbers)
 
 ```python
-from idp.idp.comparison import _compare_numbers
+from idp.comparison.engine import _compare_numbers
 
 # Equal within precision
 cmp = _compare_numbers("grand_total", "Grand Total", 1000.004, 1000.006, 2)
@@ -1391,7 +1391,7 @@ print("Number comparison tests passed")
 ### Test 7.4 — Type-aware value comparison (strings)
 
 ```python
-from idp.idp.comparison import _compare_strings
+from idp.comparison.engine import _compare_strings
 
 # Case-insensitive match
 cmp = _compare_strings("supplier", "Supplier", "Tara Technologies", "tara technologies")
@@ -1419,7 +1419,7 @@ print("String comparison tests passed")
 
 ```python
 from idp.mappers.base import MappedDocument
-from idp.idp.comparison import compare_with_record
+from idp.comparison.engine import compare_with_record
 
 doc = MappedDocument(
     doctype="Purchase Invoice",
@@ -1441,7 +1441,7 @@ print("Non-existent record test passed")
 ```python
 import frappe
 from idp.mappers.base import MappedDocument
-from idp.idp.comparison import compare_with_record
+from idp.comparison.engine import compare_with_record
 
 # Create a test Purchase Invoice to compare against
 test_supplier = "Wind Power LLC"
@@ -1518,7 +1518,7 @@ print("Cleanup done")
 ```python
 import frappe
 from idp.mappers.base import MappedDocument
-from idp.idp.comparison import find_matching_record
+from idp.comparison.engine import find_matching_record
 
 # Create a PO to match against
 test_supplier = "Wind Power LLC"
@@ -1564,7 +1564,7 @@ print("Cleanup done")
 ```python
 import frappe
 from idp.mappers.base import MappedDocument
-from idp.idp.comparison import find_matching_record
+from idp.comparison.engine import find_matching_record
 
 test_supplier = "Wind Power LLC"
 company = frappe.db.get_single_value("Global Defaults", "default_company") or frappe.get_all("Company", pluck="name", limit=1)[0]
@@ -1614,7 +1614,7 @@ print("Cleanup done")
 ### Test 7.9 — Item-level comparison details
 
 ```python
-from idp.idp.comparison import _compare_single_item, FieldComparison
+from idp.comparison.engine import _compare_single_item, FieldComparison
 
 field_meta = {
     "item_name": {"fieldname": "item_name", "fieldtype": "Data", "label": "Item Name"},
@@ -1654,7 +1654,7 @@ print("Item-level comparison test passed")
 ### Test 7.10 — Summary generation
 
 ```python
-from idp.idp.comparison import ComparisonResult, FieldComparison, ItemComparison, _build_summary
+from idp.comparison.engine import ComparisonResult, FieldComparison, ItemComparison, _build_summary
 
 result = ComparisonResult(
     doctype="Purchase Invoice",
@@ -2054,7 +2054,7 @@ print("JSON parameter parsing test passed")
 ### Test 8.12 — Comparison serialization
 
 ```python
-from idp.idp.comparison import ComparisonResult, FieldComparison, ItemComparison
+from idp.comparison.engine import ComparisonResult, FieldComparison, ItemComparison
 from idp.api.compare import _serialize_comparison
 
 result = ComparisonResult(
@@ -2868,7 +2868,7 @@ print("has_conversation_permission ownership test passed")
 
 > **Note:** Phase 12 adds a specialised bank-statement extractor
 > (`idp.extractors.bank_statement`) and a reconciliation engine
-> (`idp.idp.bank_reconciliation`) plus two whitelisted API endpoints
+> (`idp.reconciliation.bank_reconciliation`) plus two whitelisted API endpoints
 > in `idp.api.extract`. The tests below cover the pure-Python helpers,
 > the reconciliation matching logic, the API wrappers, and the
 > frontend wiring.
@@ -2881,7 +2881,7 @@ from idp.extractors.bank_statement import (
     extract_bank_statement, parse_bank_statement,
     statement_to_dict, transactions_from_dicts,
 )
-from idp.idp.bank_reconciliation import (
+from idp.reconciliation.bank_reconciliation import (
     ReconciliationMatch, ReconciledTransaction, ReconciliationResult,
     reconcile_bank_statement, result_to_dict,
 )
@@ -3059,7 +3059,7 @@ print("Round-trip test passed")
 
 ```python
 from idp.extractors.bank_statement import BankTransaction
-from idp.idp.bank_reconciliation import (
+from idp.reconciliation.bank_reconciliation import (
     ReconciliationMatch, reconcile_bank_statement,
 )
 
@@ -3097,7 +3097,7 @@ print(f"Exact match reconciliation OK | {result.summary}")
 
 ```python
 from idp.extractors.bank_statement import BankTransaction
-from idp.idp.bank_reconciliation import (
+from idp.reconciliation.bank_reconciliation import (
     ReconciliationMatch, reconcile_bank_statement,
 )
 
@@ -3131,7 +3131,7 @@ print(f"Partial/unmatched OK | {result.summary}")
 
 ```python
 from idp.extractors.bank_statement import BankTransaction
-from idp.idp.bank_reconciliation import (
+from idp.reconciliation.bank_reconciliation import (
     ReconciliationMatch, reconcile_bank_statement,
 )
 
@@ -3163,7 +3163,7 @@ print(f"Multiple-matches detection OK | candidates="
 
 ```python
 from idp.extractors.bank_statement import BankTransaction
-from idp.idp.bank_reconciliation import (
+from idp.reconciliation.bank_reconciliation import (
     ReconciliationMatch, reconcile_bank_statement,
 )
 
@@ -3197,7 +3197,7 @@ print(f"Consume-once semantics OK | {result.summary}")
 ```python
 import json
 from idp.api.extract import reconcile_bank_statement_api
-from idp.idp.bank_reconciliation import ReconciliationMatch
+from idp.reconciliation.bank_reconciliation import ReconciliationMatch
 
 # Mock candidate pool via the underlying engine's candidates kwarg is not
 # exposed via the API; instead we verify the endpoint serialises correctly

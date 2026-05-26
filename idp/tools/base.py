@@ -162,7 +162,7 @@ def tool(
 	through the dispatcher.
 	"""
 
-	from idp.llm.tools.registry import register_tool
+	from idp.tools.registry import register_tool
 
 	def decorator(handler: Callable[..., Any]) -> Callable[..., ToolResult]:
 		spec = ToolSpec(

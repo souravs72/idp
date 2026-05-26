@@ -71,7 +71,7 @@ from __future__ import annotations
 from typing import Any
 
 from idp.llm.schemas import CONFIRMATION_CARD_PAYLOAD_VERSION
-from idp.llm.tools.base import ToolContext, ToolResult, publish_progress, tool
+from idp.tools.base import ToolContext, ToolResult, publish_progress, tool
 
 _DEFAULT_PAGE_SIZE = 10
 _MAX_PAGE_SIZE = 100

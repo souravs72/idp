@@ -120,8 +120,8 @@ class IDPAgent:
 		from idp.llm.prompts import build_chat_system_prompt
 		from idp.llm.providers.base import StreamDelta
 		from idp.llm.summariser import maybe_summarise, render_digest_as_system_note
-		from idp.llm.tools.base import ToolContext
-		from idp.llm.tools.registry import dispatch, get_provider_schemas, load_tool_registry
+		from idp.tools.base import ToolContext
+		from idp.tools.registry import dispatch, get_provider_schemas, load_tool_registry
 
 		client = self._client or LLMClient.from_settings()
 		conversation = frappe.get_doc("IDP Conversation", self.conversation_id)
@@ -429,7 +429,7 @@ class IDPAgent:
 				# persisted ``IDP Message`` row.  Failures are swallowed
 				# inside log_tool_call so the agent loop never breaks.
 				try:
-					from idp.llm.tools.audit import log_tool_call
+					from idp.tools.audit import log_tool_call
 
 					log_tool_call(
 						conversation_id=self.conversation_id,
@@ -518,7 +518,7 @@ class IDPAgent:
 	def _tool_names_for_llm(self) -> list[str]:
 		"""Return tool names to advertise to the LLM (filters hidden_tools)."""
 
-		from idp.llm.tools.registry import list_tools
+		from idp.tools.registry import list_tools
 
 		hidden = set(self.hidden_tools)
 		return [t.name for t in list_tools() if t.name not in hidden]

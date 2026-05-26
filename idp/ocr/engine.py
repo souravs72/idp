@@ -705,7 +705,7 @@ def extract_text_isolated(file_path: str, lang: str = "en") -> list[dict]:
 
 	# Lazy imports: keep the small-file path free of subprocess machinery.
 	from idp.core.config import get_ocr_timeout_seconds
-	from idp.idp.ocr_subprocess import run_in_subprocess, should_use_subprocess
+	from idp.ocr.subprocess_runner import run_in_subprocess, should_use_subprocess
 
 	if not should_use_subprocess(file_path):
 		return extract_text(file_path, lang=lang)

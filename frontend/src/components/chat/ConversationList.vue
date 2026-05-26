@@ -9,39 +9,101 @@
     aria-label="Conversations"
   >
     <!-- ============================================================ -->
-    <!-- Header: collapse toggle + (when expanded) title and + New      -->
+    <!-- Header — two rows:                                             -->
+    <!--   Row 1: chat-bubble icon (left)  •  settings + collapse (right)-->
+    <!--   Row 2: full-width "+ New Chat" button                        -->
+    <!-- When collapsed only the icon rail is shown.                    -->
     <!-- ============================================================ -->
-    <header
-      class="flex items-center border-b border-gray-200 dark:border-gray-700"
-      :class="collapsed ? 'justify-center p-2' : 'justify-between p-3 gap-2'"
-    >
-      <button
-        type="button"
-        class="rounded p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
-        :title="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
-        :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
-        :aria-expanded="collapsed ? 'false' : 'true'"
-        @click="$emit('toggle')"
+    <header class="border-b border-gray-200 dark:border-gray-700">
+      <div
+        class="flex items-center"
+        :class="collapsed ? 'justify-center p-2' : 'justify-between gap-2 px-3 py-2'"
       >
-        <span class="text-base leading-none" aria-hidden="true">{{ collapsed ? '»' : '«' }}</span>
-      </button>
+        <!-- Left: app icon (served by Frappe from idp/public/images/
+             at ``/assets/idp/images/app-icon.png``).  Bound with ``:src``
+             so Rollup leaves the absolute path alone at build time. -->
+        <img
+          v-if="!collapsed"
+          :src="appIcon"
+          alt="IDP"
+          class="h-7 w-7 rounded"
+        />
 
-      <template v-if="!collapsed">
-        <div class="flex-1 truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
-          Conversations
+        <!-- Right: settings + collapse -->
+        <div class="flex items-center gap-1">
+          <button
+            v-if="!collapsed"
+            type="button"
+            class="rounded-lg p-2 text-gray-600 transition-colors hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-800"
+            title="Chatbot Settings"
+            aria-label="Settings"
+            @click="$emit('settings')"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="lucide lucide-settings-icon"
+              aria-hidden="true"
+            >
+              <path
+                d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"
+              />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          </button>
+
+          <button
+            type="button"
+            class="rounded-lg p-2 text-gray-600 transition-colors hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-800"
+            :title="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+            :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+            :aria-expanded="collapsed ? 'false' : 'true'"
+            @click="$emit('toggle')"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="lucide lucide-panel-left-close-icon"
+              aria-hidden="true"
+            >
+              <rect width="18" height="18" x="3" y="3" rx="2" />
+              <path d="M9 3v18" />
+              <path v-if="collapsed" d="m14 9 3 3-3 3" />
+              <path v-else d="m16 15-3-3 3-3" />
+            </svg>
+          </button>
         </div>
+      </div>
+
+      <!-- Row 2 — full-width "+ New Chat" button -->
+      <div v-if="!collapsed" class="px-3 pb-3 pt-1">
         <button
           type="button"
-          class="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          class="flex w-full items-center justify-center gap-1 rounded border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-100 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800"
           :disabled="starting"
           @click="$emit('new')"
         >
-          {{ starting ? 'Starting…' : '+ New' }}
+          <span aria-hidden="true" class="text-base leading-none">+</span>
+          <span>{{ starting ? 'Starting…' : 'New Chat' }}</span>
         </button>
-      </template>
+      </div>
     </header>
 
-    <!-- When collapsed, render just a compact +New affordance and nothing else -->
+    <!-- When collapsed, render just a compact +New affordance -->
     <template v-if="collapsed">
       <button
         type="button"
@@ -230,7 +292,13 @@ const emit = defineEmits([
   'toggle',
   'search',
   'delete',
+  'settings',
 ])
+
+// App-icon URL served by Frappe from ``idp/public/images/``.  Kept as a
+// runtime string so Rollup doesn't try to resolve the absolute path at
+// build time.
+const appIcon = '/assets/idp/images/app-icon.png'
 
 const statusOptions = [
   { value: 'Active', label: 'Active' },

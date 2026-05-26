@@ -16,8 +16,8 @@ from idp.core.config import get_default_company
 from idp.core.constants import SUPPORTED_DOCTYPES
 from idp.core.exceptions import IDPError
 from idp.core.logger import get_logger
-from idp.idp.comparison import compare_with_record
-from idp.idp.comparison import find_matching_record as _find_match
+from idp.comparison.engine import compare_with_record
+from idp.comparison.engine import find_matching_record as _find_match
 from idp.extractors import extract_content
 from idp.mappers import FieldMapper, MappedDocument
 

@@ -16,7 +16,7 @@ cache the full extraction on the conversation row.
 from __future__ import annotations
 
 from idp.llm.file_alias import get_registry
-from idp.llm.tools.base import ToolContext, ToolResult, publish_progress, tool
+from idp.tools.base import ToolContext, ToolResult, publish_progress, tool
 
 DEFAULT_CHUNK = 10_000
 MAX_CHUNK = 30_000

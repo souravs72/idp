@@ -3,7 +3,7 @@
 
 """Lightweight fuzzy-match helper for ConfirmationCard suggestions (Phase 20).
 
-Used by :mod:`idp.llm.tools.propose_create_document` to populate
+Used by :mod:`idp.tools.propose_create_document` to populate
 ``item_mapping_suggestions`` and ``tax_mapping_suggestions`` so the UI
 can offer "Did you mean ...?" picks when a free-text Item/Account from
 the document doesn't exactly match an ERPNext record.

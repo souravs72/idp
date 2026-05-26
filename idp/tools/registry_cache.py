@@ -29,7 +29,7 @@ import json
 from idp.core.cache import cache_delete, cache_get, cache_set
 from idp.core.logger import get_logger
 
-logger = get_logger("idp.llm.tools.registry_cache")
+logger = get_logger("idp.tools.registry_cache")
 
 _KEY_PREFIX = "idp:tool_registry:"
 _INDEX_KEY = "idp:tool_registry:_index"

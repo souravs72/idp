@@ -63,7 +63,7 @@ def _full_items_from_message(message: "frappe.Document") -> list[dict]:
 	"""Return the full items list that was sent to ``propose_create_document``.
 
 	The persisted ConfirmationCard payload only inlines the first page of
-	items (see :func:`idp.llm.tools.propose_create_document._build_items_payload`)
+	items (see :func:`idp.tools.propose_create_document._build_items_payload`)
 	to keep the chat message size bounded.  For revalidation and document
 	creation we need every row, otherwise ``net_total`` will not match
 	the truncated sum of ``items[].amount`` and Save-as-Draft fails.
@@ -1589,7 +1589,9 @@ def get_chat_defaults() -> dict:
 
 	provider, provider_src = _pick("llm_provider", DEFAULT_CHAT_LLM_PROVIDER)
 	model, model_src = _pick("llm_model", DEFAULT_CHAT_LLM_MODEL)
-	target, target_src = _pick("default_target_doctype", DEFAULT_CHAT_TARGET_DOCTYPE)
+	# Target doctype is now picked per conversation by the user; the
+	# fallback constant is the only source.
+	target, target_src = DEFAULT_CHAT_TARGET_DOCTYPE, "fallback"
 	ocr_lang, ocr_src = _pick("default_ocr_language", DEFAULT_CHAT_OCR_LANGUAGE)
 	out_lang, out_src = _pick("default_output_language", DEFAULT_CHAT_OUTPUT_LANGUAGE)
 
@@ -1625,7 +1627,7 @@ def list_agent_tools() -> list[dict]:
 	"""Return the registered Phase 19 tools (for diagnostics / UI hints)."""
 
 	_require_login()
-	from idp.llm.tools.registry import list_tools
+	from idp.tools.registry import list_tools
 
 	return [
 		{
@@ -2272,25 +2274,14 @@ def estimate_turn(
 	except Exception:
 		cost = 0.0
 
-	# Budget snapshot from IDP Settings.
-	daily_cap = 0
-	try:
-		daily_cap = int(frappe.db.get_single_value("IDP Settings", "daily_token_budget") or 0)
-	except Exception:
-		pass
-	daily_used = _sum_usage(frappe, user, period="day") if daily_cap else 0
-	remaining = max(0, daily_cap - daily_used) if daily_cap else None
-	would_exceed = bool(
-		daily_cap and (daily_used + estimated_tokens) > daily_cap
-	)
-
+	# Token budgets were removed from IDP Settings; no daily cap to report.
 	return {
 		"estimated_tokens": estimated_tokens,
 		"estimated_cost_usd": cost,
-		"daily_used": daily_used,
-		"daily_cap": daily_cap or None,
-		"remaining": remaining,
-		"would_exceed": would_exceed,
+		"daily_used": 0,
+		"daily_cap": None,
+		"remaining": None,
+		"would_exceed": False,
 		"model": model,
 	}
 
@@ -2316,8 +2307,8 @@ def suggested_prompts(user: str | None = None) -> list[dict]:
 	"""Phase 31 G14 — three prompt suggestions for an empty conversation.
 
 	Suggestions are derived from the caller's recent target doctypes
-	(last 30 days) plus the configured ``default_target_doctype``.  The
-	result is cached per-user for ~30 min so the cold path is < 200ms.
+	(last 30 days) plus the fallback ``DEFAULT_CHAT_TARGET_DOCTYPE``.
+	The result is cached per-user for ~30 min so the cold path is < 200ms.
 
 	Each suggestion is a dict::
 
@@ -2371,17 +2362,15 @@ def suggested_prompts(user: str | None = None) -> list[dict]:
 		if len(top_doctypes) >= 3:
 			break
 
-	# Backfill from IDP Settings + supported list.
+	# Backfill from the fallback target + supported list.
 	if len(top_doctypes) < 3:
 		try:
-			from idp.core.constants import SUPPORTED_DOCTYPES
-
-			default_dt = frappe.db.get_single_value(
-				"IDP Settings", "default_target_doctype"
+			from idp.core.constants import (
+				DEFAULT_CHAT_TARGET_DOCTYPE,
+				SUPPORTED_DOCTYPES,
 			)
-			pool = []
-			if default_dt:
-				pool.append(default_dt)
+
+			pool = [DEFAULT_CHAT_TARGET_DOCTYPE]
 			pool.extend(SUPPORTED_DOCTYPES or [])
 			for dt in pool:
 				if not dt or dt in seen:

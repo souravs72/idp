@@ -92,12 +92,8 @@
     <div v-if="headerFields.length" class="mb-4 grid gap-3 sm:grid-cols-2">
       <div v-for="field in headerFields" :key="field.fieldname">
         <label class="flex items-center gap-1.5 text-[11px] font-medium text-gray-600 dark:text-gray-400">
-          <!-- Phase 29 — confidence band dot replaces numeric % -->
-          <ConfidenceDot
-            v-if="showConfidenceDots"
-            :band="field.confidence_band"
-            :value="field.confidence"
-          />
+          <!-- Phase 29 — header fields no longer render confidence dots
+               (kept on items/taxes rows only). -->
           <button
             v-if="field.source_region"
             type="button"
@@ -140,7 +136,7 @@
     </div>
 
     <!-- Items / generic child table (Phase 24 §24.0, Phase 25 §25.1) -->
-    <div v-if="itemsBlock.rows?.length" class="mb-4">
+    <div v-if="hasItemsBlock" class="mb-4">
       <div
         class="mb-1 flex flex-wrap items-center justify-between gap-2 text-xs font-medium text-gray-700 dark:text-gray-300"
       >
@@ -218,8 +214,14 @@
         </span>
       </div>
 
+      <div
+        v-if="!displayItems.length"
+        class="rounded border border-dashed border-gray-300 bg-gray-50 px-3 py-2 text-[11px] italic text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400"
+      >
+        No items extracted
+      </div>
       <ItemMappingTable
-        v-if="isItemTable"
+        v-else-if="isItemTable"
         :rows="displayItems"
         :editing="editing"
         @edit="onItemEdit"
@@ -235,11 +237,18 @@
     </div>
 
     <!-- Taxes table (Phase 24 §24.4) -->
-    <div v-if="taxRows.length" class="mb-4">
+    <div v-if="hasTaxesBlock" class="mb-4">
       <div class="mb-1 text-xs font-medium text-gray-700 dark:text-gray-300">
         Taxes
       </div>
+      <div
+        v-if="!taxRows.length"
+        class="rounded border border-dashed border-gray-300 bg-gray-50 px-3 py-2 text-[11px] italic text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400"
+      >
+        No taxes extracted
+      </div>
       <TaxMappingTable
+        v-else
         :rows="taxRows"
         :editing="editing"
         :company="card.company || null"
@@ -493,6 +502,10 @@ function formatLabel(field) {
 }
 const itemsBlock = computed(() => card.value.items || {})
 const itemsTotal = computed(() => itemsBlock.value.total || (itemsBlock.value.rows || []).length || 0)
+// Show items section whenever the card carries an items block, even when
+// the rows array is empty — keeps layout stable with an explicit
+// placeholder instead of silently collapsing.
+const hasItemsBlock = computed(() => !!card.value.items)
 const pageSize = computed(() => itemsBlock.value.page_size || 10)
 const totalPages = computed(() =>
   Math.max(1, Math.ceil(itemsTotal.value / pageSize.value)),
@@ -539,6 +552,9 @@ const taxRows = computed(() => {
   if (!t || !Array.isArray(t.rows)) return []
   return t.rows.filter((r) => r && typeof r === 'object')
 })
+// Show taxes section whenever the card declares a taxes block (even when
+// the rows array is empty) so the user sees an explicit placeholder.
+const hasTaxesBlock = computed(() => !!card.value.taxes)
 
 const warningList = computed(() => {
   const w = card.value.warnings
@@ -1001,9 +1017,18 @@ async function onTurnConfirmAll() {
     }
     const blocking = turnSiblingIds(hasBlockingWarnings).length
     if (blocking) {
-      const proceed = window.confirm(
-        `${blocking} card(s) have warnings. Submit anyway?`,
-      )
+      const msg = `${blocking} card(s) have warnings. Submit anyway?`
+      const proceed = await new Promise((resolve) => {
+        if (window.frappe?.confirm) {
+          window.frappe.confirm(
+            msg,
+            () => resolve(true),
+            () => resolve(false),
+          )
+        } else {
+          resolve(window.confirm(msg))
+        }
+      })
       if (!proceed) return
     }
     const { ok, fail } = await submitMany(ids)

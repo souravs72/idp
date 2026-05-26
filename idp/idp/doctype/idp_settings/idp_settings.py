@@ -29,21 +29,9 @@ class IDPSettings(Document):
 		if self.max_pages_per_pdf is not None and self.max_pages_per_pdf <= 0:
 			frappe.throw("Max pages per PDF must be greater than zero")
 
-		# Phase 11 (v2) — validate new numeric ranges.
 		if self.llm_fallback_threshold_default is not None:
 			if self.llm_fallback_threshold_default < 0 or self.llm_fallback_threshold_default > 1:
 				frappe.throw("LLM fallback threshold must be between 0.0 and 1.0")
-
-		for fname in (
-			"daily_token_budget_usd",
-			"per_user_daily_limit_usd",
-		):
-			val = self.get(fname)
-			if val is not None and val < 0:
-				frappe.throw(f"{fname} must be \u2265 0")
-
-		if self.per_conversation_max_iterations is not None and self.per_conversation_max_iterations < 1:
-			frappe.throw("Max tool iterations per turn must be at least 1")
 
 		for fname in (
 			"active_retention_days",

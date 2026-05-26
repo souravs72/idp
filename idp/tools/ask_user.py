@@ -12,7 +12,7 @@ the next ``post_message`` round-trip.
 
 from __future__ import annotations
 
-from idp.llm.tools.base import ToolContext, ToolResult, tool
+from idp.tools.base import ToolContext, ToolResult, tool
 
 _PARAMETERS_SCHEMA = {
 	"type": "object",

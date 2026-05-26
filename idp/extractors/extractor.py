@@ -128,7 +128,7 @@ class PDFExtractor(BaseExtractor):
 
 		if is_scanned:
 			logger.info(f"PDF appears scanned, falling back to OCR | file={file_url}")
-			from idp.idp.ocr_engine import process_pdf
+			from idp.ocr.engine import process_pdf
 
 			ocr_results = process_pdf(file_path, lang=lang)
 			# Rebuild text from OCR results
@@ -150,7 +150,7 @@ class PDFExtractor(BaseExtractor):
 		else:
 			# Text-based PDF — still try table extraction via OCR
 			try:
-				from idp.idp.ocr_engine import process_pdf
+				from idp.ocr.engine import process_pdf
 
 				ocr_results = process_pdf(file_path, lang=lang)
 				for page in ocr_results:
@@ -219,7 +219,7 @@ class ImageExtractor(BaseExtractor):
 	def extract(self, file_path: str, **kwargs) -> ExtractionResult:
 		lang = kwargs.get("lang", "en")
 
-		from idp.idp.ocr_engine import extract_table, extract_text, preprocess_image
+		from idp.ocr.engine import extract_table, extract_text, preprocess_image
 
 		preprocessed: str | None = None
 		try:
@@ -251,7 +251,7 @@ class ImageExtractor(BaseExtractor):
 			raise ExtractionError(f"Image extraction failed: {exc}", details={"file": file_path})
 		finally:
 			if preprocessed:
-				from idp.idp.ocr_engine import _safe_remove
+				from idp.ocr.engine import _safe_remove
 
 				_safe_remove(preprocessed)
 

@@ -137,7 +137,7 @@ def warm_ocr_engine(lang: str = "en") -> bool:
 	warm-up is a best-effort optimisation.
 	"""
 	try:
-		from idp.idp.ocr_engine import get_ocr_engine  # noqa: WPS433 (lazy)
+		from idp.ocr.engine import get_ocr_engine  # noqa: WPS433 (lazy)
 
 		engine = get_ocr_engine(lang=lang)
 		logger.info("PaddleOCR warm-up complete for lang=%s", lang)

@@ -191,7 +191,7 @@ def _resolve_language_settings(
 
 	When the resolved ``source_lang`` is ``"auto"`` and language
 	auto-detection is enabled in settings, we run
-	:func:`idp.idp.ocr_engine.detect_language` on *file_url* to pick a
+	:func:`idp.ocr.engine.detect_language` on *file_url* to pick a
 	concrete code so the rule mapper / hybrid LLM both see the right
 	language.
 	"""
@@ -211,7 +211,7 @@ def _resolve_language_settings(
 	auto_detect = bool(int(settings.get("enable_language_auto_detect") or 1))
 	if resolved_source.lower() == "auto" and auto_detect and file_url:
 		try:
-			from idp.idp.ocr_engine import detect_language
+			from idp.ocr.engine import detect_language
 
 			# detect_language expects a real path; ``extract_from_file``
 			# does the same kind of resolution.  We pass the URL through
@@ -235,7 +235,7 @@ def detect_file_language(file_url: str) -> dict:
 	is therefore advisory only.
 	"""
 
-	from idp.idp.ocr_engine import detect_language
+	from idp.ocr.engine import detect_language
 
 	if not file_url:
 		frappe.throw("file_url is required")

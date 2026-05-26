@@ -32,7 +32,7 @@ from dataclasses import dataclass
 
 from idp.core.cache import cache_delete, cache_get, cache_set
 from idp.core.logger import get_logger
-from idp.llm.tools.base import ToolSpec
+from idp.tools.base import ToolSpec
 from idp.plugins.base import IDPPlugin
 from idp.plugins.core_plugin import CorePlugin
 
@@ -261,7 +261,7 @@ def register_plugin_tools() -> None:
 
     # Local import — registry imports tool modules which trigger
     # ``@tool`` decorators that populate the in-tree set.
-    from idp.llm.tools.registry import load_tool_registry, register_tool
+    from idp.tools.registry import load_tool_registry, register_tool
 
     load_tool_registry()  # ensure built-ins are present
     for plugin in enabled_plugins():
@@ -298,14 +298,14 @@ def invalidate_plugin_cache(*_args, **_kwargs) -> None:
     cache_delete(_ENABLED_CACHE_KEY)
     # Per-tool config cache (§26.2) keyed on tool name.
     try:
-        from idp.llm.tools.access import invalidate_tool_config_cache
+        from idp.tools.access import invalidate_tool_config_cache
 
         invalidate_tool_config_cache()
     except Exception:
         logger.debug("access.invalidate_tool_config_cache unavailable", exc_info=True)
     # Tool-registry filter cache (§26.3) also keys on enabled set.
     try:
-        from idp.llm.tools.registry_cache import invalidate_tool_registry_cache
+        from idp.tools.registry_cache import invalidate_tool_registry_cache
 
         invalidate_tool_registry_cache()
     except Exception:

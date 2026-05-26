@@ -4,9 +4,9 @@
 """Process-wide tool registry and dispatcher (Phase 19).
 
 The registry is populated at import time by the side-effect imports in
-:mod:`idp.llm.tools.__init__` so callers can simply do::
+:mod:`idp.tools.__init__` so callers can simply do::
 
-    from idp.llm.tools.registry import (
+    from idp.tools.registry import (
         get_provider_schemas,
         dispatch,
         load_tool_registry,
@@ -27,9 +27,9 @@ import json
 from typing import Any
 
 from idp.core.logger import get_logger
-from idp.llm.tools.base import ToolContext, ToolResult, ToolSpec
+from idp.tools.base import ToolContext, ToolResult, ToolSpec
 
-logger = get_logger("idp.llm.tools.registry")
+logger = get_logger("idp.tools.registry")
 
 # Phase 28 G6 — rough char/token ratio used to convert the
 # admin-configured ``max_output_tokens`` into a byte-budget for the
@@ -66,13 +66,13 @@ def register_tool(spec: ToolSpec) -> None:
 def load_tool_registry() -> dict[str, ToolSpec]:
 	"""Trigger side-effect imports for built-in tools and return the snapshot.
 
-	Importing :mod:`idp.llm.tools` runs each tool module's
+	Importing :mod:`idp.tools` runs each tool module's
 	``@tool`` decorator which populates ``_REGISTRY``.
 	"""
 
 	global _LOADED
 	if not _LOADED:
-		import idp.llm.tools as _tools_pkg
+		import idp.tools as _tools_pkg
 
 		_LOADED = True
 	return dict(_REGISTRY)
@@ -123,7 +123,7 @@ def get_provider_schemas(
 		else list(_REGISTRY.values())
 	)
 	if user is not None:
-		from idp.llm.tools.access import check_tool_access
+		from idp.tools.access import check_tool_access
 
 		specs = [
 			s
@@ -161,7 +161,7 @@ def dispatch(name: str, arguments: dict | None, ctx: ToolContext) -> ToolResult:
 	# Frappe is unavailable (pure unit tests) the access check falls
 	# back to allowing the call.
 	try:
-		from idp.llm.tools.access import check_tool_access
+		from idp.tools.access import check_tool_access
 
 		decision = check_tool_access(name, ctx.user, requires_role=spec.requires_role)
 		if not decision.allowed:
@@ -397,7 +397,7 @@ def get_cached_provider_schemas(
 	except Exception:
 		_enabled_plugins = None  # type: ignore[assignment]
 	try:
-		from idp.llm.tools.registry_cache import (
+		from idp.tools.registry_cache import (
 			get_cached_schemas,
 			set_cached_schemas,
 		)

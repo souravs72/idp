@@ -10,7 +10,7 @@ declares the minimum required fields the LLM must supply.
 
 from __future__ import annotations
 
-from idp.llm.tools.base import ToolContext, ToolResult, publish_progress, tool
+from idp.tools.base import ToolContext, ToolResult, publish_progress, tool
 
 # {doctype: required_fieldnames}
 _ALLOWED_MASTERS: dict[str, list[str]] = {

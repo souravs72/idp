@@ -10,7 +10,7 @@ Frappe worker down with it and surfaces as a generic 500 to the user.
 This module isolates the OCR call inside a separate Python process so
 the worst that can happen is an :class:`OCRError`.  Strategy:
 
-* Run the OCR call as ``python -m idp.idp.ocr_subprocess <args>``.
+* Run the OCR call as ``python -m idp.ocr.subprocess_runner <args>``.
 * Pass arguments via JSON on stdin (avoids quoting headaches on Windows
   and keeps the CLI shape stable across versions).
 * Stream JSON back over stdout.
@@ -20,7 +20,7 @@ the worst that can happen is an :class:`OCRError`.  Strategy:
   before spawning to avoid OOM-killer drama.
 
 This file is intentionally importable as a script
-(``python -m idp.idp.ocr_subprocess``) — its ``main`` reads JSON from
+(``python -m idp.ocr.subprocess_runner``) — its ``main`` reads JSON from
 stdin, performs the requested operation in-process, and writes JSON to
 stdout.  The parent (this same module's ``run_in_subprocess``) is what
 the rest of the IDP codebase calls.
@@ -128,7 +128,7 @@ def run_in_subprocess(
 		"lang": lang,
 	}
 
-	cmd = [sys.executable, "-m", "idp.idp.ocr_subprocess"]
+	cmd = [sys.executable, "-m", "idp.ocr.subprocess_runner"]
 	logger.debug(f"run_in_subprocess: {cmd} payload={payload!r}")
 
 	# Inherit the parent environment so the child can find PaddleOCR
@@ -230,7 +230,7 @@ def _child_main() -> int:
 
 	try:
 		# Lazy import: keep the parent fast in the small-file path.
-		from idp.idp.ocr_engine import detect_language, extract_text
+		from idp.ocr.engine import detect_language, extract_text
 
 		if operation == "extract_text":
 			blocks = extract_text(file_path, lang=lang)

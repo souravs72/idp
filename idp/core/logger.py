@@ -1,29 +1,73 @@
 # Copyright (c) 2026, Sanjay Kumar and contributors
 # For license information, please see license.txt
 
-"""Structured logging for the IDP module.
+"""Unified project logger for the IDP module.
 
-Wraps :func:`frappe.logger` to provide named loggers under the ``idp``
-namespace and convenience functions for logging extraction / OCR events
-with structured metadata.
+All IDP code logs through a single ``idp`` logger with a fixed format:
+
+	YYYY-MM-DD HH:MM:SS | <processName> | idp | <LEVEL> | tool=<name> <msg>
+
+Sub-module loggers were removed — callers identify themselves through
+the ``tool=`` field on the log line instead of via the logger name.
 """
 
 import logging
+import multiprocessing
 
-import frappe
+_LOGGER_NAME = "idp"
+_FORMAT = "%(asctime)s | %(processName)s | %(name)s | %(levelname)s | %(message)s"
+_DATEFMT = "%Y-%m-%d %H:%M:%S"
 
 
-def get_logger(module: str = "idp") -> logging.Logger:
-	"""Return a named logger under the ``idp`` namespace.
+def _ensure_handler(logger: logging.Logger) -> None:
+	"""Attach a stream handler with the unified format if missing."""
+
+	if logger.handlers:
+		return
+	handler = logging.StreamHandler()
+	handler.setFormatter(logging.Formatter(_FORMAT, datefmt=_DATEFMT))
+	logger.addHandler(handler)
+	logger.setLevel(logging.INFO)
+	# Allow the root logger to also process the record (Frappe sometimes
+	# attaches its own handler to root); avoid double-printing by setting
+	# propagate=False since our stream handler already prints to stderr.
+	logger.propagate = False
+
+
+def get_logger(*_args, **_kwargs) -> logging.Logger:
+	"""Return the unified project logger.
+
+	Positional / keyword arguments are accepted but ignored so legacy call
+	sites such as ``get_logger("idp.ocr")`` continue to work without
+	immediate refactor.  The returned logger is always the single ``idp``
+	logger configured with the unified format.
+	"""
+
+	logger = logging.getLogger(_LOGGER_NAME)
+	_ensure_handler(logger)
+	# Preserve the multiprocessing process name in the format (helps when
+	# OCR runs in a subprocess).
+	multiprocessing.current_process()  # touch to ensure name is populated
+	return logger
+
+
+def log_event(tool: str, message: str, level: str = "info", **extra) -> None:
+	"""Emit a structured log line with ``tool=<name>`` prefix.
 
 	Args:
-		module: Sub-module name, e.g. ``"idp.ocr"`` or ``"idp.extractors"``.
-			Defaults to the root ``"idp"`` logger.
-
-	Returns:
-		A :class:`logging.Logger` wired to Frappe's log infrastructure.
+		tool: Short identifier for the call site, e.g. ``"ocr"``, ``"extraction"``,
+			``"agent"``, ``"reconciliation"``.
+		message: Human-readable message.
+		level: Logging level name (``info`` | ``warning`` | ``error`` | ``debug``).
+		**extra: Optional ``key=value`` fields appended to the message.
 	"""
-	return frappe.logger(module, allow_site=True)
+
+	logger = get_logger()
+	suffix = " ".join(f"{k}={v}" for k, v in extra.items())
+	payload = f"tool={tool} {message}".strip()
+	if suffix:
+		payload = f"{payload} {suffix}"
+	getattr(logger, level, logger.info)(payload)
 
 
 def log_extraction(
@@ -33,31 +77,15 @@ def log_extraction(
 	duration_ms: int,
 	**kwargs,
 ) -> None:
-	"""Log an extraction attempt with structured metadata.
+	"""Log an extraction attempt as a structured event."""
 
-	Args:
-		file_url: URL/path of the source document.
-		doctype: Target ERPNext DocType (e.g. ``"Purchase Invoice"``).
-		status: Outcome — ``"success"``, ``"failed"``, ``"partial"``.
-		duration_ms: Processing time in milliseconds.
-		**kwargs: Additional metadata (``confidence``, ``pages``, ``error``, etc.).
-	"""
-	logger = get_logger("idp.extraction")
-	extra = {
-		"file_url": file_url,
-		"doctype": doctype,
-		"status": status,
-		"duration_ms": duration_ms,
+	level = "error" if status == "failed" else ("warning" if status == "partial" else "info")
+	log_event(
+		"extraction",
+		f"{status} doctype={doctype} file={file_url} {duration_ms}ms",
+		level=level,
 		**kwargs,
-	}
-	msg = f"Extraction {status} | doctype={doctype} | file={file_url} | {duration_ms}ms"
-
-	if status == "failed":
-		logger.error(msg, extra=extra)
-	elif status == "partial":
-		logger.warning(msg, extra=extra)
-	else:
-		logger.info(msg, extra=extra)
+	)
 
 
 def log_ocr_result(
@@ -66,26 +94,11 @@ def log_ocr_result(
 	avg_confidence: float,
 	language: str,
 ) -> None:
-	"""Log OCR processing results.
+	"""Log OCR processing results as a structured event."""
 
-	Args:
-		file_url: URL/path of the processed document.
-		pages: Number of pages processed.
-		avg_confidence: Average OCR confidence across all pages (0.0-1.0).
-		language: OCR language code used.
-	"""
-	logger = get_logger("idp.ocr")
-	msg = (
-		f"OCR complete | file={file_url} | pages={pages} | confidence={avg_confidence:.2f} | lang={language}"
+	level = "warning" if avg_confidence < 0.50 else "info"
+	log_event(
+		"ocr",
+		f"complete file={file_url} pages={pages} confidence={avg_confidence:.2f} lang={language}",
+		level=level,
 	)
-	extra = {
-		"file_url": file_url,
-		"pages": pages,
-		"avg_confidence": avg_confidence,
-		"language": language,
-	}
-
-	if avg_confidence < 0.50:
-		logger.warning(msg, extra=extra)
-	else:
-		logger.info(msg, extra=extra)

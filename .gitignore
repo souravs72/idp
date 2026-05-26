@@ -65,6 +65,7 @@ docs/TEST*.md
 docs/ENHANCEMENT_ROADMAP*.md
 docs/ERPNEXT_REPORTS.md
 docs/*analysis.md
+docs/cleanup_plan.md
 
 
 # Claude

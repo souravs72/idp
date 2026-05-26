@@ -33,7 +33,6 @@ def get_settings() -> dict:
 			- ``supported_doctypes``: list of target DocTypes
 			- ``ocr_languages``: dict of ``{code: name}``
 			- ``max_file_size_mb``: int
-			- ``default_target_doctype``: str
 			- ``default_ocr_language``: str
 			- ``features``: dict of feature flags
 	"""
@@ -51,7 +50,6 @@ def get_settings() -> dict:
 		"supported_doctypes": SUPPORTED_DOCTYPES,
 		"ocr_languages": OCR_LANGUAGES,
 		"max_file_size_mb": settings.get("max_file_size_mb", MAX_FILE_SIZE_MB),
-		"default_target_doctype": settings.get("default_target_doctype", "Purchase Invoice"),
 		"default_ocr_language": settings.get("default_ocr_language", "en"),
 		"features": {
 			"ocr": is_feature_enabled("enable_ocr"),
@@ -75,7 +73,4 @@ def get_settings() -> dict:
 		"enable_sidebar_search": settings.get("enable_sidebar_search", 1),
 		"enable_bulk_actions": settings.get("enable_bulk_actions", 1),
 		"enable_conversation_delete": settings.get("enable_conversation_delete", 1),
-		# Daily token cap surfaced so the cost footer can render the
-		# remaining budget without a separate fetch.
-		"daily_token_budget": settings.get("daily_token_budget", 0),
 	}

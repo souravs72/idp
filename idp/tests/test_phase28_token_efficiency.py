@@ -282,16 +282,16 @@ class TestStripThinking:
 
 class TestPerToolMaxOutputTokens:
 	def test_under_cap_passes_through(self):
-		from idp.llm.tools.base import ToolResult
-		from idp.llm.tools.registry import _enforce_output_cap
+		from idp.tools.base import ToolResult
+		from idp.tools.registry import _enforce_output_cap
 
 		small = ToolResult.ok({"rows": [1, 2, 3]})
 		out = _enforce_output_cap(small, "any_tool", max_tokens=100)
 		assert out is small  # untouched
 
 	def test_over_cap_truncates_and_stops(self):
-		from idp.llm.tools.base import ToolResult
-		from idp.llm.tools.registry import _enforce_output_cap
+		from idp.tools.base import ToolResult
+		from idp.tools.registry import _enforce_output_cap
 
 		big = ToolResult.ok({"blob": "x" * 5000, "count": 999})
 		out = _enforce_output_cap(big, "list_documents", max_tokens=50)
@@ -303,8 +303,8 @@ class TestPerToolMaxOutputTokens:
 		assert out.data.get("count") == 999
 
 	def test_failure_envelope_not_measured(self):
-		from idp.llm.tools.base import ToolResult
-		from idp.llm.tools.registry import _enforce_output_cap
+		from idp.tools.base import ToolResult
+		from idp.tools.registry import _enforce_output_cap
 
 		err = ToolResult.fail("bad input", error_code="VALIDATION_FAILED")
 		out = _enforce_output_cap(err, "any_tool", max_tokens=10)

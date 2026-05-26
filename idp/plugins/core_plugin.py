@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from idp.llm.tools.base import ToolSpec
+from idp.tools.base import ToolSpec
 from idp.plugins.base import IDPPlugin
 
 
@@ -39,7 +39,7 @@ class CorePlugin(IDPPlugin):
         # Local import to avoid a circular dependency at module load
         # time (the registry imports the tool modules which would in
         # turn import this file if it were top-level).
-        from idp.llm.tools.registry import list_tools
+        from idp.tools.registry import list_tools
 
         return list(list_tools())
 

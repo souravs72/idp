@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from idp.idp.bank_reconciliation import (
+from idp.reconciliation.bank_reconciliation import (
 	ReconciliationMatch,
 	_amounts_equal,
 	_days_between,

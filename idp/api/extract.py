@@ -119,9 +119,21 @@ def extract_document(
 		mapper = FieldMapper()
 		mapped: MappedDocument = mapper.map_fields(extraction, target_doctype, company=company)
 
-		# 3. Validate
-		schema_result = validate_schema(mapped, company)
-		biz_warnings = validate_business_rules(mapped, company)
+		# 3. Validate — gated by IDP Settings.enable_pre_validation so users
+		# can short-circuit schema checks before the LLM stage.
+		_pre_val_on = bool(
+			frappe.db.get_single_value("IDP Settings", "enable_pre_validation")
+		)
+		if _pre_val_on:
+			schema_result = validate_schema(mapped, company)
+			biz_warnings = validate_business_rules(mapped, company)
+		else:
+			from idp.validators.schema_validator import ValidationResult
+
+			schema_result = ValidationResult(
+				is_valid=True, errors=[], warnings=[], resolved_links={}
+			)
+			biz_warnings = []
 
 		# Build validation summary
 		validation = {
@@ -294,7 +306,7 @@ def reconcile_bank_statement_api(
 	"""
 	import json
 
-	from idp.idp.bank_reconciliation import reconcile_bank_statement, result_to_dict
+	from idp.reconciliation.bank_reconciliation import reconcile_bank_statement, result_to_dict
 	from idp.extractors.bank_statement import transactions_from_dicts
 
 	if not bank_account:

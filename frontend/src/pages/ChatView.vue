@@ -36,81 +36,67 @@
       @toggle="sidebarCollapsed = !sidebarCollapsed"
       @search="onSidebarSearch"
       @delete="onDeleteConversation"
+      @settings="onOpenSettings"
     />
 
-    <main class="flex flex-1 flex-col overflow-hidden">
-      <header
-        class="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-900"
+    <main class="relative flex flex-1 flex-col overflow-hidden">
+      <!-- Mobile hamburger floats over the messages area; the persistent
+           title header was removed per design. -->
+      <button
+        type="button"
+        class="idp-hamburger absolute left-2 top-2 z-10 rounded bg-white/90 p-1 text-gray-500 shadow-sm hover:bg-gray-100 dark:bg-gray-900/90 dark:text-gray-300 dark:hover:bg-gray-800"
+        aria-label="Open conversation list"
+        :aria-expanded="mobileSidebarOpen ? 'true' : 'false'"
+        aria-controls="idp-sidebar"
+        @click="mobileSidebarOpen = !mobileSidebarOpen"
       >
-        <!-- Phase 33 — Hamburger only visible on mobile (CSS-gated). -->
-        <button
-          type="button"
-          class="idp-hamburger mr-2 rounded p-1 text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-          aria-label="Open conversation list"
-          :aria-expanded="mobileSidebarOpen ? 'true' : 'false'"
-          aria-controls="idp-sidebar"
-          @click="mobileSidebarOpen = !mobileSidebarOpen"
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          class="h-5 w-5"
+          aria-hidden="true"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            class="h-5 w-5"
-            aria-hidden="true"
-          >
-            <path
-              fill-rule="evenodd"
-              d="M2 5a1 1 0 0 1 1-1h14a1 1 0 1 1 0 2H3a1 1 0 0 1-1-1Zm0 5a1 1 0 0 1 1-1h14a1 1 0 1 1 0 2H3a1 1 0 0 1-1-1Zm1 4a1 1 0 1 0 0 2h14a1 1 0 1 0 0-2H3Z"
-              clip-rule="evenodd"
-            />
-          </svg>
-        </button>
-        <div class="min-w-0 flex-1">
-          <div class="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
-            {{ headerTitle }}
-          </div>
-          <div
-            v-if="headerSubtitle"
-            class="truncate text-[11px] text-gray-500 dark:text-gray-400"
-          >
-            {{ headerSubtitle }}
-          </div>
-        </div>
-        <div class="flex items-center gap-2">
-          <button
-            v-if="store.currentDetail"
-            type="button"
-            class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
-            @click="onArchive"
-          >
-            Archive
-          </button>
-        </div>
-      </header>
+          <path
+            fill-rule="evenodd"
+            d="M2 5a1 1 0 0 1 1-1h14a1 1 0 1 1 0 2H3a1 1 0 0 1-1-1Zm0 5a1 1 0 0 1 1-1h14a1 1 0 1 1 0 2H3a1 1 0 0 1-1-1Zm1 4a1 1 0 1 0 0 2h14a1 1 0 1 0 0-2H3Z"
+            clip-rule="evenodd"
+          />
+        </svg>
+      </button>
 
       <div
         v-if="!store.currentId"
         class="flex flex-1 items-center justify-center bg-gray-50 p-6 text-sm text-gray-500 dark:bg-gray-950"
       >
         <div class="max-w-md text-center">
-          <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-2xl dark:bg-blue-950">
-            💬
+          <!-- Avatar — user's Frappe image if present, otherwise a grey
+               circle with the user's initial (AI Chatbot style). -->
+          <div
+            class="mx-auto mb-4 flex h-20 w-20 items-center justify-center overflow-hidden rounded-full bg-gray-200 text-3xl font-semibold text-gray-700 shadow-sm dark:bg-gray-700 dark:text-gray-200"
+          >
+            <img
+              v-if="userImage"
+              :src="userImage"
+              :alt="userFullname"
+              class="h-full w-full object-cover"
+            />
+            <span v-else aria-hidden="true">{{ userInitial }}</span>
           </div>
-          <div class="text-lg font-semibold text-gray-800 dark:text-gray-100">
-            Welcome to the IDP Assistant
+          <div class="text-3xl font-semibold text-gray-800 dark:text-gray-100">
+            Hello, {{ userFullname }}!
           </div>
-          <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Upload a document or ask a question — I can extract data, draft
-            ERPNext records, and walk you through confirmations.
+          <div class="mt-2 text-base text-gray-500 dark:text-gray-400">
+            How can I help you today?
           </div>
           <button
-            class="mt-4 rounded bg-blue-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            class="mt-6 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             :disabled="startingConversation"
             @click="startNewConversation"
           >
             {{ startingConversation ? 'Starting…' : 'Start a new conversation' }}
           </button>
-          <div class="mt-3 text-[11px] text-gray-400">
+          <div class="mt-3 text-xs text-gray-400">
             Or pick an existing one from the sidebar.
           </div>
         </div>
@@ -315,7 +301,6 @@ const router = useRouter()
 const {
   refreshSessions,
   loadConversation,
-  archiveConversation,
   deleteConversation,
   searchSessions,
   quickStart,
@@ -392,6 +377,37 @@ const activeSearch = ref(null)
 const dialogPrefill = ref(null)
 const startingConversation = ref(false)
 
+// Greeting on the empty-state welcome card.  Pulls the user's full name
+// from Frappe's global session bootstrap when available; falls back to
+// "there" so the greeting still reads naturally for guest sessions.
+const userFullname = computed(() => {
+  const fp = typeof window !== 'undefined' ? window.frappe : null
+  return (
+    fp?.session?.user_fullname ||
+    fp?.boot?.user?.fullname ||
+    fp?.session?.user ||
+    'there'
+  )
+})
+
+// Avatar image — uses the user's uploaded Frappe avatar when present.
+// When absent we fall back to a grey circle showing the first letter
+// of `userFullname` (see template).
+const userImage = computed(() => {
+  const fp = typeof window !== 'undefined' ? window.frappe : null
+  return (
+    fp?.session?.user_image ||
+    fp?.boot?.user?.user_image ||
+    ''
+  )
+})
+
+const userInitial = computed(() => {
+  const name = (userFullname.value || '').trim()
+  if (!name || name === 'there') return 'A'
+  return name[0].toUpperCase()
+})
+
 // Phase 29 — click-to-source side panel.
 // Holds `{ file_id, file_url?, field, page, bbox }` of the most-recently
 // clicked confidence dot.  Cleared when the user closes the panel or
@@ -403,23 +419,6 @@ const dialogOpen = ref(false)
 const scrollEl = ref(null)
 const showScrollButton = ref(false)
 const SCROLL_PINNED_THRESHOLD = 80
-
-const headerTitle = computed(() => {
-  const d = store.currentDetail
-  if (!d) return 'IDP Assistant'
-  return d.title || `Conversation ${d.conversation_id}`
-})
-
-const headerSubtitle = computed(() => {
-  const d = store.currentDetail
-  if (!d) return ''
-  const parts = []
-  if (d.target_doctype) parts.push(d.target_doctype)
-  if (d.company) parts.push(d.company)
-  if (d.llm_model) parts.push(d.llm_model)
-  if (d.output_language) parts.push(`output: ${d.output_language}`)
-  return parts.join(' · ')
-})
 
 const footerStats = computed(() => {
   const d = store.currentDetail
@@ -579,10 +578,31 @@ async function onSidebarSearch(payload) {
   await searchSessions(payload)
 }
 
+// Sidebar cog → IDP Settings.  Opens the Frappe desk form in a new tab
+// so the chat session isn't disrupted.  Falls back to the relative URL
+// when the Frappe global isn't loaded (e.g. local dev preview).
+function onOpenSettings() {
+  const url = '/app/idp-settings'
+  if (typeof window !== 'undefined') {
+    window.open(url, '_blank', 'noopener')
+  }
+}
+
 async function onDeleteConversation(row) {
   if (!row?.name) return
   const title = row.title || `Conversation ${row.name}`
-  if (!window.confirm(`Delete "${title}"? This cannot be undone.`)) return
+  const proceed = await new Promise((resolve) => {
+    if (window.frappe?.confirm) {
+      window.frappe.confirm(
+        `Delete "${title}"? This cannot be undone.`,
+        () => resolve(true),
+        () => resolve(false),
+      )
+    } else {
+      resolve(window.confirm(`Delete "${title}"? This cannot be undone.`))
+    }
+  })
+  if (!proceed) return
   try {
     await deleteConversation(row.name)
     if (route.params.id === row.name) {
@@ -609,19 +629,6 @@ function onPickSuggested(text) {
   window.dispatchEvent(
     new CustomEvent('idp:chat-input:prefill', { detail: { text } }),
   )
-}
-
-async function onArchive() {
-  if (!store.currentId) return
-  if (!window.confirm('Archive this conversation?')) return
-  try {
-    await archiveConversation(store.currentId)
-    router.push({ name: 'ChatHome' })
-    await refreshSessions({ status: status.value })
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('[ChatView] archive failed', err)
-  }
 }
 
 async function onSend({ content, attachments }) {

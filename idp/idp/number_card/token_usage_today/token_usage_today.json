@@ -1,0 +1,23 @@
+{
+ "aggregate_function_based_on": "total_tokens_used",
+ "creation": "2026-05-26 00:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Number Card",
+ "document_type": "IDP Conversation",
+ "dynamic_filters_json": "[]",
+ "filters_json": "[[\"IDP Conversation\",\"modified\",\"Timespan\",\"today\",false]]",
+ "function": "Sum",
+ "idx": 0,
+ "is_public": 1,
+ "is_standard": 1,
+ "label": "Token Usage (Today)",
+ "modified": "2026-05-26 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "IDP",
+ "name": "Token Usage (Today)",
+ "owner": "Administrator",
+ "show_full_number": 1,
+ "show_percentage_stats": 1,
+ "stats_time_interval": "Daily",
+ "type": "Document Type"
+}

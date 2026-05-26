@@ -3,7 +3,7 @@
 
 """IDP Tool Call Log controller (Phase 26 §26.5).
 
-Audit log row created by :func:`idp.llm.tools.audit.log_tool_call`
+Audit log row created by :func:`idp.tools.audit.log_tool_call`
 after every dispatch.  Sized to fit ~2 KB result excerpts so the
 table stays scannable; the full payload remains on the originating
 ``IDP Message`` row.

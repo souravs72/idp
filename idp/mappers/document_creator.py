@@ -90,9 +90,16 @@ def create_document(
 	created_masters: list[dict] = []
 
 	# ------------------------------------------------------------------
-	# 1. Validate
+	# 1. Validate — also gated by IDP Settings.enable_pre_validation so a
+	# global toggle short-circuits the check without per-call wiring.
 	# ------------------------------------------------------------------
-	if not skip_validation:
+	try:
+		_pre_val_on = bool(
+			frappe.db.get_single_value("IDP Settings", "enable_pre_validation")
+		)
+	except Exception:
+		_pre_val_on = True
+	if not skip_validation and _pre_val_on:
 		schema_result = validate_schema(mapped_data)
 		if not schema_result.is_valid:
 			error_msgs = [f"{e.field}: {e.message}" for e in schema_result.errors]

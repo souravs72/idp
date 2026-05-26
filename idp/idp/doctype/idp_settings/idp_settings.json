@@ -1,10 +1,35 @@
 {
  "actions": [],
- "creation": "2026-04-21 00:00:00.000000",
+ "creation": "2026-04-21 00:00:00",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "section_break_rcjc",
   "enabled",
+  "phase11_chatbot_section",
+  "streaming_enabled",
+  "llm_provider_section",
+  "llm_provider",
+  "llm_api_key",
+  "llm_model",
+  "column_break_cwyf",
+  "ollama_host_url",
+  "custom_providers",
+  "model_overrides",
+  "phase11_llm_section",
+  "llm_enabled",
+  "llm_api_base",
+  "llm_fallback_threshold_default",
+  "llm_vision_enabled",
+  "column_break_phase11_llm",
+  "llm_model_routes",
+  "llm_max_tokens",
+  "processing_tab",
+  "processing_section",
+  "enable_write_operations",
+  "column_break_processing",
+  "auto_create_missing_masters",
+  "enable_comparison",
   "ocr_section",
   "default_ocr_language",
   "default_output_language",
@@ -15,28 +40,23 @@
   "enable_table_extraction",
   "enable_layout_analysis",
   "max_file_size_mb",
-  "processing_section",
-  "default_target_doctype",
-  "enable_write_operations",
-  "column_break_processing",
-  "auto_create_missing_masters",
-  "enable_comparison",
-  "formats_section",
   "enable_pdf",
   "enable_images",
   "enable_excel",
   "column_break_formats",
   "enable_csv",
   "enable_docx",
-  "advanced_section",
-  "ocr_timeout_seconds",
-  "max_pages_per_pdf",
-  "confirmation_page_size",
-  "phase27_section",
+  "advanced_tab",
+  "extraction_section",
   "ocr_engine",
   "inline_text_budget_chars",
   "column_break_phase27",
   "vision_image_max_dim_px",
+  "advanced_section",
+  "ocr_timeout_seconds",
+  "confirmation_page_size",
+  "column_break_qror",
+  "max_pages_per_pdf",
   "phase15_section",
   "enable_templates",
   "enable_batch_processing",
@@ -45,40 +65,12 @@
   "enable_workflow_routing",
   "enable_prompt_library",
   "approver_rules",
-  "phase16_section",
+  "mapper_tab",
+  "mapper_section",
   "enable_hybrid_mapper",
-  "llm_provider",
-  "llm_model",
+  "enable_pre_validation",
   "llm_confidence_threshold",
-  "llm_api_key",
-  "column_break_phase16",
-  "ollama_host_url",
-  "custom_providers",
-  "model_overrides",
-  "daily_token_budget",
-  "monthly_token_budget",
-  "phase11_llm_section",
-  "llm_enabled",
-  "llm_api_base",
-  "llm_fallback_threshold_default",
-  "llm_vision_enabled",
-  "column_break_phase11_llm",
-  "llm_model_routes",
-  "llm_max_tokens",
-  "phase11_cost_section",
-  "daily_token_budget_usd",
-  "per_user_daily_limit_usd",
-  "column_break_phase11_cost",
-  "per_conversation_max_iterations",
-  "alert_email_on_budget_80pct",
-  "phase11_retention_section",
-  "active_retention_days",
-  "archived_retention_days",
-  "column_break_phase11_retention",
-  "auto_purge_failed_after_days",
-  "phase11_chatbot_section",
-  "streaming_enabled",
-  "phase28_section",
+  "token_eff_section",
   "page_pre_pass_enabled",
   "mapper_cache_enabled",
   "mapper_cache_ttl_hours",
@@ -88,8 +80,9 @@
   "strip_thinking_blocks",
   "mapper_version",
   "te_regression_alert_pct",
-  "phase29_section",
+  "provenance_section",
   "show_confidence_dots",
+  "conversation_tab",
   "phase31_section",
   "enable_cost_footer",
   "enable_preflight_warning",
@@ -98,7 +91,12 @@
   "enable_sidebar_search",
   "enable_bulk_actions",
   "enable_conversation_delete",
-  "phase32_section",
+  "retention_section",
+  "active_retention_days",
+  "archived_retention_days",
+  "column_break_phase11_retention",
+  "auto_purge_failed_after_days",
+  "reversibility_section",
   "undo_window_minutes"
  ],
  "fields": [
@@ -179,12 +177,6 @@
    "label": "Document Processing"
   },
   {
-   "fieldname": "default_target_doctype",
-   "fieldtype": "Link",
-   "label": "Default Target DocType",
-   "options": "DocType"
-  },
-  {
    "default": "0",
    "description": "When off, the API will never create ERPNext documents (dry-run mode).",
    "fieldname": "enable_write_operations",
@@ -207,11 +199,6 @@
    "fieldname": "enable_comparison",
    "fieldtype": "Check",
    "label": "Enable Comparison"
-  },
-  {
-   "fieldname": "formats_section",
-   "fieldtype": "Section Break",
-   "label": "Supported Formats"
   },
   {
    "default": "1",
@@ -272,11 +259,6 @@
    "fieldname": "confirmation_page_size",
    "fieldtype": "Int",
    "label": "Confirmation Card Page Size"
-  },
-  {
-   "fieldname": "phase27_section",
-   "fieldtype": "Section Break",
-   "label": "Extraction Hardening"
   },
   {
    "default": "auto",
@@ -355,16 +337,18 @@
    "label": "Approver Rules (JSON)"
   },
   {
-   "fieldname": "phase16_section",
-   "fieldtype": "Section Break",
-   "label": "Hybrid Mapper"
-  },
-  {
    "default": "0",
    "description": "Run the LLM-backed hybrid field mapper for low-confidence extractions",
    "fieldname": "enable_hybrid_mapper",
    "fieldtype": "Check",
    "label": "Enable Hybrid Mapper"
+  },
+  {
+   "default": "1",
+   "description": "Run schema pre-validation on proposed documents before sending them to the LLM extraction loop. Disable to skip the pre-flight check and let the agent run unconstrained.",
+   "fieldname": "enable_pre_validation",
+   "fieldtype": "Check",
+   "label": "Enable Pre-Validation"
   },
   {
    "default": "openai",
@@ -394,10 +378,6 @@
    "label": "LLM API Key"
   },
   {
-   "fieldname": "column_break_phase16",
-   "fieldtype": "Column Break"
-  },
-  {
    "default": "http://localhost:11434",
    "description": "Base URL of the Ollama HTTP server (used when the active provider is Ollama)",
    "fieldname": "ollama_host_url",
@@ -415,20 +395,6 @@
    "fieldname": "model_overrides",
    "fieldtype": "Long Text",
    "label": "Model Overrides (JSON)"
-  },
-  {
-   "default": "0",
-   "description": "Per-user daily token cap; 0 = unlimited",
-   "fieldname": "daily_token_budget",
-   "fieldtype": "Int",
-   "label": "Daily Token Budget"
-  },
-  {
-   "default": "0",
-   "description": "Per-user monthly token cap; 0 = unlimited",
-   "fieldname": "monthly_token_budget",
-   "fieldtype": "Int",
-   "label": "Monthly Token Budget"
   },
   {
    "fieldname": "phase11_llm_section",
@@ -483,50 +449,6 @@
    "non_negative": 1
   },
   {
-   "fieldname": "phase11_cost_section",
-   "fieldtype": "Section Break",
-   "label": "Cost Controls"
-  },
-  {
-   "default": "10.00",
-   "description": "Hard cap on total LLM spend per day across all users. Once reached, IDP gracefully degrades to rule-only extraction.",
-   "fieldname": "daily_token_budget_usd",
-   "fieldtype": "Currency",
-   "label": "Daily Token Budget (USD)",
-   "options": "USD"
-  },
-  {
-   "default": "2.00",
-   "description": "Per-user daily cap; users are warned before exceeding.",
-   "fieldname": "per_user_daily_limit_usd",
-   "fieldtype": "Currency",
-   "label": "Per-User Daily Limit (USD)",
-   "options": "USD"
-  },
-  {
-   "fieldname": "column_break_phase11_cost",
-   "fieldtype": "Column Break"
-  },
-  {
-   "default": "12",
-   "description": "Hard cap on tool-call iterations per conversation turn. Prevents runaway agent loops.",
-   "fieldname": "per_conversation_max_iterations",
-   "fieldtype": "Int",
-   "label": "Max Tool Iterations per Turn",
-   "non_negative": 1
-  },
-  {
-   "description": "Email address(es) notified once the daily budget crosses 80% \u2014 comma-separated.",
-   "fieldname": "alert_email_on_budget_80pct",
-   "fieldtype": "Data",
-   "label": "Budget Alert Email"
-  },
-  {
-   "fieldname": "phase11_retention_section",
-   "fieldtype": "Section Break",
-   "label": "Conversation Retention"
-  },
-  {
    "default": "90",
    "description": "Active conversations retained for N days, then auto-archived. Set 0 to disable auto-archive.",
    "fieldname": "active_retention_days",
@@ -565,11 +487,6 @@
    "fieldname": "streaming_enabled",
    "fieldtype": "Check",
    "label": "Streaming Enabled"
-  },
-  {
-   "fieldname": "phase28_section",
-   "fieldtype": "Section Break",
-   "label": "Token-Efficiency Deep Cuts (Phase 28)"
   },
   {
    "default": "1",
@@ -630,20 +547,15 @@
   },
   {
    "default": "15",
-   "description": "Weekly metrics regression alert threshold: when tokens_per_extracted_field rises by more than this percent versus the prior 7-day window, an Email Alert is sent to the budget alert recipients.",
+   "description": "Weekly metrics regression alert threshold: when tokens_per_extracted_field rises by more than this percent versus the prior 7-day window, an Email Alert is sent.",
    "fieldname": "te_regression_alert_pct",
    "fieldtype": "Int",
    "label": "TE Regression Alert (%)",
    "non_negative": 1
   },
   {
-   "fieldname": "phase29_section",
-   "fieldtype": "Section Break",
-   "label": "Provenance & Confidence Surface (Phase 29)"
-  },
-  {
-   "default": "1",
-   "description": "Render confidence as green/amber/red dots in ConfirmationCard and child tables. Disable to fall back to legacy numeric percentage display.",
+   "default": "0",
+   "description": "Render confidence as green/amber/red dots in ConfirmationCard line items only. Header fields no longer render confidence dots; this flag only affects child-table rows.",
    "fieldname": "show_confidence_dots",
    "fieldtype": "Check",
    "label": "Show Confidence Dots"
@@ -651,7 +563,7 @@
   {
    "fieldname": "phase31_section",
    "fieldtype": "Section Break",
-   "label": "Conversation UX Polish (Phase 31)"
+   "label": "Conversation"
   },
   {
    "default": "1",
@@ -661,8 +573,8 @@
    "label": "Enable Cost Footer"
   },
   {
-   "default": "1",
-   "description": "Open a pre-flight confirmation dialog when an estimated turn would exceed the remaining daily token budget.",
+   "default": "0",
+   "description": "Open a pre-flight confirmation dialog before high-cost turns.",
    "fieldname": "enable_preflight_warning",
    "fieldtype": "Check",
    "label": "Enable Pre-flight Cost Warning"
@@ -700,22 +612,84 @@
    "label": "Enable Conversation Delete"
   },
   {
-   "fieldname": "phase32_section",
-   "fieldtype": "Section Break",
-   "label": "Reversibility / Undo (Phase 32)"
-  },
-  {
    "default": "5",
    "description": "Window (minutes) after card confirmation during which the originating user (or System Manager) may undo the created ERPNext document. Drafts are deleted; submitted submittable docs are cancelled. Set 0 to disable the feature end-to-end.",
    "fieldname": "undo_window_minutes",
    "fieldtype": "Int",
    "label": "Undo Window (minutes)",
    "non_negative": 1
+  },
+  {
+   "fieldname": "processing_tab",
+   "fieldtype": "Tab Break",
+   "label": "Document Processing"
+  },
+  {
+   "fieldname": "advanced_tab",
+   "fieldtype": "Tab Break",
+   "label": "Advanced"
+  },
+  {
+   "fieldname": "mapper_tab",
+   "fieldtype": "Tab Break",
+   "label": "Hybrid Mapper"
+  },
+  {
+   "fieldname": "conversation_tab",
+   "fieldtype": "Tab Break",
+   "label": "Conversation"
+  },
+  {
+   "fieldname": "reversibility_section",
+   "fieldtype": "Section Break",
+   "label": "Reversibility"
+  },
+  {
+   "fieldname": "column_break_qror",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_rcjc",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "llm_provider_section",
+   "fieldtype": "Section Break",
+   "label": "LLM Provider"
+  },
+  {
+   "fieldname": "column_break_cwyf",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "mapper_section",
+   "fieldtype": "Section Break",
+   "label": "Hybrid Mapper"
+  },
+  {
+   "fieldname": "extraction_section",
+   "fieldtype": "Section Break",
+   "label": "Extraction Hardening"
+  },
+  {
+   "fieldname": "token_eff_section",
+   "fieldtype": "Section Break",
+   "label": "Token-Efficiency Deep Cuts"
+  },
+  {
+   "fieldname": "provenance_section",
+   "fieldtype": "Section Break",
+   "label": "Provenance & Confidence Surface"
+  },
+  {
+   "fieldname": "retention_section",
+   "fieldtype": "Section Break",
+   "label": "Conversation Retention"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-05-12 00:00:00.000000",
+ "modified": "2026-05-26 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "IDP",
  "name": "IDP Settings",
@@ -733,6 +707,7 @@
   }
  ],
  "quick_entry": 1,
+ "row_format": "Dynamic",
  "sort_field": "creation",
  "sort_order": "ASC",
  "states": [],

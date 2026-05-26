@@ -30,7 +30,7 @@ Design notes
 * Frappe-aware: when run outside a bench (unit tests / CLI) every
   helper short-circuits to an empty result instead of raising.
 * Output mirrors the shape consumed by
-  :mod:`idp.llm.tools.propose_create_document` so the matcher can
+  :mod:`idp.tools.propose_create_document` so the matcher can
   be plugged in directly as the source of ``item_mapping_suggestions``
   and per-row ``status``.
 """

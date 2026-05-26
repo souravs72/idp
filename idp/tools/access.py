@@ -28,7 +28,7 @@ from dataclasses import dataclass
 
 from idp.core.logger import get_logger
 
-logger = get_logger("idp.llm.tools.access")
+logger = get_logger("idp.tools.access")
 
 
 @dataclass(frozen=True)

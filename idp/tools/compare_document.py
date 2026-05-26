@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from idp.llm.tools.base import ToolContext, ToolResult, publish_progress, tool
+from idp.tools.base import ToolContext, ToolResult, publish_progress, tool
 
 _PARAMETERS_SCHEMA = {
 	"type": "object",

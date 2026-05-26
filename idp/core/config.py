@@ -182,7 +182,6 @@ def _default_settings() -> dict:
 		"enable_table_extraction": 1,
 		"enable_layout_analysis": 1,
 		"max_file_size_mb": 25,
-		"default_target_doctype": "Purchase Invoice",
 		"enable_write_operations": 0,
 		"auto_create_missing_masters": 0,
 		"enable_comparison": 1,

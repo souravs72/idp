@@ -19,7 +19,7 @@ from typing import Any
 
 from idp.core.logger import get_logger
 
-logger = get_logger("idp.llm.tools.audit")
+logger = get_logger("idp.tools.audit")
 
 _MAX_EXCERPT_BYTES = 2 * 1024  # 2 KB per §26.5
 _REDACTED_KEYS = frozenset(

@@ -122,8 +122,7 @@ const company = ref('')
 
 onMounted(async () => {
   await settings.load()
-  targetDoctype.value =
-    settings.settings.value?.default_target_doctype || 'Purchase Invoice'
+  // Target doctype is selected per-upload; default to Purchase Invoice.
   language.value =
     settings.settings.value?.default_ocr_language || 'en'
 })

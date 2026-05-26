@@ -23,9 +23,9 @@ from typing import Any
 
 from idp.core.logger import get_logger
 from idp.llm.file_alias import get_registry
-from idp.llm.tools.base import ToolContext, ToolResult, publish_progress, tool
+from idp.tools.base import ToolContext, ToolResult, publish_progress, tool
 
-logger = get_logger("idp.llm.tools.extract_document")
+logger = get_logger("idp.tools.extract_document")
 
 # Hard fallback used when IDP Settings has no value yet (Phase 27 §27.5
 # surfaces ``inline_text_budget_chars`` as a configurable cap).

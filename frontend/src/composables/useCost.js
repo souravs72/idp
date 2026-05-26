@@ -67,10 +67,20 @@ export function useCost() {
     const used = est.daily_used || 0
     const usd = Number(est.estimated_cost_usd || 0).toFixed(4)
     const msg =
-      `Heads up — this turn could use about ${tokens} tokens ($${usd}).\n\n` +
-      `You've used ${used} of ${cap} tokens today.\n\n` +
+      `Heads up — this turn could use about ${tokens} tokens ($${usd}).<br><br>` +
+      `You've used ${used} of ${cap} tokens today.<br><br>` +
       `Continue anyway?`
-    return window.confirm(msg)
+    return new Promise((resolve) => {
+      if (window.frappe?.confirm) {
+        window.frappe.confirm(
+          msg,
+          () => resolve(true),
+          () => resolve(false),
+        )
+      } else {
+        resolve(window.confirm(msg.replace(/<br>/g, '\n')))
+      }
+    })
   }
 
   return {

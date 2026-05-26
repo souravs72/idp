@@ -9,6 +9,7 @@
   {
    "child": 0,
    "collapsible": 1,
+   "icon": "home",
    "indent": 0,
    "keep_closed": 0,
    "label": "Home",
@@ -54,8 +55,9 @@
    "type": "Link"
   }
  ],
- "modified": "2026-04-21 17:04:42.177900",
+ "modified": "2026-05-26 13:18:39.439996",
  "modified_by": "Administrator",
+ "module": "IDP",
  "name": "IDP",
  "owner": "Administrator",
  "standard": 1,

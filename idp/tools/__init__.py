@@ -4,9 +4,9 @@
 """Built-in tool registrations for the IDP agent loop (Phase 19).
 
 Importing this package triggers each module's ``@tool`` decorator,
-populating :mod:`idp.llm.tools.registry`.  Callers should:
+populating :mod:`idp.tools.registry`.  Callers should:
 
-    from idp.llm.tools.registry import (
+    from idp.tools.registry import (
         load_tool_registry,
         get_provider_schemas,
         dispatch,
@@ -18,7 +18,7 @@ calls back into this package.
 
 # Side-effect imports — each module registers a ToolSpec with the
 # global registry.  Order is irrelevant; we list alphabetically.
-from idp.llm.tools import (
+from idp.tools import (
 	ask_user,
 	compare_document,
 	create_document,
@@ -30,7 +30,7 @@ from idp.llm.tools import (
 	read_attachment_more,
 	validate_document,
 )
-from idp.llm.tools.base import ToolContext, ToolResult, ToolSpec, tool
+from idp.tools.base import ToolContext, ToolResult, ToolSpec, tool
 
 __all__ = [
 	"ToolContext",
