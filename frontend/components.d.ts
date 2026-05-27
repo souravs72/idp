@@ -14,6 +14,7 @@ declare module 'vue' {
     ConfidenceDot: typeof import('./src/components/chat/ConfidenceDot.vue')['default']
     ConfirmationCard: typeof import('./src/components/ConfirmationCard.vue')['default']
     ConfirmationCardUI: typeof import('./src/components/chat/ConfirmationCardUI.vue')['default']
+    ConfirmDialog: typeof import('./src/components/ConfirmDialog.vue')['default']
     ConversationList: typeof import('./src/components/chat/ConversationList.vue')['default']
     CostFooter: typeof import('./src/components/chat/CostFooter.vue')['default']
     DocumentThumbnail: typeof import('./src/components/DocumentThumbnail.vue')['default']

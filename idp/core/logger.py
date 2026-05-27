@@ -3,52 +3,72 @@
 
 """Unified project logger for the IDP module.
 
-All IDP code logs through a single ``idp`` logger with a fixed format:
+Delegates to Frappe's ``frappe.logger("idp")`` so records land in the
+standard bench logs folder (``logs/idp.log``) with rotation, *and* in
+the per-site logs folder (``sites/<site>/logs/idp.log``) when a site
+context is available.  Falls back to a plain stderr handler when
+Frappe is not importable (pure unit tests).
 
-	YYYY-MM-DD HH:MM:SS | <processName> | idp | <LEVEL> | tool=<name> <msg>
+Every record has the shape:
 
-Sub-module loggers were removed — callers identify themselves through
-the ``tool=`` field on the log line instead of via the logger name.
+	YYYY-MM-DD HH:MM:SS LEVEL idp tool=<name> <msg> [k=v ...]
 """
 
 import logging
-import multiprocessing
 
 _LOGGER_NAME = "idp"
-_FORMAT = "%(asctime)s | %(processName)s | %(name)s | %(levelname)s | %(message)s"
-_DATEFMT = "%Y-%m-%d %H:%M:%S"
+_FALLBACK_FORMAT = "%(asctime)s | %(processName)s | %(name)s | %(levelname)s | %(message)s"
+_FALLBACK_DATEFMT = "%Y-%m-%d %H:%M:%S"
 
 
-def _ensure_handler(logger: logging.Logger) -> None:
-	"""Attach a stream handler with the unified format if missing."""
+def _frappe_logger() -> logging.Logger | None:
+	"""Return ``frappe.logger("idp")`` if Frappe is available, else None."""
 
-	if logger.handlers:
-		return
-	handler = logging.StreamHandler()
-	handler.setFormatter(logging.Formatter(_FORMAT, datefmt=_DATEFMT))
-	logger.addHandler(handler)
-	logger.setLevel(logging.INFO)
-	# Allow the root logger to also process the record (Frappe sometimes
-	# attaches its own handler to root); avoid double-printing by setting
-	# propagate=False since our stream handler already prints to stderr.
-	logger.propagate = False
+	try:
+		import frappe
+		from frappe.utils.logger import get_logger as _frappe_get_logger
+	except Exception:
+		return None
+	try:
+		logger = _frappe_get_logger(
+			_LOGGER_NAME,
+			allow_site=True,
+			max_size=1_000_000,
+			file_count=10,
+		)
+	except Exception:
+		return None
+	# Frappe's default level is WARNING in production; lift to INFO so
+	# our tool-level events surface in ``logs/idp.log`` without admins
+	# having to flip ``developer_mode``.
+	if logger.level > logging.INFO or logger.level == logging.NOTSET:
+		logger.setLevel(logging.INFO)
+	return logger
+
+
+def _fallback_logger() -> logging.Logger:
+	"""Plain stderr logger for pure-Python contexts (tests, scripts)."""
+
+	logger = logging.getLogger(_LOGGER_NAME)
+	if not logger.handlers:
+		handler = logging.StreamHandler()
+		handler.setFormatter(logging.Formatter(_FALLBACK_FORMAT, datefmt=_FALLBACK_DATEFMT))
+		logger.addHandler(handler)
+		logger.setLevel(logging.INFO)
+		logger.propagate = False
+	return logger
 
 
 def get_logger(*_args, **_kwargs) -> logging.Logger:
 	"""Return the unified project logger.
 
-	Positional / keyword arguments are accepted but ignored so legacy call
-	sites such as ``get_logger("idp.ocr")`` continue to work without
-	immediate refactor.  The returned logger is always the single ``idp``
-	logger configured with the unified format.
+	Positional / keyword arguments are accepted but ignored so legacy
+	call sites such as ``get_logger("idp.ocr")`` continue to work
+	without immediate refactor.  The returned logger always writes to
+	the standard Frappe bench + site logs when Frappe is available.
 	"""
 
-	logger = logging.getLogger(_LOGGER_NAME)
-	_ensure_handler(logger)
-	# Preserve the multiprocessing process name in the format (helps when
-	# OCR runs in a subprocess).
-	multiprocessing.current_process()  # touch to ensure name is populated
-	return logger
+	return _frappe_logger() or _fallback_logger()
 
 
 def log_event(tool: str, message: str, level: str = "info", **extra) -> None:

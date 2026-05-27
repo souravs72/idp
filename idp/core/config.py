@@ -55,8 +55,7 @@ def is_feature_enabled(feature: str) -> bool:
 	- ``enable_comparison``
 	- ``enable_table_extraction``
 	- ``enable_layout_analysis``
-	- ``enable_pdf``, ``enable_images``, ``enable_excel``,
-	  ``enable_csv``, ``enable_docx``
+	- ``enable_pre_validation``
 
 	Returns ``True`` by default when the setting does not exist yet.
 	"""
@@ -185,11 +184,6 @@ def _default_settings() -> dict:
 		"enable_write_operations": 0,
 		"auto_create_missing_masters": 0,
 		"enable_comparison": 1,
-		"enable_pdf": 1,
-		"enable_images": 1,
-		"enable_excel": 1,
-		"enable_csv": 1,
-		"enable_docx": 1,
 		"ocr_timeout_seconds": _DEFAULT_OCR_TIMEOUT_SECONDS,
 		"max_pages_per_pdf": MAX_PAGES_PER_PDF,
 		"inline_text_budget_chars": _DEFAULT_INLINE_TEXT_BUDGET_CHARS,

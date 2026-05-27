@@ -57,11 +57,6 @@ def get_settings() -> dict:
 			"comparison": is_feature_enabled("enable_comparison"),
 			"auto_create_masters": is_feature_enabled("auto_create_missing_masters"),
 			"write_operations": is_feature_enabled("enable_write_operations"),
-			"pdf": is_feature_enabled("enable_pdf"),
-			"images": is_feature_enabled("enable_images"),
-			"excel": is_feature_enabled("enable_excel"),
-			"csv": is_feature_enabled("enable_csv"),
-			"docx": is_feature_enabled("enable_docx"),
 		},
 		# Phase 29 — confidence dot toggle exposed at the top level so
 		# the chat surface can read it without a second roundtrip.

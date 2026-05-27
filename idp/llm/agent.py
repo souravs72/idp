@@ -516,11 +516,24 @@ class IDPAgent:
 	# ------------------------------------------------------------------ helpers
 
 	def _tool_names_for_llm(self) -> list[str]:
-		"""Return tool names to advertise to the LLM (filters hidden_tools)."""
+		"""Return tool names to advertise to the LLM (filters hidden_tools).
+
+		Also strips ``validate_document`` when
+		``IDP Settings.enable_pre_validation`` is off — admins who turn
+		pre-validation off don't want the agent calling the validator
+		as an LLM tool either.
+		"""
 
 		from idp.tools.registry import list_tools
 
 		hidden = set(self.hidden_tools)
+		try:
+			from idp.core.config import is_feature_enabled
+
+			if not is_feature_enabled("enable_pre_validation"):
+				hidden.add("validate_document")
+		except Exception:
+			pass
 		return [t.name for t in list_tools() if t.name not in hidden]
 
 	def _fetch_history(self) -> list[dict]:

@@ -40,12 +40,6 @@
   "enable_table_extraction",
   "enable_layout_analysis",
   "max_file_size_mb",
-  "enable_pdf",
-  "enable_images",
-  "enable_excel",
-  "column_break_formats",
-  "enable_csv",
-  "enable_docx",
   "advanced_tab",
   "extraction_section",
   "ocr_engine",
@@ -199,40 +193,6 @@
    "fieldname": "enable_comparison",
    "fieldtype": "Check",
    "label": "Enable Comparison"
-  },
-  {
-   "default": "1",
-   "fieldname": "enable_pdf",
-   "fieldtype": "Check",
-   "label": "Enable PDF"
-  },
-  {
-   "default": "1",
-   "fieldname": "enable_images",
-   "fieldtype": "Check",
-   "label": "Enable Images"
-  },
-  {
-   "default": "1",
-   "fieldname": "enable_excel",
-   "fieldtype": "Check",
-   "label": "Enable Excel"
-  },
-  {
-   "fieldname": "column_break_formats",
-   "fieldtype": "Column Break"
-  },
-  {
-   "default": "1",
-   "fieldname": "enable_csv",
-   "fieldtype": "Check",
-   "label": "Enable CSV"
-  },
-  {
-   "default": "1",
-   "fieldname": "enable_docx",
-   "fieldtype": "Check",
-   "label": "Enable DOCX"
   },
   {
    "fieldname": "advanced_section",

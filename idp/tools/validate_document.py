@@ -48,6 +48,26 @@ _PARAMETERS_SCHEMA = {
 	parameters_schema=_PARAMETERS_SCHEMA,
 )
 def validate_document(arguments: dict, ctx: ToolContext) -> ToolResult:
+	# Gated by ``IDP Settings.enable_pre_validation``.  When admins
+	# turn the toggle off the agent loop also hides this tool from the
+	# LLM (see ``idp.llm.agent._tool_names_for_llm``); this short-
+	# circuit is the defensive backstop in case the handler is reached
+	# by other paths (direct dispatch, tests, etc.).
+	try:
+		from idp.core.config import is_feature_enabled
+
+		if not is_feature_enabled("enable_pre_validation"):
+			return ToolResult.ok(
+				data={
+					"skipped": True,
+					"is_valid": True,
+					"warnings": [],
+					"reason": "Pre-validation disabled in IDP Settings",
+				}
+			)
+	except Exception:
+		pass
+
 	args = arguments or {}
 	doctype = (args.get("doctype") or ctx.target_doctype or "").strip()
 	if not doctype:

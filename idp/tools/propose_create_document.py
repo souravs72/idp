@@ -781,9 +781,22 @@ def _run_business_rules(
 ) -> list[str]:
 	"""Run the business-rules validator on a synthesised MappedDocument.
 
+	Gated by ``IDP Settings.enable_pre_validation``: when the admin has
+	turned the pre-flight check off, this returns ``[]`` immediately and
+	the card renders without auto-generated warnings.  The LLM
+	``validate_document`` tool stays available regardless — the toggle
+	only controls the *automatic* validation step.
+
 	Failures here never abort the card render — we just append the
 	warnings to ``validation.business_rule_warnings``.
 	"""
+
+	try:
+		from idp.core.config import is_feature_enabled
+	except Exception:
+		is_feature_enabled = None
+	if is_feature_enabled is not None and not is_feature_enabled("enable_pre_validation"):
+		return []
 
 	try:
 		from idp.mappers.base import MappedDocument

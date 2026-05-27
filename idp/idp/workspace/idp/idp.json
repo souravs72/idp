@@ -1,8 +1,8 @@
 {
  "app": "idp",
  "charts": [],
- "content": "[{\"id\":\"idp_header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Intelligent Document Processing</b></span>\",\"col\":12}},{\"id\":\"idp_shortcut_header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Shortcuts</b></span>\",\"col\":12}},{\"id\":\"idp_shortcut_new_chat\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"New IDP Chat\",\"col\":3}},{\"id\":\"idp_shortcut_my_conv\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"My Conversations\",\"col\":3}},{\"id\":\"idp_shortcut_upload\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Upload Document\",\"col\":3}},{\"id\":\"idp_shortcut_history\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Processing History\",\"col\":3}},{\"id\":\"idp_metrics_header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Today\\u2019s Activity</b></span>\",\"col\":12}},{\"id\":\"idp_card_total_conv\",\"type\":\"card\",\"data\":{\"card_name\":\"Total Conversations\",\"col\":3}},{\"id\":\"idp_card_messages_today\",\"type\":\"card\",\"data\":{\"card_name\":\"Messages Today\",\"col\":3}},{\"id\":\"idp_card_tokens_today\",\"type\":\"card\",\"data\":{\"card_name\":\"Token Usage (Today)\",\"col\":3}},{\"id\":\"idp_card_llm_cost\",\"type\":\"card\",\"data\":{\"card_name\":\"LLM Cost (Today)\",\"col\":3}},{\"id\":\"idp_masters_header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Configuration</b></span>\",\"col\":12}}]",
- "creation": "2026-04-21 00:00:00.000000",
+ "content": "[{\"id\":\"U9CXcp55jP\",\"type\":\"paragraph\",\"data\":{\"text\":\"Click on \\n\\t\\t\\t\\n\\t\\t\\t\\n\\t\\t to edit\",\"col\":12}},{\"id\":\"AnUQJHS-BT\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Conversations\",\"col\":3}},{\"id\":\"JSm0muKmew\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Token Usage (Today)\",\"col\":3}},{\"id\":\"KjJ2wKFKo2\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Messages Today\",\"col\":3}},{\"id\":\"Aee5Rp5LCM\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"LLM Cost (Today)\",\"col\":3}},{\"id\":\"nf2PvLSBEw\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"9GbiSkjlu3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"IDP Chat\",\"col\":3}},{\"id\":\"laKjz5WcTx\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Idp Settings\",\"col\":3}},{\"id\":\"Tk4KcqGgA6\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Idp Conversation\",\"col\":3}},{\"id\":\"ywLKz3goCj\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Idp Message\",\"col\":3}}]",
+ "creation": "2026-05-27 13:30:00",
  "custom_blocks": [],
  "docstatus": 0,
  "doctype": "Workspace",
@@ -12,184 +12,8 @@
  "idx": 0,
  "is_hidden": 0,
  "label": "IDP",
- "links": [
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Conversations & Messages",
-   "link_count": 0,
-   "onboard": 0,
-   "type": "Card Break"
-  },
-  {
-   "dependencies": "",
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "IDP Conversation",
-   "link_count": 0,
-   "link_to": "IDP Conversation",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "dependencies": "",
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "IDP Message",
-   "link_count": 0,
-   "link_to": "IDP Message",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "dependencies": "",
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "IDP Document Log",
-   "link_count": 0,
-   "link_to": "IDP Document Log",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "dependencies": "",
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "IDP Extraction Correction",
-   "link_count": 0,
-   "link_to": "IDP Extraction Correction",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Extraction & Prompts",
-   "link_count": 0,
-   "onboard": 0,
-   "type": "Card Break"
-  },
-  {
-   "dependencies": "",
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "IDP Extraction Template",
-   "link_count": 0,
-   "link_to": "IDP Extraction Template",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "dependencies": "",
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "IDP Prompt Library",
-   "link_count": 0,
-   "link_to": "IDP Prompt Library",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "dependencies": "",
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "IDP Prompt Template",
-   "link_count": 0,
-   "link_to": "IDP Prompt Template",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "dependencies": "",
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "IDP Skill",
-   "link_count": 0,
-   "link_to": "IDP Skill",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Tools & Plugins",
-   "link_count": 0,
-   "onboard": 0,
-   "type": "Card Break"
-  },
-  {
-   "dependencies": "",
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "IDP Tool Configuration",
-   "link_count": 0,
-   "link_to": "IDP Tool Configuration",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "dependencies": "",
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "IDP Tool Role",
-   "link_count": 0,
-   "link_to": "IDP Tool Role",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "dependencies": "",
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "IDP Plugin Configuration",
-   "link_count": 0,
-   "link_to": "IDP Plugin Configuration",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "dependencies": "",
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "IDP Batch Job",
-   "link_count": 0,
-   "link_to": "IDP Batch Job",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "Configuration",
-   "link_count": 0,
-   "onboard": 0,
-   "type": "Card Break"
-  },
-  {
-   "dependencies": "",
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "IDP Settings",
-   "link_count": 0,
-   "link_to": "IDP Settings",
-   "link_type": "DocType",
-   "onboard": 1,
-   "type": "Link"
-  }
- ],
- "modified": "2026-05-26 13:16:00.000000",
+ "links": [],
+ "modified": "2026-05-27 13:43:07.106711",
  "modified_by": "Administrator",
  "module": "IDP",
  "name": "IDP",
@@ -199,12 +23,12 @@
    "number_card_name": "Total Conversations"
   },
   {
-   "label": "Messages Today",
-   "number_card_name": "Messages Today"
-  },
-  {
    "label": "Token Usage (Today)",
    "number_card_name": "Token Usage (Today)"
+  },
+  {
+   "label": "Messages Today",
+   "number_card_name": "Messages Today"
   },
   {
    "label": "LLM Cost (Today)",
@@ -220,53 +44,33 @@
  "sequence_id": 20.0,
  "shortcuts": [
   {
-   "color": "Blue",
-   "doc_view": "",
-   "label": "New IDP Chat",
-   "link_to": "/idp/chat",
-   "type": "URL"
-  },
-  {
-   "color": "Blue",
+   "color": "Grey",
    "doc_view": "List",
-   "label": "My Conversations",
-   "link_to": "IDP Conversation",
-   "stats_filter": "{\"user\":[\"=\",\"frappe.session.user\"]}",
+   "label": "Idp Message",
+   "link_to": "IDP Message",
+   "stats_filter": "[]",
    "type": "DocType"
   },
   {
-   "color": "Green",
-   "doc_view": "",
-   "label": "Upload Document",
-   "link_to": "/idp",
-   "type": "URL"
-  },
-  {
-   "color": "Blue",
-   "doc_view": "",
-   "label": "Chat Assistant",
-   "link_to": "/idp/chat",
-   "type": "URL"
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "IDP Chat",
+   "type": "URL",
+   "url": "/idp/chat"
   },
   {
    "color": "Grey",
-   "doc_view": "",
-   "label": "IDP Settings",
+   "doc_view": "List",
+   "label": "Idp Conversation",
+   "link_to": "IDP Conversation",
+   "stats_filter": "[]",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Idp Settings",
    "link_to": "IDP Settings",
-   "type": "DocType"
-  },
-  {
-   "color": "Grey",
-   "doc_view": "List",
-   "label": "Processing History",
-   "link_to": "IDP Document Log",
-   "type": "DocType"
-  },
-  {
-   "color": "Blue",
-   "doc_view": "List",
-   "label": "Conversations",
-   "link_to": "IDP Conversation",
    "type": "DocType"
   }
  ],
