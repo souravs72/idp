@@ -58,6 +58,9 @@ SHORT_TYPE_BY_MIME = {
 }
 
 
+_DEFAULT_CHUNK = 10_000
+_MAX_CHUNK = 30_000
+
 _PARAMETERS_SCHEMA = {
 	"type": "object",
 	"properties": {
@@ -71,6 +74,20 @@ _PARAMETERS_SCHEMA = {
 			"type": "string",
 			"description": "OCR language hint (ISO-639-1, e.g. 'en'). Defaults to 'en'.",
 		},
+		"offset": {
+			"type": "integer",
+			"minimum": 0,
+			"description": (
+				"Character offset to resume from when the previous response was truncated. "
+				"Omit (or set to 0) for a fresh extraction."
+			),
+		},
+		"length": {
+			"type": "integer",
+			"minimum": 1,
+			"maximum": _MAX_CHUNK,
+			"description": f"Max chars to return in pagination mode (default {_DEFAULT_CHUNK}). Ignored when offset=0.",
+		},
 	},
 	"required": ["file_id"],
 	"additionalProperties": False,
@@ -83,7 +100,9 @@ _PARAMETERS_SCHEMA = {
 		"Extract structured content (text + tables + metadata) from a file the "
 		"user has attached.  Reference the file by its monotonic file_id alias "
 		"(e.g. 'file_1') — never a URL or hash.  Returns page-delimited text, "
-		"detected tables, and per-page extraction stats.  On failure returns "
+		"detected tables, and per-page extraction stats.  "
+		"When the response is truncated, call again with offset=<next_offset> to "
+		"page through the remaining text.  On failure returns "
 		"stop_processing=true with an error_code; do not retry."
 	),
 	parameters_schema=_PARAMETERS_SCHEMA,
@@ -91,7 +110,8 @@ _PARAMETERS_SCHEMA = {
 def extract_document(arguments: dict, ctx: ToolContext) -> ToolResult:
 	"""Resolve the alias, dispatch to the format-appropriate extractor."""
 
-	alias = (arguments or {}).get("file_id", "").strip()
+	args = arguments or {}
+	alias = args.get("file_id", "").strip()
 	if not alias:
 		return ToolResult.fail(
 			"file_id is required",
@@ -99,7 +119,18 @@ def extract_document(arguments: dict, ctx: ToolContext) -> ToolResult:
 			stop_processing=True,
 		)
 
-	lang = (arguments.get("language") or "en").strip() or "en"
+	lang = (args.get("language") or "en").strip() or "en"
+
+	# Pagination mode: when offset > 0 the caller wants a specific slice.
+	try:
+		offset = int(args.get("offset") or 0)
+	except (TypeError, ValueError):
+		offset = 0
+	if offset < 0:
+		offset = 0
+
+	if offset > 0:
+		return _paginate(alias, offset, args, ctx)
 
 	registry = get_registry(ctx.conversation_id)
 	try:
@@ -270,6 +301,61 @@ def _truncate_to_page_boundary(body: str, budget: int) -> str:
 	if cut > budget // 2:
 		return body[:cut].rstrip()
 	return body[:budget].rstrip()
+
+
+def _paginate(alias: str, offset: int, args: dict, ctx: ToolContext) -> ToolResult:
+	"""Return a text slice starting at *offset* (pagination mode)."""
+
+	registry = get_registry(ctx.conversation_id)
+	record = registry.resolve(alias)
+	if record is None:
+		return ToolResult.fail(
+			f"unknown file alias: {alias!r}",
+			error_code="FILE_ALIAS_NOT_FOUND",
+			stop_processing=True,
+		)
+
+	try:
+		from idp.extractors import extract_content
+	except ImportError as exc:
+		return ToolResult.fail(
+			f"extractor pipeline unavailable: {exc}",
+			error_code="EXTRACTION_FAILED",
+			stop_processing=True,
+		)
+
+	length = args.get("length")
+	try:
+		length = int(length) if length is not None else _DEFAULT_CHUNK
+	except (TypeError, ValueError):
+		length = _DEFAULT_CHUNK
+	length = max(1, min(length, _MAX_CHUNK))
+
+	publish_progress(
+		ctx,
+		tool_name="extract_document",
+		user_visible_message=(
+			f"Reading more of {record.file_name or alias} from offset {offset}…"
+		),
+		stage="read_more_start",
+	)
+
+	result = extract_content(record.file_url, lang="en")
+	body = result.text or ""
+	total = len(body)
+	chunk = body[offset : offset + length]
+	next_offset = offset + len(chunk)
+	return ToolResult.ok(
+		data={
+			"file_id": alias,
+			"offset": offset,
+			"length": len(chunk),
+			"content": chunk,
+			"total_chars": total,
+			"next_offset": next_offset if next_offset < total else None,
+			"truncated": next_offset < total,
+		}
+	)
 
 
 __all__ = ["extract_document"]

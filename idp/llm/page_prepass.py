@@ -7,7 +7,7 @@ Cheap regex pass that decides, per page, whether the page contains any
 signal a target DocType might care about.  Pages without a signal are
 replaced in the LLM context with a short placeholder while the original
 text stays in storage and remains addressable via
-``read_attachment_more``.
+``extract_document`` with an ``offset`` parameter.
 
 Design notes:
 

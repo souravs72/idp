@@ -212,8 +212,9 @@ def render_attachment_for_llm(
 	header = f"--- Extracted content (first {min(full_len, budget)} chars) ---"
 	parts = [tag, header, rendered]
 	if truncated_chars > 0:
+		next_offset = len(rendered)
 		parts.append(
-			f"... [truncated: {truncated_chars} more chars available — use read_attachment_more tool]"
+			f"... [truncated: {truncated_chars} more chars available — call extract_document with offset={next_offset} to read more]"
 		)
 	parts.append("---")
 	return "\n".join(parts)
