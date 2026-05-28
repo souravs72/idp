@@ -6,7 +6,7 @@
  "field_order": [
   "section_break_rcjc",
   "enabled",
-  "phase11_chatbot_section",
+  "hatbot_section",
   "streaming_enabled",
   "llm_provider_section",
   "llm_provider",
@@ -16,12 +16,12 @@
   "ollama_host_url",
   "custom_providers",
   "model_overrides",
-  "phase11_llm_section",
+  "llm_section",
   "llm_enabled",
   "llm_api_base",
   "llm_fallback_threshold_default",
   "llm_vision_enabled",
-  "column_break_phase11_llm",
+  "column_break_llm",
   "llm_model_routes",
   "llm_max_tokens",
   "processing_tab",
@@ -44,18 +44,18 @@
   "extraction_section",
   "ocr_engine",
   "inline_text_budget_chars",
-  "column_break_phase27",
+  "column_break",
   "vision_image_max_dim_px",
   "advanced_section",
   "ocr_timeout_seconds",
   "confirmation_page_size",
   "column_break_qror",
   "max_pages_per_pdf",
-  "phase15_section",
+  "advanced_feat_section",
   "enable_templates",
   "enable_batch_processing",
   "enable_feedback_loop",
-  "column_break_phase15",
+  "column_break_feedback",
   "enable_workflow_routing",
   "enable_prompt_library",
   "approver_rules",
@@ -69,7 +69,7 @@
   "mapper_cache_enabled",
   "mapper_cache_ttl_hours",
   "vision_text_threshold",
-  "column_break_phase28",
+  "column_break_vision",
   "summarise_after_messages",
   "strip_thinking_blocks",
   "mapper_version",
@@ -77,18 +77,18 @@
   "provenance_section",
   "show_confidence_dots",
   "conversation_tab",
-  "phase31_section",
+  "conversation_section",
   "enable_cost_footer",
   "enable_preflight_warning",
   "enable_suggested_prompts",
-  "column_break_phase31",
+  "column_break_suggest",
   "enable_sidebar_search",
   "enable_bulk_actions",
   "enable_conversation_delete",
   "retention_section",
   "active_retention_days",
   "archived_retention_days",
-  "column_break_phase11_retention",
+  "column_break_retention",
   "auto_purge_failed_after_days",
   "reversibility_section",
   "undo_window_minutes"
@@ -236,20 +236,11 @@
    "label": "Inline Text Budget (chars)"
   },
   {
-   "fieldname": "column_break_phase27",
-   "fieldtype": "Column Break"
-  },
-  {
    "default": "1568",
    "description": "Vision OCR resizes images down to this maximum dimension (px) before sending to Ollama to control token cost.",
    "fieldname": "vision_image_max_dim_px",
    "fieldtype": "Int",
    "label": "Vision Image Max Dim (px)"
-  },
-  {
-   "fieldname": "phase15_section",
-   "fieldtype": "Section Break",
-   "label": "Advanced Features"
   },
   {
    "default": "1",
@@ -271,10 +262,6 @@
    "fieldname": "enable_feedback_loop",
    "fieldtype": "Check",
    "label": "Enable Feedback Loop"
-  },
-  {
-   "fieldname": "column_break_phase15",
-   "fieldtype": "Column Break"
   },
   {
    "default": "0",
@@ -357,11 +344,6 @@
    "label": "Model Overrides (JSON)"
   },
   {
-   "fieldname": "phase11_llm_section",
-   "fieldtype": "Section Break",
-   "label": "LLM Configuration"
-  },
-  {
    "default": "1",
    "description": "Master switch for the v2 LLM stack (provider abstraction, hybrid mapper, agent loop). When off, IDP falls back to rule-only extraction and the chatbot UI degrades to legacy mode.",
    "fieldname": "llm_enabled",
@@ -388,10 +370,6 @@
    "fieldname": "llm_vision_enabled",
    "fieldtype": "Check",
    "label": "LLM Vision Enabled"
-  },
-  {
-   "fieldname": "column_break_phase11_llm",
-   "fieldtype": "Column Break"
   },
   {
    "description": "Map each model purpose (classification, extraction, vision, summarisation, confirmation) to a provider/model/tier. Cheap tier handles gating; expensive tier handles extraction.",
@@ -425,21 +403,12 @@
    "non_negative": 1
   },
   {
-   "fieldname": "column_break_phase11_retention",
-   "fieldtype": "Column Break"
-  },
-  {
    "default": "30",
    "description": "Conversations in Failed status are purged after N days (legal_hold still exempts).",
    "fieldname": "auto_purge_failed_after_days",
    "fieldtype": "Int",
    "label": "Auto-Purge Failed After (days)",
    "non_negative": 1
-  },
-  {
-   "fieldname": "phase11_chatbot_section",
-   "fieldtype": "Section Break",
-   "label": "Chatbot UI"
   },
   {
    "default": "1",
@@ -477,10 +446,6 @@
    "fieldtype": "Int",
    "label": "Vision Text Threshold (chars)",
    "non_negative": 1
-  },
-  {
-   "fieldname": "column_break_phase28",
-   "fieldtype": "Column Break"
   },
   {
    "default": "8",
@@ -521,11 +486,6 @@
    "label": "Show Confidence Dots"
   },
   {
-   "fieldname": "phase31_section",
-   "fieldtype": "Section Break",
-   "label": "Conversation"
-  },
-  {
    "default": "1",
    "description": "Show a persistent cost/tokens/duration chip at the bottom of the chat surface.",
    "fieldname": "enable_cost_footer",
@@ -545,10 +505,6 @@
    "fieldname": "enable_suggested_prompts",
    "fieldtype": "Check",
    "label": "Enable Suggested Prompts"
-  },
-  {
-   "fieldname": "column_break_phase31",
-   "fieldtype": "Column Break"
   },
   {
    "default": "1",
@@ -645,11 +601,55 @@
    "fieldname": "retention_section",
    "fieldtype": "Section Break",
    "label": "Conversation Retention"
+  },
+  {
+   "fieldname": "hatbot_section",
+   "fieldtype": "Section Break",
+   "label": "Chatbot UI"
+  },
+  {
+   "fieldname": "llm_section",
+   "fieldtype": "Section Break",
+   "label": "LLM Configuration"
+  },
+  {
+   "fieldname": "column_break_llm",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "advanced_feat_section",
+   "fieldtype": "Section Break",
+   "label": "Advanced Features"
+  },
+  {
+   "fieldname": "column_break_feedback",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_vision",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "conversation_section",
+   "fieldtype": "Section Break",
+   "label": "Conversation"
+  },
+  {
+   "fieldname": "column_break_suggest",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_retention",
+   "fieldtype": "Column Break"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-05-26 12:00:00.000000",
+ "modified": "2026-05-28 12:06:44.970872",
  "modified_by": "Administrator",
  "module": "IDP",
  "name": "IDP Settings",

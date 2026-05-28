@@ -1,7 +1,7 @@
 {
  "actions": [],
  "autoname": "field:template_name",
- "creation": "2026-04-21 00:00:00.000000",
+ "creation": "2026-04-21 00:00:00",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
@@ -13,9 +13,9 @@
   "validation_rules",
   "llm_section",
   "llm_fallback_threshold",
-  "phase28_section",
+  "page_pre_pass_section",
   "page_pre_pass_patterns",
-  "phase29_section",
+  "confidence_section",
   "confidence_amber_threshold",
   "confidence_red_threshold"
  ],
@@ -71,20 +71,10 @@
    "precision": "3"
   },
   {
-   "fieldname": "phase28_section",
-   "fieldtype": "Section Break",
-   "label": "Page Pre-Pass (Phase 28)"
-  },
-  {
    "description": "JSON list of regex patterns added to the per-DocType signal set used by the page-aware pre-pass. Pages without any built-in or template-defined signal are replaced with a placeholder in the LLM context. Example: [\"\\\\bGSTIN\\\\b\", \"IFSC[ :]\"]",
    "fieldname": "page_pre_pass_patterns",
    "fieldtype": "Long Text",
    "label": "Page Pre-Pass Patterns (JSON)"
-  },
-  {
-   "fieldname": "phase29_section",
-   "fieldtype": "Section Break",
-   "label": "Confidence Bands (Phase 29)"
   },
   {
    "default": "0.75",
@@ -101,11 +91,21 @@
    "fieldtype": "Float",
    "label": "Confidence Red Threshold",
    "precision": "3"
+  },
+  {
+   "fieldname": "page_pre_pass_section",
+   "fieldtype": "Section Break",
+   "label": "Page Pre-Pass"
+  },
+  {
+   "fieldname": "confidence_section",
+   "fieldtype": "Section Break",
+   "label": "Confidence Bands"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-05-12 00:00:00.000000",
+ "modified": "2026-05-28 12:01:59.760604",
  "modified_by": "Administrator",
  "module": "IDP",
  "name": "IDP Extraction Template",
@@ -134,6 +134,7 @@
    "write": 1
   }
  ],
+ "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],

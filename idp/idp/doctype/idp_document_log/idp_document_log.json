@@ -1,7 +1,7 @@
 {
  "actions": [],
  "autoname": "IDPLOG-.YYYY.-.#####",
- "creation": "2026-04-21 00:00:00.000000",
+ "creation": "2026-04-21 00:00:00",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -27,18 +27,18 @@
   "extraction_data",
   "validation_errors",
   "error_message",
-  "phase11_v2_section",
+  "llm_section",
   "conversation",
   "mapper_source",
   "model_tier",
-  "column_break_phase11_v2",
+  "column_break_llm",
   "llm_tokens_used",
   "llm_cost_usd",
   "cached_tokens",
-  "phase11_te_section",
+  "token_section",
   "tokens_per_extracted_field",
   "attachment_text_chars_sent",
-  "column_break_phase11_te",
+  "column_break_te",
   "attachment_text_chars_total",
   "vision_calls_in_request",
   "mapper_cache_state"
@@ -162,12 +162,6 @@
    "label": "Error Message"
   },
   {
-   "collapsible": 1,
-   "fieldname": "phase11_v2_section",
-   "fieldtype": "Section Break",
-   "label": "LLM & Conversation"
-  },
-  {
    "description": "Conversation this log row belongs to. Nullable for legacy single-shot uploads.",
    "fieldname": "conversation",
    "fieldtype": "Link",
@@ -188,10 +182,6 @@
    "fieldtype": "Select",
    "label": "Model Tier",
    "options": "\ncheap\nexpensive"
-  },
-  {
-   "fieldname": "column_break_phase11_v2",
-   "fieldtype": "Column Break"
   },
   {
    "default": "0",
@@ -216,12 +206,6 @@
    "non_negative": 1
   },
   {
-   "collapsible": 1,
-   "fieldname": "phase11_te_section",
-   "fieldtype": "Section Break",
-   "label": "Token Efficiency Metrics"
-  },
-  {
    "description": "llm_tokens_used / number of extracted fields. Tracked week-over-week \u2014 sustained >15% regression triggers investigation.",
    "fieldname": "tokens_per_extracted_field",
    "fieldtype": "Float",
@@ -236,10 +220,6 @@
    "fieldtype": "Int",
    "label": "Attachment Text Chars Sent",
    "non_negative": 1
-  },
-  {
-   "fieldname": "column_break_phase11_te",
-   "fieldtype": "Column Break"
   },
   {
    "default": "0",
@@ -258,19 +238,40 @@
    "non_negative": 1
   },
   {
-   "description": "Phase 28 mapper-output cache state for this row. hit = served from cache (rule & possibly LLM skipped); miss = computed fresh and written back; bypass = caching disabled or input not cacheable.",
+   "description": "mapper-output cache state for this row. hit = served from cache (rule & possibly LLM skipped); miss = computed fresh and written back; bypass = caching disabled or input not cacheable.",
    "fieldname": "mapper_cache_state",
    "fieldtype": "Select",
    "label": "Mapper Cache State",
    "options": "\nhit\nmiss\nbypass"
+  },
+  {
+   "fieldname": "column_break_te",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_llm",
+   "fieldtype": "Column Break"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "llm_section",
+   "fieldtype": "Section Break",
+   "label": "LLM & Conversation"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "token_section",
+   "fieldtype": "Section Break",
+   "label": "Token Efficiency Metrics"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-05-12 00:00:00.000000",
+ "modified": "2026-05-28 12:01:05.085641",
  "modified_by": "Administrator",
  "module": "IDP",
  "name": "IDP Document Log",
+ "naming_rule": "Expression",
  "owner": "Administrator",
  "permissions": [
   {
@@ -296,6 +297,7 @@
    "write": 1
   }
  ],
+ "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],

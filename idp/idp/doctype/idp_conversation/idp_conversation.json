@@ -1,7 +1,7 @@
 {
  "actions": [],
  "autoname": "format:IDPCONV-{YYYY}-{#####}",
- "creation": "2026-04-21 00:00:00.000000",
+ "creation": "2026-04-21 00:00:00",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -26,7 +26,7 @@
   "last_message_on",
   "attachments_section",
   "attachments",
-  "phase28_section",
+  "transcript_section",
   "summary_digest",
   "summary_up_to_seq",
   "metadata_section",
@@ -156,12 +156,6 @@
    "options": "IDP Conversation Attachment"
   },
   {
-   "collapsible": 1,
-   "fieldname": "phase28_section",
-   "fieldtype": "Section Break",
-   "label": "Transcript Digest (Phase 28)"
-  },
-  {
    "description": "Compressed ~200-token digest of messages with sequence <= summary_up_to_seq. Recomputed only when new messages cross the IDP Settings.summarise_after_messages boundary.",
    "fieldname": "summary_digest",
    "fieldtype": "Long Text",
@@ -184,18 +178,25 @@
    "label": "Metadata"
   },
   {
-   "description": "Free-form JSON — feature flags, template hints, etc.",
+   "description": "Free-form JSON \u2014 feature flags, template hints, etc.",
    "fieldname": "metadata",
    "fieldtype": "JSON",
    "label": "Metadata"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "transcript_section",
+   "fieldtype": "Section Break",
+   "label": "Transcript Digest"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-04-21 00:00:00.000000",
+ "modified": "2026-05-28 10:34:25.506153",
  "modified_by": "Administrator",
  "module": "IDP",
  "name": "IDP Conversation",
+ "naming_rule": "Expression (old style)",
  "owner": "Administrator",
  "permissions": [
   {
@@ -223,6 +224,7 @@
    "write": 1
   }
  ],
+ "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],

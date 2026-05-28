@@ -1,7 +1,7 @@
 {
  "actions": [],
  "autoname": "format:IDPMSG-{YYYY}-{#####}",
- "creation": "2026-04-21 00:00:00.000000",
+ "creation": "2026-04-21 00:00:00",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -86,7 +86,7 @@
   },
   {
    "default": "complete",
-   "description": "Persistence state for streamed assistant messages (Phase 30). cancelled = user aborted mid-stream; complete = full response captured.",
+   "description": "Persistence state for streamed assistant messages. cancelled = user aborted mid-stream; complete = full response captured.",
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",
@@ -176,10 +176,10 @@
    "collapsible": 1,
    "fieldname": "undo_section",
    "fieldtype": "Section Break",
-   "label": "Undo Tracking (Phase 32)"
+   "label": "Undo Tracking"
   },
   {
-   "description": "Phase 32 — ERPNext DocType created from this ConfirmationCard (populated by confirm_card).",
+   "description": "ERPNext DocType created from this ConfirmationCard (populated by confirm_card).",
    "fieldname": "created_doctype",
    "fieldtype": "Link",
    "label": "Created DocType",
@@ -187,14 +187,14 @@
    "read_only": 1
   },
   {
-   "description": "Phase 32 — ERPNext document name created from this card.",
+   "description": "ERPNext document name created from this card.",
    "fieldname": "created_docname",
    "fieldtype": "Data",
    "label": "Created Docname",
    "read_only": 1
   },
   {
-   "description": "Phase 32 — UTC deadline after which the undo action is rejected.",
+   "description": "UTC deadline after which the undo action is rejected.",
    "fieldname": "undo_deadline",
    "fieldtype": "Datetime",
    "label": "Undo Deadline",
@@ -242,10 +242,11 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-05-16 00:00:00.000000",
+ "modified": "2026-05-28 10:48:08.241698",
  "modified_by": "Administrator",
  "module": "IDP",
  "name": "IDP Message",
+ "naming_rule": "Expression (old style)",
  "owner": "Administrator",
  "permissions": [
   {
@@ -262,7 +263,6 @@
   },
   {
    "create": 1,
-   "delete": 0,
    "email": 1,
    "print": 1,
    "read": 1,
@@ -272,8 +272,8 @@
    "write": 1
   }
  ],
+ "row_format": "Dynamic",
  "sort_field": "sequence",
  "sort_order": "ASC",
- "states": [],
- "track_changes": 0
+ "states": []
 }
