@@ -128,6 +128,12 @@
         @focus-source="$emit('focus-source', $event)"
       />
 
+      <!-- Phase 36 D1 — ComparisonCard renderer -->
+      <ComparisonCardUI
+        v-if="isComparisonCard"
+        :message="message"
+      />
+
       <!-- Attachments -->
       <div v-if="parsedAttachments.length" class="space-y-1">
         <a
@@ -156,6 +162,7 @@
 <script setup>
 import { computed } from 'vue'
 import ConfirmationCardUI from './ConfirmationCardUI.vue'
+import ComparisonCardUI from './ComparisonCardUI.vue'
 import { renderMarkdown } from '@/utils/markdown'
 
 const props = defineProps({
@@ -253,6 +260,12 @@ const isErrorCard = computed(
   () => props.message.rendered_card_type === 'ErrorCard',
 )
 
+const isComparisonCard = computed(
+  () =>
+    props.message.rendered_card_type === 'ComparisonCard' &&
+    !!props.message.rendered_card_payload,
+)
+
 const errorPayload = computed(() => {
   if (!isErrorCard.value) return null
   return safeJson(props.message.rendered_card_payload) || null
@@ -279,12 +292,24 @@ function formatJson(obj) {
 
 <style scoped>
 .idp-markdown :deep(p) {
-  margin: 0;
+  margin: 0.25rem 0;
 }
-.idp-markdown :deep(ul) {
-  margin: 0.25rem 0 0.25rem 0;
+.idp-markdown :deep(h1),
+.idp-markdown :deep(h2),
+.idp-markdown :deep(h3) {
+  font-weight: 600;
+  margin: 0.5rem 0 0.25rem;
+}
+.idp-markdown :deep(h1) { font-size: 1rem; }
+.idp-markdown :deep(h2) { font-size: 0.9rem; }
+.idp-markdown :deep(h3) { font-size: 0.85rem; }
+.idp-markdown :deep(ul),
+.idp-markdown :deep(ol) {
+  margin: 0.25rem 0;
   padding-left: 1.25rem;
 }
+.idp-markdown :deep(ul) { list-style-type: disc; }
+.idp-markdown :deep(ol) { list-style-type: decimal; }
 .idp-markdown :deep(strong) {
   font-weight: 600;
 }
@@ -293,5 +318,52 @@ function formatJson(obj) {
 }
 .idp-markdown :deep(pre) {
   margin: 0.5rem 0;
+  overflow-x: auto;
+  border-radius: 0.25rem;
+  background: #1f2937;
+  padding: 0.5rem;
+  font-size: 0.75rem;
+  color: #f3f4f6;
+}
+.idp-markdown :deep(code) {
+  background: #f3f4f6;
+  border-radius: 0.2rem;
+  padding: 0.1rem 0.3rem;
+  font-size: 0.85em;
+  font-family: ui-monospace, monospace;
+}
+.idp-markdown :deep(pre code) {
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+.idp-markdown :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.75rem;
+  margin: 0.5rem 0;
+}
+.idp-markdown :deep(th),
+.idp-markdown :deep(td) {
+  border: 1px solid #d1d5db;
+  padding: 0.25rem 0.5rem;
+  text-align: left;
+}
+.idp-markdown :deep(th) {
+  background: #f9fafb;
+  font-weight: 600;
+}
+.idp-markdown :deep(tr:nth-child(even) td) {
+  background: #f9fafb;
+}
+.idp-markdown :deep(blockquote) {
+  border-left: 3px solid #d1d5db;
+  margin: 0.25rem 0;
+  padding-left: 0.75rem;
+  color: #6b7280;
+}
+.idp-markdown :deep(a) {
+  color: #2563eb;
+  text-decoration: underline;
 }
 </style>

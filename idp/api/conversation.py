@@ -553,14 +553,37 @@ def _build_friendly_error(exc: Exception) -> dict:
 	"""
 
 	cls_name = type(exc).__name__
-	code, friendly = _FRIENDLY_ERROR_TABLE.get(
-		cls_name,
-		(
-			"INTERNAL_ERROR",
-			"Something went wrong while processing your request. Please try "
-			"again. If the problem persists, contact your administrator.",
-		),
+	exc_msg = str(exc).lower()
+
+	# Network-level errors from the LLM stream (connection reset, timeout,
+	# broken pipe) produce plain RuntimeErrors with OS-level messages.
+	# Detect them by message pattern so the user gets a retryable hint
+	# instead of the generic internal-error copy.
+	_NETWORK_PATTERNS = (
+		"connection reset",
+		"connection refused",
+		"connection timed out",
+		"broken pipe",
+		"errno 104",
+		"errno 110",
+		"errno 32",
+		"timed out",
+		"stream error",
 	)
+	if cls_name == "RuntimeError" and any(p in exc_msg for p in _NETWORK_PATTERNS):
+		code, friendly = (
+			"CONNECTION_ERROR",
+			"The connection to the AI service was interrupted. Please try again.",
+		)
+	else:
+		code, friendly = _FRIENDLY_ERROR_TABLE.get(
+			cls_name,
+			(
+				"INTERNAL_ERROR",
+				"Something went wrong while processing your request. Please try "
+				"again. If the problem persists, contact your administrator.",
+			),
+		)
 
 	envelope: dict = {
 		"error_code": code,
