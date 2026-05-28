@@ -244,8 +244,7 @@ class HybridFieldMapper:
 		   or set on the instance later (used by tests).
 		2. ``IDP Extraction Template.llm_fallback_threshold`` for the
 		   first template targeting this DocType (§TE.5).
-		3. The instance-wide ``confidence_threshold`` (typically loaded
-		   from ``IDP Settings.llm_fallback_threshold_default``).
+		3. The instance-wide ``confidence_threshold``.
 		"""
 
 		if target_doctype in self.doctype_thresholds:

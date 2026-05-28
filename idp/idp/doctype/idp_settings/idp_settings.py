@@ -29,18 +29,9 @@ class IDPSettings(Document):
 		if self.max_pages_per_pdf is not None and self.max_pages_per_pdf <= 0:
 			frappe.throw("Max pages per PDF must be greater than zero")
 
-		if self.llm_fallback_threshold_default is not None:
-			if self.llm_fallback_threshold_default < 0 or self.llm_fallback_threshold_default > 1:
-				frappe.throw("LLM fallback threshold must be between 0.0 and 1.0")
-
-		for fname in (
-			"active_retention_days",
-			"archived_retention_days",
-			"auto_purge_failed_after_days",
-		):
-			val = self.get(fname)
-			if val is not None and val < 0:
-				frappe.throw(f"{fname} must be \u2265 0")
+		val = self.get("active_retention_days")
+		if val is not None and val < 0:
+			frappe.throw("active_retention_days must be \u2265 0")
 
 		# Enforce unique purpose per llm_model_routes row.
 		seen_purposes: set[str] = set()

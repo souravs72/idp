@@ -18,9 +18,6 @@
   "model_overrides",
   "llm_section",
   "llm_enabled",
-  "llm_api_base",
-  "llm_fallback_threshold_default",
-  "llm_vision_enabled",
   "column_break_llm",
   "llm_model_routes",
   "llm_max_tokens",
@@ -36,7 +33,6 @@
   "confidence_threshold",
   "column_break_ocr",
   "enable_language_auto_detect",
-  "enable_translation",
   "enable_table_extraction",
   "enable_layout_analysis",
   "max_file_size_mb",
@@ -52,18 +48,11 @@
   "column_break_qror",
   "max_pages_per_pdf",
   "advanced_feat_section",
-  "enable_templates",
-  "enable_batch_processing",
-  "enable_feedback_loop",
-  "column_break_feedback",
-  "enable_workflow_routing",
-  "enable_prompt_library",
   "approver_rules",
   "mapper_tab",
   "mapper_section",
   "enable_hybrid_mapper",
   "enable_pre_validation",
-  "llm_confidence_threshold",
   "token_eff_section",
   "page_pre_pass_enabled",
   "mapper_cache_enabled",
@@ -87,9 +76,6 @@
   "enable_conversation_delete",
   "retention_section",
   "active_retention_days",
-  "archived_retention_days",
-  "column_break_retention",
-  "auto_purge_failed_after_days",
   "reversibility_section",
   "undo_window_minutes"
  ],
@@ -138,13 +124,6 @@
    "fieldname": "enable_language_auto_detect",
    "fieldtype": "Check",
    "label": "Enable Language Auto-Detect"
-  },
-  {
-   "default": "1",
-   "description": "Translate narrative fields (remarks, terms, descriptions) into the conversation's output language via the configured LLM provider.",
-   "fieldname": "enable_translation",
-   "fieldtype": "Check",
-   "label": "Enable Output Translation"
   },
   {
    "default": "1",
@@ -215,7 +194,7 @@
   },
   {
    "default": "10",
-   "description": "Default rows per page on the ConfirmationCard items table. Range 5\u201350.",
+   "description": "Default rows per page on the ConfirmationCard items table. Range 5–50.",
    "fieldname": "confirmation_page_size",
    "fieldtype": "Int",
    "label": "Confirmation Card Page Size"
@@ -243,42 +222,7 @@
    "label": "Vision Image Max Dim (px)"
   },
   {
-   "default": "1",
-   "description": "Match and apply IDP Extraction Templates during mapping",
-   "fieldname": "enable_templates",
-   "fieldtype": "Check",
-   "label": "Enable Extraction Templates"
-  },
-  {
-   "default": "1",
-   "description": "Allow multi-file / ZIP batch processing",
-   "fieldname": "enable_batch_processing",
-   "fieldtype": "Check",
-   "label": "Enable Batch Processing"
-  },
-  {
-   "default": "1",
-   "description": "Record user corrections for few-shot prompting",
-   "fieldname": "enable_feedback_loop",
-   "fieldtype": "Check",
-   "label": "Enable Feedback Loop"
-  },
-  {
-   "default": "0",
-   "description": "Auto-assign approvers and advance workflow state on create",
-   "fieldname": "enable_workflow_routing",
-   "fieldtype": "Check",
-   "label": "Enable Workflow Routing"
-  },
-  {
-   "default": "1",
-   "description": "Expose the industry prompt library to the chatbot/LLM layer",
-   "fieldname": "enable_prompt_library",
-   "fieldtype": "Check",
-   "label": "Enable Prompt Library"
-  },
-  {
-   "description": "JSON array of approver rules per DocType (see docs/TEST.md \u2014 Workflow Routing).",
+   "description": "JSON array of approver rules per DocType (see docs/TEST.md — Workflow Routing).",
    "fieldname": "approver_rules",
    "fieldtype": "Long Text",
    "label": "Approver Rules (JSON)"
@@ -310,13 +254,6 @@
    "fieldname": "llm_model",
    "fieldtype": "Data",
    "label": "LLM Model"
-  },
-  {
-   "default": "0.70",
-   "description": "Rule-mapper average confidence threshold; LLM is invoked when below this value or when required fields are missing",
-   "fieldname": "llm_confidence_threshold",
-   "fieldtype": "Float",
-   "label": "Hybrid Confidence Threshold"
   },
   {
    "description": "API key for the active provider (encrypted at rest). Ollama does not use this field.",
@@ -351,27 +288,6 @@
    "label": "LLM Enabled"
   },
   {
-   "description": "Optional base URL override for the active provider (e.g. self-hosted proxy, Azure OpenAI endpoint). Leave blank to use the provider default.",
-   "fieldname": "llm_api_base",
-   "fieldtype": "Data",
-   "label": "LLM API Base URL"
-  },
-  {
-   "default": "0.70",
-   "description": "Default rule-confidence threshold below which the hybrid mapper escalates to the LLM. Per-DocType overrides live on IDP DocType Mapper Config.",
-   "fieldname": "llm_fallback_threshold_default",
-   "fieldtype": "Float",
-   "label": "LLM Fallback Threshold (Default)",
-   "precision": "2"
-  },
-  {
-   "default": "1",
-   "description": "Allow the LLM provider to receive page images when OCR text is insufficient. Vision calls are gated and capped per conversation.",
-   "fieldname": "llm_vision_enabled",
-   "fieldtype": "Check",
-   "label": "LLM Vision Enabled"
-  },
-  {
    "description": "Map each model purpose (classification, extraction, vision, summarisation, confirmation) to a provider/model/tier. Cheap tier handles gating; expensive tier handles extraction.",
    "fieldname": "llm_model_routes",
    "fieldtype": "Table",
@@ -380,7 +296,7 @@
   },
   {
    "default": "16384",
-   "description": "Maximum output tokens per LLM response (Anthropic/OpenAI max_tokens; Ollama num_predict). Increase when the agent's confirmation cards get truncated mid-JSON (e.g. multi-page invoices with long items/taxes tables). Typical safe range: 4096\u201364000 depending on model context window.",
+   "description": "Maximum output tokens per LLM response (Anthropic/OpenAI max_tokens; Ollama num_predict). Increase when the agent's confirmation cards get truncated mid-JSON (e.g. multi-page invoices with long items/taxes tables). Typical safe range: 4096–64000 depending on model context window.",
    "fieldname": "llm_max_tokens",
    "fieldtype": "Int",
    "label": "LLM Max Output Tokens",
@@ -392,22 +308,6 @@
    "fieldname": "active_retention_days",
    "fieldtype": "Int",
    "label": "Active Retention (days)",
-   "non_negative": 1
-  },
-  {
-   "default": "365",
-   "description": "Archived conversations retained for N days, then purged unless legal_hold is set.",
-   "fieldname": "archived_retention_days",
-   "fieldtype": "Int",
-   "label": "Archived Retention (days)",
-   "non_negative": 1
-  },
-  {
-   "default": "30",
-   "description": "Conversations in Failed status are purged after N days (legal_hold still exempts).",
-   "fieldname": "auto_purge_failed_after_days",
-   "fieldtype": "Int",
-   "label": "Auto-Purge Failed After (days)",
    "non_negative": 1
   },
   {
@@ -626,10 +526,6 @@
    "label": "Advanced Features"
   },
   {
-   "fieldname": "column_break_feedback",
-   "fieldtype": "Column Break"
-  },
-  {
    "fieldname": "column_break_vision",
    "fieldtype": "Column Break"
   },
@@ -643,7 +539,11 @@
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "column_break_retention",
+   "fieldname": "column_break_ocr",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_processing",
    "fieldtype": "Column Break"
   }
  ],
