@@ -1,7 +1,7 @@
 {
  "app": "idp",
  "charts": [],
- "content": "[{\"id\":\"U9CXcp55jP\",\"type\":\"paragraph\",\"data\":{\"text\":\"Click on \\n\\t\\t\\t\\n\\t\\t\\t\\n\\t\\t to edit\",\"col\":12}},{\"id\":\"AnUQJHS-BT\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Conversations\",\"col\":3}},{\"id\":\"JSm0muKmew\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Token Usage (Today)\",\"col\":3}},{\"id\":\"KjJ2wKFKo2\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Messages Today\",\"col\":3}},{\"id\":\"Aee5Rp5LCM\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"LLM Cost (Today)\",\"col\":3}},{\"id\":\"nf2PvLSBEw\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"9GbiSkjlu3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"IDP Chat\",\"col\":3}},{\"id\":\"laKjz5WcTx\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Idp Settings\",\"col\":3}},{\"id\":\"Tk4KcqGgA6\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Idp Conversation\",\"col\":3}},{\"id\":\"ywLKz3goCj\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Idp Message\",\"col\":3}}]",
+ "content": "[{\"id\":\"U9CXcp55jP\",\"type\":\"paragraph\",\"data\":{\"text\":\"Click on \\n\\t\\t\\t\\n\\t\\t\\t\\n\\t\\t to edit\",\"col\":12}},{\"id\":\"AnUQJHS-BT\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Total Conversations\",\"col\":3}},{\"id\":\"JSm0muKmew\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Token Usage (Today)\",\"col\":3}},{\"id\":\"KjJ2wKFKo2\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Messages Today\",\"col\":3}},{\"id\":\"Aee5Rp5LCM\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"LLM Cost (Today)\",\"col\":3}},{\"id\":\"nbBJR9q3aZ\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Batch Jobs Running\",\"col\":3}},{\"id\":\"nbDPTk7vXp\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Documents Processed Today\",\"col\":3}},{\"id\":\"nbTCTr4mWf\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Tool Calls Today\",\"col\":3}},{\"id\":\"nbCTDh8yQs\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Corrections Today\",\"col\":3}},{\"id\":\"nf2PvLSBEw\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"9GbiSkjlu3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"IDP Chat\",\"col\":3}},{\"id\":\"Tk4KcqGgA6\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"IDP Conversation\",\"col\":3}},{\"id\":\"ywLKz3goCj\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"IDP Message\",\"col\":3}},{\"id\":\"laKjz5WcTx\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"IDP Settings\",\"col\":3}},{\"id\":\"scBJfL2vTm\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"IDP Batch Job\",\"col\":3}},{\"id\":\"scDLpQ7nRk\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"IDP Document Log\",\"col\":3}},{\"id\":\"scETw4hGcA\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"IDP Extraction Template\",\"col\":3}},{\"id\":\"scECx9bMzF\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"IDP Extraction Correction\",\"col\":3}},{\"id\":\"scPLm3kXdJ\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"IDP Prompt Library\",\"col\":3}},{\"id\":\"scPTr8vHwY\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"IDP Prompt Template\",\"col\":3}},{\"id\":\"scSKb5sQpN\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"IDP Skill\",\"col\":3}},{\"id\":\"scTCt6fLuB\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"IDP Tool Configuration\",\"col\":3}},{\"id\":\"scPCj2dKaR\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"IDP Plugin Configuration\",\"col\":3}},{\"id\":\"scTLn9wEoV\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"IDP Tool Call Log\",\"col\":3}}]",
  "creation": "2026-05-27 13:30:00",
  "custom_blocks": [],
  "docstatus": 0,
@@ -13,7 +13,7 @@
  "is_hidden": 0,
  "label": "IDP",
  "links": [],
- "modified": "2026-05-27 13:43:07.106711",
+ "modified": "2026-05-28 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "IDP",
  "name": "IDP",
@@ -33,6 +33,22 @@
   {
    "label": "LLM Cost (Today)",
    "number_card_name": "LLM Cost (Today)"
+  },
+  {
+   "label": "Batch Jobs Running",
+   "number_card_name": "Batch Jobs Running"
+  },
+  {
+   "label": "Documents Processed Today",
+   "number_card_name": "Documents Processed Today"
+  },
+  {
+   "label": "Tool Calls Today",
+   "number_card_name": "Tool Calls Today"
+  },
+  {
+   "label": "Corrections Today",
+   "number_card_name": "Corrections Today"
   }
  ],
  "owner": "Administrator",
@@ -46,14 +62,6 @@
   {
    "color": "Grey",
    "doc_view": "List",
-   "label": "Idp Message",
-   "link_to": "IDP Message",
-   "stats_filter": "[]",
-   "type": "DocType"
-  },
-  {
-   "color": "Grey",
-   "doc_view": "List",
    "label": "IDP Chat",
    "type": "URL",
    "url": "/idp/chat"
@@ -61,7 +69,7 @@
   {
    "color": "Grey",
    "doc_view": "List",
-   "label": "Idp Conversation",
+   "label": "IDP Conversation",
    "link_to": "IDP Conversation",
    "stats_filter": "[]",
    "type": "DocType"
@@ -69,8 +77,96 @@
   {
    "color": "Grey",
    "doc_view": "List",
-   "label": "Idp Settings",
+   "label": "IDP Message",
+   "link_to": "IDP Message",
+   "stats_filter": "[]",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "IDP Settings",
    "link_to": "IDP Settings",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "IDP Batch Job",
+   "link_to": "IDP Batch Job",
+   "stats_filter": "[]",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "IDP Document Log",
+   "link_to": "IDP Document Log",
+   "stats_filter": "[]",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "IDP Extraction Template",
+   "link_to": "IDP Extraction Template",
+   "stats_filter": "[]",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "IDP Extraction Correction",
+   "link_to": "IDP Extraction Correction",
+   "stats_filter": "[]",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "IDP Prompt Library",
+   "link_to": "IDP Prompt Library",
+   "stats_filter": "[]",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "IDP Prompt Template",
+   "link_to": "IDP Prompt Template",
+   "stats_filter": "[]",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "IDP Skill",
+   "link_to": "IDP Skill",
+   "stats_filter": "[]",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "IDP Tool Configuration",
+   "link_to": "IDP Tool Configuration",
+   "stats_filter": "[]",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "IDP Plugin Configuration",
+   "link_to": "IDP Plugin Configuration",
+   "stats_filter": "[]",
+   "type": "DocType"
+  },
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "IDP Tool Call Log",
+   "link_to": "IDP Tool Call Log",
+   "stats_filter": "[]",
    "type": "DocType"
   }
  ],

@@ -1,0 +1,22 @@
+{
+ "creation": "2026-05-28 00:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Number Card",
+ "document_type": "IDP Document Log",
+ "dynamic_filters_json": "[]",
+ "filters_json": "[[\"IDP Document Log\",\"status\",\"=\",\"Created\",false],[\"IDP Document Log\",\"creation\",\"Timespan\",\"today\",false]]",
+ "function": "Count",
+ "idx": 0,
+ "is_public": 1,
+ "is_standard": 1,
+ "label": "Documents Processed Today",
+ "modified": "2026-05-28 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "IDP",
+ "name": "Documents Processed Today",
+ "owner": "Administrator",
+ "show_full_number": 1,
+ "show_percentage_stats": 1,
+ "stats_time_interval": "Daily",
+ "type": "Document Type"
+}
