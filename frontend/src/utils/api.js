@@ -141,6 +141,22 @@ export function confirmCard({
   })
 }
 
+export function confirmUpdateCard({
+  conversationId,
+  messageId,
+  action = 'apply',
+}) {
+  return frappeRequest({
+    url: '/api/method/idp.api.conversation.confirm_update_card',
+    method: 'POST',
+    params: {
+      conversation_id: conversationId,
+      message_id: messageId,
+      action,
+    },
+  })
+}
+
 export function getCardItemsPage({
   conversationId,
   messageId,

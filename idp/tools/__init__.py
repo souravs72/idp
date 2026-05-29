@@ -15,9 +15,10 @@ populating :mod:`idp.tools.registry`.  Callers should:
 and let ``load_tool_registry()`` do the side-effect imports — it
 calls back into this package.
 
-LLM-exposed tools (7):
-    ask_user, compare_document, create_document, extract_document,
-    propose_create_document, resolve_masters, validate_document
+LLM-exposed tools (10):
+    ask_user, compare_document, create_document, delete_document,
+    extract_document, propose_create_document, resolve_masters,
+    search_documents, update_document, validate_document
 
 Retired (now shims, not LLM-exposed):
     create_master, find_matching_record, list_missing_masters,
@@ -30,9 +31,12 @@ from idp.tools import (
 	ask_user,
 	compare_document,
 	create_document,
+	delete_document,
 	extract_document,
 	propose_create_document,
 	resolve_masters,
+	search_documents,
+	update_document,
 	validate_document,
 )
 from idp.tools.base import ToolContext, ToolResult, ToolSpec, tool

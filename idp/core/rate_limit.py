@@ -178,6 +178,48 @@ def status(user: str | None = None) -> dict:
 	}
 
 
+def check_and_consume_tool(
+	tool_name: str,
+	*,
+	user: str | None = None,
+	limit_per_hour: int,
+) -> dict:
+	"""Per-tool, per-user sliding-window check.
+
+	Independent of the global IDP buckets — destructive tools
+	(``update_document``, ``delete_document``) carry their own caps and
+	should not eat the user's general budget.  Bucket key:
+	``idp:ratelimit:tool:{tool_name}:{user}``.
+
+	Raises :class:`RateLimitExceededError` when the bucket is full.
+	"""
+	user = user or getattr(frappe.session, "user", "Guest")
+	now = time.time()
+	key = f"idp:ratelimit:tool:{tool_name}:{user}"
+	window = _prune_and_count(key, now)
+	if len(window) >= limit_per_hour:
+		raise RateLimitExceededError(
+			f"Per-tool rate limit exceeded for {tool_name!r} ({limit_per_hour}/hour).",
+			details={
+				"bucket": "tool",
+				"tool": tool_name,
+				"user": user,
+				"limit": limit_per_hour,
+				"window_seconds": WINDOW_SECONDS,
+				"current_count": len(window),
+			},
+		)
+	window.append(now)
+	_store_window(key, window)
+	return {
+		"tool": tool_name,
+		"user": user,
+		"count": len(window),
+		"limit": limit_per_hour,
+		"window_seconds": WINDOW_SECONDS,
+	}
+
+
 def reset(user: str | None = None) -> int:
 	"""Clear a user's bucket (and the global bucket if user is ``None``).
 

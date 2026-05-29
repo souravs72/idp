@@ -173,8 +173,12 @@
 					</div>
 				</div>
 				<ThinkingIndicator />
+				<!-- Global error banner.  Hidden when the latest persisted
+				     message already conveys the same error string (failed
+				     tool result or ErrorCard) so we don't render the same
+				     message two or three times in a row. -->
 				<div
-					v-if="store.agentState.lastError"
+					v-if="store.agentState.lastError && !errorAlreadyInMessages"
 					class="rounded border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
 					role="alert"
 				>
@@ -398,6 +402,38 @@ const dialogOpen = ref(false);
 const scrollEl = ref(null);
 const showScrollButton = ref(false);
 const SCROLL_PINNED_THRESHOLD = 80;
+
+// True when the most recent persisted message already surfaces the
+// same error string carried by ``store.agentState.lastError`` — either
+// as an ErrorCard payload or as the ``error`` field on a failed tool
+// result.  The MessageBubble renderer covers both, so the global
+// banner becomes redundant noise in those cases.
+const errorAlreadyInMessages = computed(() => {
+	const err = store.agentState.lastError
+	if (!err) return false
+	const target = String(err).trim()
+	if (!target) return false
+	const msgs = store.visibleMessages || []
+	const tail = msgs.slice(-6)
+	for (const m of tail) {
+		if (m.error && String(m.error).trim() === target) return true
+		if (
+			m.rendered_card_type === 'ErrorCard' &&
+			typeof m.rendered_card_payload === 'string' &&
+			m.rendered_card_payload.includes(target)
+		) {
+			return true
+		}
+		if (
+			m.role === 'tool' &&
+			typeof m.tool_result === 'string' &&
+			m.tool_result.includes(target)
+		) {
+			return true
+		}
+	}
+	return false
+})
 
 const footerStats = computed(() => {
 	const d = store.currentDetail;

@@ -37,7 +37,8 @@ logger = get_logger("idp.audit")
 
 # Status values accepted by the IDP Document Log DocType.
 VALID_STATUSES = {
-	"Uploaded", "Extracting", "Extracted", "Creating", "Created", "Failed",
+	"Uploaded", "Extracting", "Extracted", "Creating", "Created",
+	"Updated", "Deleted", "Failed",
 }
 
 
@@ -263,6 +264,77 @@ def log_bank_event(
 			"unmatched": unmatched,
 		} if success else None,
 		error_message=error_message,
+	)
+
+
+def log_doc_update(
+	*,
+	doctype: str,
+	name: str,
+	diff: Any,
+	user: str | None = None,
+	reason: str | None = None,
+	company: str | None = None,
+	success: bool = True,
+	error_message: str | None = None,
+) -> str | None:
+	"""Convenience wrapper for in-place edits via ``update_document``.
+
+	*diff* is the before→after field map that the tool surfaced on its
+	``UpdateCard``.  It is persisted under ``extraction_data`` so audit
+	consumers can render a "what changed" view without re-loading the
+	doc.
+	"""
+	payload: dict[str, Any] = {"diff": diff}
+	if reason:
+		payload["reason"] = reason
+	return log_event(
+		file_url=f"<update:{doctype}>",
+		file_name=name,
+		target_doctype=doctype,
+		company=company,
+		status="Updated" if success else "Failed",
+		created_doctype=doctype,
+		created_document=name,
+		extraction_data=payload,
+		error_message=error_message,
+		user=user,
+	)
+
+
+def log_doc_delete(
+	*,
+	doctype: str,
+	name: str,
+	snapshot: Any = None,
+	user: str | None = None,
+	reason: str | None = None,
+	company: str | None = None,
+	success: bool = True,
+	error_message: str | None = None,
+) -> str | None:
+	"""Convenience wrapper for record deletion via ``delete_document``.
+
+	The full pre-delete *snapshot* is persisted so the Phase 32 undo
+	path can recreate the document from the audit row.  Callers
+	typically pass ``doc.as_dict()``.
+	"""
+	payload: dict[str, Any] = {}
+	if snapshot is not None:
+		payload["snapshot"] = snapshot
+	if reason:
+		payload["reason"] = reason
+	return log_event(
+		file_url=f"<delete:{doctype}>",
+		file_name=name,
+		target_doctype=doctype,
+		company=company,
+		status="Deleted" if success else "Failed",
+		created_doctype=doctype,
+		created_document=name,
+		extraction_data=payload or None,
+		error_message=error_message,
+		user=user,
 	)
 
 

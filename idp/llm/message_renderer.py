@@ -422,7 +422,43 @@ def render_history(
 		# system / fallback
 		rendered.append({"role": role or "system", "content": raw.get("content") or ""})
 
+	# Final pass: strip orphan assistant tool_calls whose tool_call_id
+	# never gets a matching tool_result downstream.  Anthropic 400s the
+	# whole turn when a tool_use has no companion tool_result, and a
+	# partial / aborted prior turn (e.g. tool-result persistence failed
+	# mid-flight) leaves exactly that shape in the persisted history.
+	# Dropping the orphan ids keeps the conversation usable.
+	_strip_orphan_tool_calls(rendered)
 	return rendered
+
+
+def _strip_orphan_tool_calls(rendered: list[dict]) -> None:
+	"""Remove assistant tool_calls IDs that have no downstream tool result.
+
+	Mutates *rendered* in place.  Walks the list once collecting every
+	``tool_call_id`` seen on a downstream ``role: tool`` message, then
+	prunes assistant ``tool_calls`` whose id isn't in that set.  An
+	assistant turn that ends up with zero tool_calls left has the key
+	removed entirely so providers don't see ``tool_calls: []``.
+	"""
+
+	closed_ids: set[str] = set()
+	for msg in rendered:
+		if msg.get("role") == "tool":
+			tid = msg.get("tool_call_id")
+			if tid:
+				closed_ids.add(tid)
+	for msg in rendered:
+		if msg.get("role") != "assistant":
+			continue
+		calls = msg.get("tool_calls")
+		if not isinstance(calls, list) or not calls:
+			continue
+		kept = [c for c in calls if c.get("id") in closed_ids]
+		if kept:
+			msg["tool_calls"] = kept
+		else:
+			msg.pop("tool_calls", None)
 
 
 # ---------------------------------------------------------------------------

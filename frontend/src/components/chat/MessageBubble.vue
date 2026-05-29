@@ -134,6 +134,12 @@
         :message="message"
       />
 
+      <!-- UpdateCard renderer (update_document dry-run output) -->
+      <UpdateCardUI
+        v-if="isUpdateCard"
+        :message="message"
+      />
+
       <!-- Attachments -->
       <div v-if="parsedAttachments.length" class="space-y-1">
         <a
@@ -148,9 +154,13 @@
         </a>
       </div>
 
-      <!-- Error (legacy / non-card error rows) -->
+      <!-- Error (legacy / non-card error rows).
+           Suppress when the tool-result block above already surfaces
+           the same string, or when an ErrorCard is rendering it — we
+           used to show the same message three times on a failed tool
+           call. -->
       <div
-        v-if="message.error && !isErrorCard"
+        v-if="showLegacyErrorBlock"
         class="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
       >
         {{ message.error }}
@@ -163,6 +173,7 @@
 import { computed } from 'vue'
 import ConfirmationCardUI from './ConfirmationCardUI.vue'
 import ComparisonCardUI from './ComparisonCardUI.vue'
+import UpdateCardUI from './UpdateCardUI.vue'
 import { renderMarkdown } from '@/utils/markdown'
 
 const props = defineProps({
@@ -265,6 +276,27 @@ const isComparisonCard = computed(
     props.message.rendered_card_type === 'ComparisonCard' &&
     !!props.message.rendered_card_payload,
 )
+
+const isUpdateCard = computed(
+  () =>
+    props.message.rendered_card_type === 'UpdateCard' &&
+    !!props.message.rendered_card_payload,
+)
+
+const showLegacyErrorBlock = computed(() => {
+  if (!props.message.error || isErrorCard.value) return false
+  // Skip when the tool-result card already surfaces the same string.
+  const r = parsedToolResult.value
+  if (
+    isToolResult.value &&
+    r &&
+    typeof r.error === 'string' &&
+    r.error.trim() === String(props.message.error).trim()
+  ) {
+    return false
+  }
+  return true
+})
 
 const errorPayload = computed(() => {
   if (!isErrorCard.value) return null

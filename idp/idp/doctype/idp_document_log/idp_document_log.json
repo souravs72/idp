@@ -101,7 +101,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Status",
-   "options": "Uploaded\nExtracting\nExtracted\nCreating\nCreated\nFailed"
+   "options": "Uploaded\nExtracting\nExtracted\nCreating\nCreated\nUpdated\nDeleted\nFailed"
   },
   {
    "fieldname": "processing_time_ms",

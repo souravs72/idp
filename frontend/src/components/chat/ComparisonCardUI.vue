@@ -207,8 +207,9 @@
 import { computed, ref } from 'vue'
 import { useAgent } from '@/composables/useAgent'
 
-// Phase 37 feature gate — flip to true when update_document tool ships.
-const UPDATE_DOC_ENABLED = false
+// Feature gate paired with the update_document tool — flipped once the
+// tool was registered in the agent loop.
+const UPDATE_DOC_ENABLED = true
 
 const props = defineProps({
   message: { type: Object, required: true },

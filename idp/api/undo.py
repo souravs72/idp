@@ -355,4 +355,124 @@ def undo_confirmation(message_id: str) -> dict:
 	}
 
 
-__all__ = ["undo_confirmation", "get_undo_window_minutes"]
+@frappe.whitelist()
+def undo_deletion(undo_token: str) -> dict:
+	"""Restore a document deleted via ``delete_document``.
+
+	*undo_token* is the IDP Document Log row name returned by the tool
+	(``data.undo_token``).  The audit row carries the pre-delete
+	snapshot; we re-insert it iff (a) the original deleter or a
+	``System Manager`` is calling, (b) the row's ``creation`` is still
+	within the configured undo window, and (c) the doc does not already
+	exist (idempotency — a re-click is a no-op).
+	"""
+	import json as _json
+
+	if not undo_token:
+		frappe.throw(_("undo_token is required"), frappe.ValidationError)
+
+	window_min = get_undo_window_minutes()
+	if window_min <= 0:
+		frappe.throw(
+			_("Undo is disabled by the administrator."),
+			frappe.ValidationError,
+		)
+
+	user = frappe.session.user
+	if not user or user == "Guest":
+		frappe.throw(_("Authentication required"), frappe.AuthenticationError)
+
+	try:
+		log = frappe.get_doc("IDP Document Log", undo_token)
+	except frappe.DoesNotExistError:
+		frappe.throw(_("Undo token not found."), frappe.DoesNotExistError)
+
+	if log.status != "Deleted":
+		frappe.throw(
+			_("This token does not correspond to a deletion."),
+			frappe.ValidationError,
+		)
+
+	# Authorisation: original deleter or System Manager.
+	if log.user and log.user != user and not _is_system_manager(user):
+		frappe.throw(
+			_("Only the user who deleted this record can undo it."),
+			frappe.PermissionError,
+		)
+
+	# Window check based on the audit row's creation timestamp.
+	from datetime import timedelta
+
+	now = frappe.utils.now_datetime()
+	created = frappe.utils.get_datetime(log.creation)
+	if (now - created) > timedelta(minutes=window_min):
+		frappe.throw(_("Undo window has expired."), frappe.ValidationError)
+
+	doctype = log.created_doctype
+	docname = log.created_document
+	if not doctype or not docname:
+		frappe.throw(
+			_("Audit row does not reference a deleted document."),
+			frappe.ValidationError,
+		)
+
+	# Idempotency — re-click is a no-op.
+	if frappe.db.exists(doctype, docname):
+		return {
+			"undo_token": undo_token,
+			"doctype": doctype,
+			"docname": docname,
+			"action": "noop",
+			"reason": "already_restored",
+		}
+
+	# Pull the snapshot out of the audit row.
+	payload_raw = log.extraction_data or "{}"
+	try:
+		payload = _json.loads(payload_raw) if isinstance(payload_raw, str) else (payload_raw or {})
+	except (TypeError, ValueError):
+		payload = {}
+	snapshot = (payload or {}).get("snapshot") or {}
+	if not isinstance(snapshot, dict) or not snapshot:
+		frappe.throw(
+			_("Deleted record snapshot is missing or unreadable."),
+			frappe.ValidationError,
+		)
+	snapshot["doctype"] = doctype
+	snapshot["name"] = docname
+
+	try:
+		new_doc = frappe.get_doc(snapshot)
+		new_doc.insert()
+	except frappe.PermissionError:
+		raise
+	except Exception as exc:
+		logger.exception(
+			"undo_deletion failed token=%s %s/%s: %s",
+			undo_token,
+			doctype,
+			docname,
+			exc,
+		)
+		frappe.throw(
+			_("Restore failed: {0}").format(str(exc) or exc.__class__.__name__),
+			frappe.ValidationError,
+		)
+
+	frappe.db.commit()
+	logger.info(
+		"undo_deletion user=%s token=%s %s/%s restored",
+		user,
+		undo_token,
+		doctype,
+		docname,
+	)
+	return {
+		"undo_token": undo_token,
+		"doctype": doctype,
+		"docname": docname,
+		"action": "restored",
+	}
+
+
+__all__ = ["undo_confirmation", "undo_deletion", "get_undo_window_minutes"]

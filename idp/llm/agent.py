@@ -641,7 +641,58 @@ class IDPAgent:
 				doc.status = status
 			except Exception:
 				pass
-		doc.insert(ignore_permissions=True)
+		try:
+			doc.insert(ignore_permissions=True)
+		except frappe.ValidationError as exc:
+			# Don't let an unknown card_type (Select option not yet
+			# migrated) corrupt the conversation by dropping a tool_result
+			# message — Anthropic then rejects every subsequent turn
+			# because the prior tool_use has no matching tool_result.
+			# Retry once with the card metadata stripped; the underlying
+			# tool result is still persisted via ``tool_result``.
+			if rendered_card_type and "Rendered Card Type" in str(exc):
+				logger.warning(
+					"rendered_card_type %r rejected by IDP Message Select "
+					"validator; persisting tool turn without card payload",
+					rendered_card_type,
+				)
+				doc = frappe.new_doc("IDP Message")
+				doc.conversation = self.conversation_id
+				doc.role = role
+				doc.content = content or ""
+				if attachments is not None:
+					doc.attachments = json.dumps(attachments, default=str)
+				if latency_ms is not None:
+					doc.latency_ms = latency_ms
+				if tokens_in is not None:
+					doc.tokens_in = tokens_in
+				if tokens_out is not None:
+					doc.tokens_out = tokens_out
+				if tool_call_id:
+					doc.tool_call_id = tool_call_id
+				if tool_name:
+					doc.tool_name = tool_name
+				if tool_arguments is not None:
+					doc.tool_arguments = json.dumps(tool_arguments, default=str)
+				if tool_calls is not None:
+					doc.tool_calls = json.dumps(tool_calls, default=str)
+				if tool_result is not None:
+					doc.tool_result = json.dumps(tool_result, default=str)
+				# Skip rendered_card_type / rendered_card_payload on the
+				# retry — the tool_result already carries the data the
+				# LLM needs, the UI just won't render a fancy card.
+				if stop_processing:
+					doc.stop_processing = 1
+				if error:
+					doc.error = error
+				if status:
+					try:
+						doc.status = status
+					except Exception:
+						pass
+				doc.insert(ignore_permissions=True)
+			else:
+				raise
 		return doc.as_dict()
 
 	def _maybe_emit_terminal_assistant_message(

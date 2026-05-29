@@ -2733,3 +2733,174 @@ def re_extract_field(
 		"rerun_ok": rerun_ok,
 		"rendered_card_payload": message.rendered_card_payload,
 	}
+
+
+# ---------------------------------------------------------------------------
+# UpdateCard confirmation
+# ---------------------------------------------------------------------------
+
+
+@frappe.whitelist()
+def confirm_update_card(
+	conversation_id: str,
+	message_id: str,
+	action: str = "apply",
+) -> dict:
+	"""Apply (or cancel) the pending update rendered by an UpdateCard.
+
+	Mirrors :func:`confirm_card` but for the lighter UpdateCard flow:
+
+	* Loads the persisted UpdateCard payload from *message_id*.
+	* When ``action == "apply"``, re-dispatches the ``update_document``
+	  tool with ``dry_run=False`` directly — no fake user message, no
+	  extra LLM round-trip.
+	* When ``action == "cancel"``, just stamps the card as cancelled.
+
+	The new server-side ack message is published over the realtime
+	channel so the conversation reloads with the InfoCard / failure
+	already in place.
+	"""
+	from idp.core.exceptions import ConfirmationCardError
+	from idp.tools.base import ToolContext
+	from idp.tools.registry import dispatch
+
+	_require_login()
+	doc = _load_conversation(conversation_id)
+	if not frappe.has_permission("IDP Conversation", ptype="write", doc=doc):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	if action not in {"apply", "cancel"}:
+		raise ConfirmationCardError(_("Unknown action {0!r}").format(action))
+
+	message = frappe.get_doc("IDP Message", message_id)
+	if message.conversation != doc.name:
+		raise ConfirmationCardError(_("Message does not belong to this conversation"))
+	if message.rendered_card_type != "UpdateCard":
+		raise ConfirmationCardError(_("Message does not carry an UpdateCard"))
+
+	card = _parse_json_arg(message.rendered_card_payload, None)
+	if not isinstance(card, dict):
+		raise ConfirmationCardError(_("UpdateCard payload is missing or invalid"))
+
+	doctype = card.get("doctype")
+	docname = card.get("name")
+	if not doctype or not docname:
+		raise ConfirmationCardError(_("UpdateCard is missing doctype / name"))
+
+	# Re-clicking is a friendly no-op.
+	if card.get("applied") or card.get("cancelled"):
+		return {
+			"conversation_id": doc.name,
+			"message_id": message.name,
+			"action": "noop",
+			"reason": "already_resolved",
+		}
+
+	if action == "cancel":
+		card["cancelled"] = True
+		message.rendered_card_payload = json.dumps(card, default=str)
+		message.save(ignore_permissions=False)
+		frappe.db.commit()
+		return {
+			"conversation_id": doc.name,
+			"message_id": message.name,
+			"action": "cancel",
+		}
+
+	# Build the {fieldname: after} map from the persisted diff, only
+	# including header-scope rows that actually change.  Child rows are
+	# rebuilt by the tool from the doctype meta — passing the column
+	# (without the table prefix) is enough.
+	updates: dict[str, Any] = {}
+	for row in card.get("diff") or []:
+		if not isinstance(row, dict) or not row.get("changed"):
+			continue
+		if row.get("scope") == "child":
+			column = (row.get("fieldname") or "").rsplit(".", 1)[-1]
+			if column:
+				updates[column] = row.get("after")
+		else:
+			fn = row.get("fieldname")
+			if fn:
+				updates[fn] = row.get("after")
+	if not updates:
+		raise ConfirmationCardError(_("Nothing to update — every diff row is unchanged"))
+
+	ctx = ToolContext(
+		conversation_id=doc.name,
+		user=frappe.session.user,
+		company=getattr(doc, "company", None) or get_default_company(),
+	)
+	result = dispatch(
+		"update_document",
+		{
+			"doctype": doctype,
+			"name": docname,
+			"updates": updates,
+			"dry_run": False,
+			"reason": card.get("reason"),
+		},
+		ctx,
+	)
+
+	# Stamp the card so subsequent re-clicks no-op.
+	card["applied"] = bool(result.success)
+	card["last_action"] = "apply"
+	if not result.success:
+		card["error"] = result.error
+		card["error_code"] = result.error_code
+	message.rendered_card_payload = json.dumps(card, default=str)
+	message.save(ignore_permissions=False)
+
+	# Persist an ack assistant message so the chat surface reflects the
+	# outcome without needing a full agent run.
+	ack = frappe.new_doc("IDP Message")
+	ack.conversation = doc.name
+	ack.role = "assistant"
+	if result.success:
+		ack.content = _("{0} {1} updated ({2} field(s)).").format(
+			doctype, docname, sum(1 for r in card.get("diff") or [] if r.get("changed")),
+		)
+		ack.rendered_card_type = "InfoCard"
+		ack.rendered_card_payload = json.dumps(
+			{
+				"card_type": "InfoCard",
+				"title": _("{0} updated").format(doctype),
+				"body": ack.content,
+				"link": {"doctype": doctype, "name": docname},
+			},
+			default=str,
+		)
+	else:
+		ack.content = _("Update failed: {0}").format(result.error or "unknown error")
+		ack.rendered_card_type = "ErrorCard"
+		ack.rendered_card_payload = json.dumps(
+			{
+				"card_type": "ErrorCard",
+				"friendly_message": ack.content,
+				"error_code": result.error_code or "UPDATE_FAILED",
+			},
+			default=str,
+		)
+		ack.error = result.error
+	ack.insert(ignore_permissions=True)
+	frappe.db.commit()
+	try:
+		frappe.publish_realtime(
+			event="idp_conversation_message",
+			message={"conversation": doc.name, "message": ack.as_dict()},
+			doctype="IDP Conversation",
+			docname=doc.name,
+		)
+	except Exception:
+		logger.debug("realtime publish skipped for confirm_update_card ack", exc_info=False)
+
+	return {
+		"conversation_id": doc.name,
+		"message_id": message.name,
+		"action": "apply",
+		"success": bool(result.success),
+		"error": result.error,
+		"error_code": result.error_code,
+		"ack_message_id": ack.name,
+	}

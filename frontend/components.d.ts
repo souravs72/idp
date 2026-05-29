@@ -27,5 +27,6 @@ declare module 'vue' {
     TaxMappingTable: typeof import('./src/components/chat/TaxMappingTable.vue')['default']
     ThinkingIndicator: typeof import('./src/components/chat/ThinkingIndicator.vue')['default']
     UndoBanner: typeof import('./src/components/chat/UndoBanner.vue')['default']
+    UpdateCardUI: typeof import('./src/components/chat/UpdateCardUI.vue')['default']
   }
 }

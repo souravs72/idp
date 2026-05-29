@@ -165,7 +165,7 @@
    "fieldname": "rendered_card_type",
    "fieldtype": "Select",
    "label": "Rendered Card Type",
-   "options": "None\nConfirmationCard\nComparisonCard\nErrorCard\nInfoCard"
+   "options": "None\nConfirmationCard\nComparisonCard\nUpdateCard\nErrorCard\nInfoCard"
   },
   {
    "fieldname": "rendered_card_payload",
