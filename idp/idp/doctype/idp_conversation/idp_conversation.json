@@ -12,6 +12,9 @@
   "column_break_header",
   "target_doctype",
   "company",
+  "active_document_section",
+  "active_document_doctype",
+  "active_document_name",
   "llm_section",
   "llm_provider",
   "llm_model",
@@ -72,6 +75,25 @@
    "fieldtype": "Link",
    "label": "Company",
    "options": "Company"
+  },
+  {
+   "collapsible": 1,
+   "description": "Document the user is currently working on. Injected into the LLM system prompt so the model can answer questions about it without a speculative search_documents call.",
+   "fieldname": "active_document_section",
+   "fieldtype": "Section Break",
+   "label": "Active Document"
+  },
+  {
+   "description": "Set automatically when the user works on a specific record (update / compare / open). Cleared by manually blanking the field or via patch.",
+   "fieldname": "active_document_doctype",
+   "fieldtype": "Link",
+   "label": "Active Document DocType",
+   "options": "DocType"
+  },
+  {
+   "fieldname": "active_document_name",
+   "fieldtype": "Data",
+   "label": "Active Document Name"
   },
   {
    "fieldname": "llm_section",
@@ -192,7 +214,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-05-28 10:34:25.506153",
+ "modified": "2026-05-29 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "IDP",
  "name": "IDP Conversation",

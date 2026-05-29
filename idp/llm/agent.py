@@ -205,10 +205,14 @@ class IDPAgent:
 			names=[t for t in self._tool_names_for_llm()] or None,
 			user=ctx.user,
 		)
+		from idp.llm.active_document import get_active_document
+
+		active_document = get_active_document(self.conversation_id)
 		system_prompt = build_chat_system_prompt(
 			target_doctype=ctx.target_doctype,
 			company=ctx.company,
 			output_language=ctx.output_language,
+			active_document=active_document,
 		)
 		supports_vision = client.supports("vision")
 		supports_tools = client.supports("tools")

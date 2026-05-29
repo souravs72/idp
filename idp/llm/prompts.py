@@ -200,6 +200,7 @@ def build_chat_system_prompt(
 	target_doctype: str | None = None,
 	company: str | None = None,
 	output_language: str = "English",
+	active_document: dict | None = None,
 ) -> str:
 	"""Return the system prompt for the Phase 19 agent loop.
 
@@ -209,6 +210,11 @@ def build_chat_system_prompt(
 	Phase 26 §26.4: if an ``IDP Prompt Template`` matches the
 	conversation's ``(target_doctype, output_language)`` it supersedes
 	the hard-coded template.  Skills (§26.6) are concatenated after.
+
+	When ``active_document`` is supplied (see
+	:func:`idp.llm.active_document.get_active_document`) a short context
+	block is appended so the LLM can answer questions about the record
+	without a speculative ``search_documents`` call.
 	"""
 
 	doctype = target_doctype or "(any supported DocType)"
@@ -237,6 +243,17 @@ def build_chat_system_prompt(
 		prompt = _CHAT_SYSTEM_TEMPLATE.format(
 			doctype=doctype, company=company_str, language=output_language
 		)
+
+	# Active-document context — only injected when the conversation has
+	# stamped a specific record (see idp.llm.active_document).
+	try:
+		from idp.llm.active_document import render_context_block
+
+		extra = render_context_block(active_document)
+		if extra:
+			prompt = f"{prompt}\n\n{extra}"
+	except Exception:
+		logger.exception("active_document.render_context_block failed — skipping")
 
 	# Append matching skills (§26.6) — best-effort, never raise.
 	try:

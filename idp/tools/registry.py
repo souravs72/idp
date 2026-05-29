@@ -211,7 +211,89 @@ def dispatch(name: str, arguments: dict | None, ctx: ToolContext) -> ToolResult:
 	cap = _resolve_max_output_tokens(name, spec.max_output_tokens)
 	if cap is not None and cap > 0:
 		result = _enforce_output_cap(result, name, cap)
+	_maybe_stamp_active_document(name, args, result, ctx)
 	return result
+
+
+# ---------------------------------------------------------------------------
+# Active-document stamping
+# ---------------------------------------------------------------------------
+
+
+def _maybe_stamp_active_document(
+	tool_name: str,
+	args: dict,
+	result: ToolResult,
+	ctx: ToolContext,
+) -> None:
+	"""Persist the (doctype, name) the tool just operated on, when known.
+
+	The active-document stamp lets future system prompts inject the
+	record's parent context (company, party) without the LLM having to
+	issue a speculative ``search_documents`` call.  This function is the
+	single place that knows which tools touch which records.
+	"""
+
+	if not ctx.conversation_id:
+		return
+
+	try:
+		from idp.llm.active_document import set_active_document
+	except Exception:
+		return
+
+	# Tools whose arguments name the record they touch.  Stamp even on
+	# failure: the LLM still asked about that record, so subsequent turns
+	# should have the same anchor.
+	if tool_name in {"update_document", "compare_document"}:
+		doctype = (args.get("doctype") or "").strip()
+		record_name = (args.get("name") or "").strip()
+		if not record_name and result.success and isinstance(result.data, dict):
+			# ``compare_document`` may auto-find the name when omitted.
+			record_name = (result.data.get("name") or "").strip()
+		if doctype and record_name:
+			set_active_document(ctx.conversation_id, doctype, record_name)
+		return
+
+	# Tools where the record only exists after a successful call.
+	if tool_name == "create_document" and result.success and isinstance(result.data, dict):
+		doctype = (result.data.get("doctype") or "").strip()
+		record_name = (result.data.get("name") or "").strip()
+		if doctype and record_name:
+			set_active_document(ctx.conversation_id, doctype, record_name)
+		return
+
+	# Destructive: clear the stamp when the deleted record matches.
+	if tool_name == "delete_document" and result.success:
+		doctype = (args.get("doctype") or "").strip()
+		record_name = (args.get("name") or "").strip()
+		if doctype and record_name:
+			try:
+				import frappe
+
+				current = frappe.db.get_value(
+					"IDP Conversation",
+					ctx.conversation_id,
+					["active_document_doctype", "active_document_name"],
+					as_dict=True,
+				)
+				if (
+					current
+					and current.get("active_document_doctype") == doctype
+					and current.get("active_document_name") == record_name
+				):
+					frappe.db.set_value(
+						"IDP Conversation",
+						ctx.conversation_id,
+						{
+							"active_document_doctype": None,
+							"active_document_name": None,
+						},
+						update_modified=False,
+					)
+			except Exception:
+				logger.debug("active-document clear failed", exc_info=True)
+		return
 
 
 def _resolve_max_output_tokens(tool_name: str, spec_cap: int | None) -> int | None:
