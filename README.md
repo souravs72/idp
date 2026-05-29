@@ -151,7 +151,9 @@ Custom DocTypes can be supported by adding an `IDP Extraction Template`.
 
 ## Demo
 
-_Coming soon._
+[![Watch the demo on YouTube](https://img.youtube.com/vi/olBv-Ty0LzU/maxresdefault.jpg)](https://youtu.be/olBv-Ty0LzU)
+
+▶ Watch the demo on YouTube: <https://youtu.be/olBv-Ty0LzU>
 
 ---
 
