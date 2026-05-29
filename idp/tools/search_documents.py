@@ -99,15 +99,21 @@ _PARAMETERS_SCHEMA = {
 	name="search_documents",
 	description=(
 		"Search existing ERPNext records for the given doctype with filters and "
-		"projection.  Read-only — never mutates.  Use this for 'find / list / show "
-		"me …' questions OR to recover from update_document's AMBIGUOUS_LINK / "
-		"LINK_NOT_FOUND error envelopes.  Do NOT call this just to look up a "
-		"Link's canonical name before update_document — update_document already "
-		"auto-resolves human-readable values (e.g. cost_center='Test' → "
-		"'Test - TTD') scoped to the parent doc's company.  Honours row-level "
-		"read permissions; refuses identity / permission doctypes.  Defaults to "
-		"excluding is_group=1 rows on tree doctypes (Cost Center, Account, …) — "
-		"pass an explicit ``is_group`` filter to include them."
+		"projection.  Read-only — never mutates.  Call this ONLY when (a) the "
+		"USER has directly asked to find/list/show records by name or filter, "
+		"or (b) you are recovering from an update_document AMBIGUOUS_LINK / "
+		"LINK_NOT_FOUND error envelope.  Do NOT call this during an "
+		"extract → propose_create_document flow to look up missing tax "
+		"accounts, item masters, or supplier/customer records — that path "
+		"belongs on the ConfirmationCard's inline pickers; reaching for "
+		"search here breaks the create workflow.  Do NOT call this just to "
+		"look up a Link's canonical name before update_document either — "
+		"update_document auto-resolves human-readable values (e.g. "
+		"cost_center='Test' → 'Test - TTD') scoped to the parent doc's "
+		"company.  Honours row-level read permissions; refuses identity / "
+		"permission doctypes.  Defaults to excluding is_group=1 rows on "
+		"tree doctypes (Cost Center, Account, …) — pass an explicit "
+		"``is_group`` filter to include them."
 	),
 	parameters_schema=_PARAMETERS_SCHEMA,
 )
