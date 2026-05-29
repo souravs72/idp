@@ -1695,20 +1695,18 @@ print("Summary generation test passed")
 ```python
 from idp.api.upload import upload_document
 from idp.api.extract import extract_document
-from idp.api.create import create_erp_document, get_missing_masters
-from idp.api.compare import compare_document, find_matching_record
 from idp.api.settings import get_settings
 
 print("upload_document:", upload_document)
 print("extract_document:", extract_document)
-print("create_erp_document:", create_erp_document)
-print("get_missing_masters:", get_missing_masters)
-print("compare_document:", compare_document)
-print("find_matching_record:", find_matching_record)
 print("get_settings:", get_settings)
 print("All API imports OK")
 # Expected: All functions import without error
 ```
+
+> Note: `idp.api.create` and `idp.api.compare` were removed; their user-facing
+> functions are now exposed via the chat tools `create_document` / `resolve_masters`
+> and `compare_document` / `find_matching_record` under `idp.tools.*`.
 
 ---
 
@@ -1799,300 +1797,15 @@ print("extract_document error handling test passed")
 
 ---
 
-### Test 8.5 — create_erp_document: input validation
+### Tests 8.5 – 8.12 — removed (deleted modules)
 
-```python
-import frappe
-from idp.api.create import create_erp_document
-
-# Invalid DocType
-try:
-    create_erp_document(
-        target_doctype="Bogus",
-        extracted_data='{"header": {}, "items": []}',
-    )
-    print("ERROR: Should have thrown")
-except frappe.ValidationError:
-    print("Correctly rejected invalid DocType")
-
-# Invalid JSON
-try:
-    create_erp_document(
-        target_doctype="Purchase Invoice",
-        extracted_data="not valid json {{{",
-    )
-    print("ERROR: Should have thrown")
-except frappe.ValidationError:
-    print("Correctly rejected invalid JSON")
-
-print("create_erp_document input validation test passed")
-```
-
----
-
-### Test 8.6 — create_erp_document: missing master error path
-
-```python
-from idp.api.create import create_erp_document
-
-result = create_erp_document(
-    target_doctype="Purchase Invoice",
-    extracted_data={
-        "header": {
-            "supplier": "ZZZ-API-Test-Nonexistent-Supplier",
-            "posting_date": "2026-04-01",
-            "due_date": "2026-04-30",
-        },
-        "items": [{"item_name": "Widget", "qty": 10, "rate": 100, "amount": 1000}],
-    },
-    create_missing_masters=False,
-)
-print(f"success: {result['success']}")
-# Expected: False
-print(f"error_type: {result.get('error_type')}")
-# Expected: MissingMasterError
-print(f"details: {result.get('details')}")
-# Expected: {"missing": ["Supplier:ZZZ-API-Test-Nonexistent-Supplier"]}
-
-assert result["success"] is False
-assert result["error_type"] == "MissingMasterError"
-print("Missing master error path test passed")
-```
-
----
-
-### Test 8.7 — create_erp_document: full end-to-end
-
-```python
-import frappe
-from idp.api.create import create_erp_document
-
-test_supplier = "Wind Power LLC"
-if not frappe.db.exists("Supplier", test_supplier):
-    frappe.get_doc({
-        "doctype": "Supplier",
-        "supplier_name": test_supplier,
-        "supplier_group": "All Supplier Groups",
-    }).insert(ignore_permissions=True)
-    frappe.db.commit()
-
-company = frappe.db.get_single_value("Global Defaults", "default_company") or frappe.get_all("Company", pluck="name", limit=1)[0]
-
-result = create_erp_document(
-    target_doctype="Purchase Invoice",
-    extracted_data={
-        "header": {
-            "supplier": test_supplier,
-            "posting_date": "2026-04-01",
-            "due_date": "2026-04-30",
-            "currency": "INR",
-            "bill_no": "IDP-API-TEST-001",
-        },
-        "items": [
-            {"item_name": "Widget A", "qty": 10, "rate": 100, "amount": 1000},
-            {"item_name": "Widget B", "qty": 5, "rate": 200, "amount": 1000},
-        ],
-    },
-    company=company,
-    create_missing_masters=True,
-)
-print(f"success: {result['success']}")
-# Expected: True
-print(f"doctype: {result.get('doctype')}")
-# Expected: Purchase Invoice
-print(f"name: {result.get('name')}")
-# Expected: ACC-PINV-... or similar
-print(f"url: {result.get('url')}")
-print(f"warnings: {result.get('warnings')}")
-print(f"created_masters: {result.get('created_masters')}")
-
-assert result["success"] is True
-assert result["doctype"] == "Purchase Invoice"
-
-# Cleanup
-frappe.delete_doc("Purchase Invoice", result["name"], force=True)
-frappe.db.commit()
-print("End-to-end create via API test passed")
-```
-
----
-
-### Test 8.8 — get_missing_masters
-
-```python
-from idp.api.create import get_missing_masters
-
-result = get_missing_masters(
-    target_doctype="Purchase Invoice",
-    extracted_data={
-        "header": {"supplier": "ZZZ-Nonexistent-Supplier-API-Test"},
-        "items": [
-            {"item_code": "ZZZ-FAKE-ITEM-API-TEST", "qty": 1, "rate": 50, "amount": 50},
-        ],
-    },
-)
-print(f"missing count: {result['count']}")
-# Expected: >= 2 (Supplier + Item)
-print(f"missing: {result['missing']}")
-
-assert result["count"] >= 1
-assert any(m["doctype"] == "Supplier" for m in result["missing"])
-print("get_missing_masters test passed")
-```
-
----
-
-### Test 8.9 — compare_document: input validation
-
-```python
-import frappe
-from idp.api.compare import compare_document
-
-# Missing file_url
-try:
-    compare_document(
-        file_url="",
-        compare_doctype="Purchase Invoice",
-        compare_docname="PI-001",
-    )
-    print("ERROR: Should have thrown")
-except frappe.ValidationError:
-    print("Correctly rejected empty file_url")
-
-# Missing docname
-try:
-    compare_document(
-        file_url="/private/files/test.pdf",
-        compare_doctype="Purchase Invoice",
-        compare_docname="",
-    )
-    print("ERROR: Should have thrown")
-except frappe.ValidationError:
-    print("Correctly rejected empty docname")
-
-# Invalid DocType
-try:
-    compare_document(
-        file_url="/private/files/test.pdf",
-        compare_doctype="Bogus",
-        compare_docname="PI-001",
-    )
-    print("ERROR: Should have thrown")
-except frappe.ValidationError:
-    print("Correctly rejected invalid DocType")
-
-print("compare_document input validation test passed")
-```
-
----
-
-### Test 8.10 — find_matching_record: input validation and error handling
-
-```python
-import frappe
-from idp.api.compare import find_matching_record
-
-# Missing file_url
-try:
-    find_matching_record(file_url="", target_doctype="Purchase Order")
-    print("ERROR: Should have thrown")
-except frappe.ValidationError:
-    print("Correctly rejected empty file_url")
-
-# Invalid DocType
-try:
-    find_matching_record(file_url="/private/files/test.pdf", target_doctype="Bogus")
-    print("ERROR: Should have thrown")
-except frappe.ValidationError:
-    print("Correctly rejected invalid DocType")
-
-# Non-existent file — should return found=False gracefully
-result = find_matching_record(
-    file_url="/private/files/nonexistent-idp-match-test.pdf",
-    target_doctype="Purchase Order",
-)
-print(f"found: {result.get('found')}")
-# Expected: False
-print(f"error_type: {result.get('error_type')}")
-# Expected: ExtractionError (file not found)
-
-assert result["found"] is False
-print("find_matching_record error handling test passed")
-```
-
----
-
-### Test 8.11 — JSON string parameter parsing
-
-```python
-import json
-from idp.api.create import _parse_json_param
-
-# Valid JSON string
-result = _parse_json_param('{"supplier": "Tara Tech"}', "test")
-print(f"Parsed: {result}")
-# Expected: {"supplier": "Tara Tech"}
-assert result == {"supplier": "Tara Tech"}
-
-# Already a dict — pass through
-result2 = _parse_json_param({"a": 1}, "test")
-print(f"Dict passthrough: {result2}")
-# Expected: {"a": 1}
-assert result2 == {"a": 1}
-
-# Already a list — pass through
-result3 = _parse_json_param([1, 2, 3], "test")
-print(f"List passthrough: {result3}")
-# Expected: [1, 2, 3]
-assert result3 == [1, 2, 3]
-
-print("JSON parameter parsing test passed")
-```
-
----
-
-### Test 8.12 — Comparison serialization
-
-```python
-from idp.comparison.engine import ComparisonResult, FieldComparison, ItemComparison
-from idp.api.compare import _serialize_comparison
-
-result = ComparisonResult(
-    doctype="Purchase Invoice",
-    docname="PI-001",
-    matches=[
-        FieldComparison(field="supplier", label="Supplier", status="match",
-                       document_value="Tara", record_value="Tara"),
-    ],
-    discrepancies=[
-        FieldComparison(field="grand_total", label="Grand Total", status="mismatch",
-                       document_value=1000, record_value=990, difference="Document: 1000, Record: 990"),
-    ],
-    missing_in_document=["tax_category"],
-    missing_in_record=[],
-    items_comparison=[
-        ItemComparison(item_code="A", item_name="Widget A", status="match", field_comparisons=[]),
-    ],
-    summary="1/2 match",
-)
-
-serialized = _serialize_comparison(result)
-print(f"doctype: {serialized['doctype']}")
-# Expected: Purchase Invoice
-print(f"matches: {len(serialized['matches'])}")
-# Expected: 1
-print(f"discrepancies: {len(serialized['discrepancies'])}")
-# Expected: 1
-print(f"items_comparison: {len(serialized['items_comparison'])}")
-# Expected: 1
-print(f"summary: {serialized['summary']}")
-# Expected: 1/2 match
-
-assert serialized["matches"][0]["field"] == "supplier"
-assert serialized["discrepancies"][0]["field"] == "grand_total"
-assert serialized["items_comparison"][0]["item_code"] == "A"
-print("Comparison serialization test passed")
-```
+The `create_erp_document`, `get_missing_masters`, `compare_document`, and
+`find_matching_record` HTTP endpoints (and their helpers `_parse_json_param`
+and `_serialize_comparison`) lived in `idp.api.create` / `idp.api.compare`,
+both removed alongside the v2.1 Vue pages that called them. The user-facing
+behaviour is now exercised via the chat tools — see the tool test sections
+for `create_document`, `resolve_masters`, `compare_document`, and
+`find_matching_record` under `idp.tools.*`.
 
 ---
 
@@ -3576,43 +3289,12 @@ print("log rows delta >= 1:", (after - before) >= 1)
 # log rows delta >= 1: True
 ```
 
-### 13.15 Create API wires audit calls (validation failure)
+### 13.15 – 13.16 — removed (deleted modules)
 
-```python
-import frappe
-before = frappe.db.count("IDP Document Log", {"status": "Failed"})
-from idp.api.create import create_erp_document
-res = create_erp_document(
-    target_doctype="Purchase Invoice",
-    extracted_data='{"header": {}, "items": []}',
-)
-after = frappe.db.count("IDP Document Log", {"status": "Failed"})
-print("success:", res.get("success"), "| failed delta >= 1:", (after - before) >= 1)
-# Expected:
-# success: False | failed delta >= 1: True
-```
-
-### 13.16 Compare API wires audit calls (validation failure)
-
-```python
-from idp.api.compare import compare_document
-import frappe
-before = frappe.db.count("IDP Document Log")
-try:
-    compare_document(
-        file_url="",
-        compare_doctype="Purchase Order",
-        compare_docname="PO-NOPE",
-    )
-except frappe.ValidationError:
-    pass
-# Even on throw the audit path is not reached (pre-validation); assert
-# behaviour matches: no audit row for input validation errors.
-after = frappe.db.count("IDP Document Log")
-print("rows unchanged:", after == before)
-# Expected:
-# rows unchanged: True
-```
+The Create/Compare HTTP audit-wiring tests covered `idp.api.create` and
+`idp.api.compare`, both removed alongside the v2.1 Vue pages that called
+them. Audit wiring for the equivalent chat tools is covered under their
+own tool test sections.
 
 ### 13.17 `get_recent_logs` returns a list
 
