@@ -157,16 +157,10 @@ class PDFExtractor(BaseExtractor):
 					tables = all_tables
 					confidence = sum(confidences) / len(confidences) if confidences else None
 		else:
-			# Text-based PDF — still try table extraction via OCR
-			try:
-				from idp.ocr.engine import process_pdf
-
-				ocr_results = process_pdf(file_path, lang=lang)
-				for page in ocr_results:
-					for tbl in page.tables:
-						tables.append(tbl.rows)
-			except Exception:
-				logger.warning(f"Table extraction failed for text-based PDF: {file_url}")
+			# The page already has a text layer. Rendering it and running
+			# Paddle just to look for tables reloads the model and holds the
+			# request past the web timeout. The text layer is the read.
+			pass
 
 		return ExtractionResult(
 			content_type="mixed" if tables else "text",
