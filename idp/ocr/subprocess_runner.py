@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -40,6 +41,19 @@ from idp.core.logger import get_logger
 from idp.core.system import check_memory_available
 
 logger = get_logger("idp.ocr_subprocess")
+
+
+def _kill_process_group(pid: int) -> None:
+	"""Kill a timed-out OCR child and the Paddle process it spawned."""
+	if pid <= 0:
+		return
+	try:
+		os.killpg(pid, signal.SIGKILL)
+	except (ProcessLookupError, PermissionError, OSError):
+		try:
+			os.kill(pid, signal.SIGKILL)
+		except (ProcessLookupError, PermissionError, OSError):
+			return
 
 
 # ---------------------------------------------------------------------------
@@ -132,33 +146,49 @@ def run_in_subprocess(
 	# buffering so the JSON payload arrives before the process exits.
 	env = os.environ.copy()
 	env.setdefault("PYTHONUNBUFFERED", "1")
+	# Paddle's oneDNN and font probe hang a worker when these are unset.
+	env["FLAGS_use_mkldnn"] = "0"
+	env["FLAGS_use_onednn"] = "0"
+	env["PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT"] = "0"
+	env["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
 
+	# Own process group so a timeout kills Paddle grandchildren too.
+	# Otherwise communicate() waits on a pipe the grandchild still holds
+	# and the Scan stays "Extracting" until the desk gives up.
 	try:
-		completed = subprocess.run(
+		proc = subprocess.Popen(
 			cmd,
-			input=json.dumps(payload),
-			capture_output=True,
+			stdin=subprocess.PIPE,
+			stdout=subprocess.PIPE,
+			stderr=subprocess.PIPE,
 			text=True,
-			timeout=timeout,
 			env=env,
-			check=False,
+			start_new_session=True,
 		)
-	except subprocess.TimeoutExpired as exc:
-		raise OCRTimeoutError(
-			f"OCR subprocess exceeded {timeout:.0f}s for {file_path!r}",
-			timeout_seconds=timeout,
-		) from exc
 	except OSError as exc:
 		raise OCRError(
 			f"Failed to launch OCR subprocess: {exc}",
 			details={"file_path": file_path},
 		) from exc
 
-	stderr = (completed.stderr or "").strip()
+	try:
+		stdout, stderr = proc.communicate(json.dumps(payload), timeout=timeout)
+	except subprocess.TimeoutExpired as exc:
+		_kill_process_group(proc.pid)
+		try:
+			proc.wait(timeout=5)
+		except subprocess.TimeoutExpired:
+			proc.kill()
+		raise OCRTimeoutError(
+			f"OCR subprocess exceeded {timeout:.0f}s for {file_path!r}",
+			timeout_seconds=timeout,
+		) from exc
 
-	if completed.returncode != 0:
+	stderr = (stderr or "").strip()
+
+	if proc.returncode != 0:
 		raise OCRError(
-			f"OCR subprocess exited with code {completed.returncode}",
+			f"OCR subprocess exited with code {proc.returncode}",
 			details={
 				"file_path": file_path,
 				"operation": operation,
@@ -166,7 +196,7 @@ def run_in_subprocess(
 			},
 		)
 
-	stdout = (completed.stdout or "").strip()
+	stdout = (stdout or "").strip()
 	if not stdout:
 		raise OCRError(
 			"OCR subprocess returned empty stdout",

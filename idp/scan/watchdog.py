@@ -10,8 +10,9 @@ from frappe.utils import add_to_date, now_datetime
 
 from idp.scan.state import FAILED, READING
 
-# Worker timeout (600s) + grace
-READING_TIMEOUT_MINUTES = 15
+# A healthy read finishes well inside the OCR timeout (300s). Fail sooner than
+# the desk's 10 minute "still reading" give-up so the clerk sees an error.
+READING_TIMEOUT_MINUTES = 8
 
 
 def fail_stale_reading_scans() -> int:
