@@ -177,14 +177,35 @@ class PDFExtractor(BaseExtractor):
 		)
 
 	def _extract_text_pypdf(self, file_path: str) -> str:
-		"""Extract text from all pages using pypdf."""
+		"""Extract text from all pages using pypdf.
+
+		Invoices built with absolutely-positioned text runs (most PDF
+		generators used for printed invoices) come back from pypdf's
+		default extraction with labels and values scattered across
+		unrelated lines — the content stream order, not the visual
+		order. A quantity can land a dozen lines away from the item row
+		it belongs to. That scrambles both the label/value pass and the
+		line-item regex in ``FieldMapper._extract_items_from_text``,
+		which only matches a row when qty/rate/amount sit on the same
+		line as the item name.
+
+		``extraction_mode="layout"`` reconstructs the page's visual
+		column layout instead, which keeps a table row intact on one
+		line. We prefer it and fall back to the default mode per page —
+		only on error, not just because layout mode returned less text —
+		so a page layout mode can't parse cleanly still gets *some* text.
+		"""
 		try:
 			from pypdf import PdfReader
 
 			reader = PdfReader(file_path)
 			parts: list[str] = []
 			for page in reader.pages:
-				page_text = page.extract_text() or ""
+				try:
+					page_text = page.extract_text(extraction_mode="layout") or ""
+				except Exception as exc:
+					logger.debug(f"pypdf layout-mode extraction failed, using default mode: {exc}")
+					page_text = page.extract_text() or ""
 				parts.append(page_text)
 			return "\n\n".join(parts)
 		except Exception as exc:
@@ -222,7 +243,7 @@ class ImageExtractor(BaseExtractor):
 	def extract(self, file_path: str, **kwargs) -> ExtractionResult:
 		lang = kwargs.get("lang", "en")
 
-		from idp.ocr.engine import extract_table, extract_text, preprocess_image
+		from idp.ocr.engine import extract_table, extract_text_isolated, preprocess_image
 
 		preprocessed: str | None = None
 		try:
@@ -230,7 +251,7 @@ class ImageExtractor(BaseExtractor):
 			target = preprocessed
 
 			# Text
-			text_dicts = extract_text(target, lang=lang)
+			text_dicts = extract_text_isolated(target, lang=lang)
 			full_text = "\n".join(d["text"] for d in text_dicts)
 			confidences = [d["confidence"] for d in text_dicts]
 			avg_confidence = sum(confidences) / len(confidences) if confidences else None

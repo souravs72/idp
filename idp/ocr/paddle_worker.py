@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import tempfile
 
 # This CPU build crashes inside oneDNN. The reference kernel still reads text.
 os.environ.setdefault("FLAGS_use_mkldnn", "0")
@@ -17,6 +18,10 @@ os.environ.setdefault("FLAGS_use_onednn", "0")
 os.environ.setdefault("PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT", "0")
 os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
 os.environ.setdefault("PADDLE_PDX_CPU_NUM_THREADS", "2")
+os.environ.setdefault("LOCAL_FONT_FILE_PATH", "/tmp/.no-font.ttf")
+
+# Keep long edge under Paddle's 4000 limit and under ~1.5k to avoid OOM on 8GB hosts.
+_MAX_EDGE = 1600
 
 
 def _lines(page) -> list:
@@ -33,6 +38,28 @@ def _lines(page) -> list:
 	return rows
 
 
+def _prepare(path: str) -> str:
+	"""Downscale large photos so CPU PaddleOCR stays under memory limits."""
+	try:
+		from PIL import Image
+	except ImportError:
+		return path
+	try:
+		im = Image.open(path)
+		im.load()
+	except Exception:
+		return path
+	w, h = im.size
+	if max(w, h) <= _MAX_EDGE:
+		return path
+	im = im.convert("RGB")
+	im.thumbnail((_MAX_EDGE, _MAX_EDGE))
+	fd, out = tempfile.mkstemp(suffix=".jpg", prefix="idp-ocr-")
+	os.close(fd)
+	im.save(out, "JPEG", quality=85)
+	return out
+
+
 def main() -> None:
 	if len(sys.argv) != 4:
 		print("usage: paddle_worker.py text <lang> <image>", file=sys.stderr)
@@ -40,9 +67,17 @@ def main() -> None:
 	_mode, lang, path = sys.argv[1:]
 	from paddleocr import PaddleOCR
 
-	engine = PaddleOCR(lang=lang, use_textline_orientation=True)
-	pages = [_lines(page) for page in engine.predict(path)]
-	json.dump(pages, sys.stdout)
+	work = _prepare(path)
+	try:
+		engine = PaddleOCR(lang=lang, use_textline_orientation=True)
+		pages = [_lines(page) for page in engine.predict(work)]
+		json.dump(pages, sys.stdout)
+	finally:
+		if work != path:
+			try:
+				os.unlink(work)
+			except OSError:
+				pass
 
 
 if __name__ == "__main__":
