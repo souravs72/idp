@@ -183,8 +183,11 @@ class _TextEngine:
 			text=True,
 			timeout=240,
 			check=False,
+			cwd="/tmp",
 			env={
 				**os.environ,
+				"HOME": os.path.expanduser("~") or "/tmp",
+				"LOCAL_FONT_FILE_PATH": "/tmp/.no-font.ttf",
 				"FLAGS_use_mkldnn": "0",
 				"FLAGS_use_onednn": "0",
 				"PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT": "0",
@@ -275,46 +278,29 @@ def get_structure_engine(lang: str = "en"):
 
 
 def preprocess_image(image_path: str) -> str:
-	"""Apply preprocessing to improve OCR accuracy.
+	"""Fail-open preprocess (EXIF, cap, crop, deskew, CLAHE).
 
-	Steps:
-	1. Convert to grayscale
-	2. Enhance contrast for faded documents
-	3. Apply light sharpening
-	4. Resize if too small (< 300 DPI equivalent, i.e. width < 1500px)
-
-	Returns:
-		Path to the preprocessed image (a temporary file the caller
-		should delete when finished).
+	Returns a temp PNG path the caller should delete. On total open failure
+	raises OCRError; individual steps never abort the read.
 	"""
+	from idp.ocr.preprocess import preprocess_pipeline
+
 	try:
-		img = Image.open(image_path)
+		return preprocess_pipeline(image_path)
+	except OCRError:
+		raise
 	except Exception as exc:
-		raise OCRError(f"Cannot open image '{image_path}': {exc}")
-
-	# 1. Grayscale
-	if img.mode != "L":
-		img = img.convert("L")
-
-	# 2. Contrast enhancement (1.5x boost)
-	enhancer = ImageEnhance.Contrast(img)
-	img = enhancer.enhance(1.5)
-
-	# 3. Light sharpen
-	img = img.filter(ImageFilter.SHARPEN)
-
-	# 4. Upscale small images (width < 1500px ≈ 5" at 300 DPI)
-	min_width = 1500
-	if img.width < min_width:
-		scale = min_width / img.width
-		new_size = (int(img.width * scale), int(img.height * scale))
-		img = img.resize(new_size, Image.LANCZOS)
-
-	# Write to temp file
-	fd, tmp_path = tempfile.mkstemp(suffix=".png")
-	os.close(fd)
-	img.save(tmp_path, format="PNG")
-	return tmp_path
+		logger.warning("preprocess_pipeline failed; copying original: %s", exc)
+		try:
+			img = Image.open(image_path)
+			if img.mode != "L":
+				img = img.convert("L")
+			fd, tmp_path = tempfile.mkstemp(suffix=".png")
+			os.close(fd)
+			img.save(tmp_path, format="PNG")
+			return tmp_path
+		except Exception as inner:
+			raise OCRError(f"Cannot open image '{image_path}': {inner}") from inner
 
 
 # ---------------------------------------------------------------------------
@@ -511,7 +497,7 @@ def process_pdf(
 			preprocessed_path = preprocess_image(page_img_path)
 
 			# Extract
-			text_dicts = extract_text(preprocessed_path, lang=lang)
+			text_dicts = extract_text_isolated(preprocessed_path, lang=lang)
 			tables = extract_table(preprocessed_path, lang=lang)
 			layout = extract_layout(preprocessed_path, lang=lang)
 
@@ -574,6 +560,33 @@ def process_pdf(
 # ---------------------------------------------------------------------------
 
 
+def _pdftoppm_images(file_path: str, max_pages: int = MAX_PAGES_PER_PDF) -> list[str]:
+	"""Render PDF pages to PNG with poppler. Returns [] when pdftoppm is not installed."""
+	import glob
+	import shutil
+	import subprocess
+
+	binary = shutil.which("pdftoppm")
+	if not binary:
+		return []
+	out_dir = tempfile.mkdtemp(prefix="idp-pdf-")
+	prefix = os.path.join(out_dir, "page")
+	try:
+		subprocess.run(
+			[binary, "-png", "-r", "200", "-f", "1", "-l", str(max_pages), file_path, prefix],
+			check=True,
+			capture_output=True,
+		)
+	except (OSError, subprocess.CalledProcessError) as exc:
+		logger.warning(f"pdftoppm failed: {exc}")
+		shutil.rmtree(out_dir, ignore_errors=True)
+		return []
+	paths = sorted(glob.glob(prefix + "*.png"))
+	if not paths:
+		shutil.rmtree(out_dir, ignore_errors=True)
+	return paths
+
+
 def _pdf_to_images(file_path: str, max_pages: int = MAX_PAGES_PER_PDF) -> list[str]:
 	"""Convert PDF pages to temporary PNG images.
 
@@ -605,9 +618,14 @@ def _pdf_to_images(file_path: str, max_pages: int = MAX_PAGES_PER_PDF) -> list[s
 	except ImportError:
 		pass
 	except Exception as exc:
-		logger.warning(f"pdf2image failed, falling back to pypdf: {exc}")
+		logger.warning(f"pdf2image failed, falling back to pdftoppm: {exc}")
 
-	# Strategy 2: pypdf page extraction → re-render via PaddleOCR directly
+	# Strategy 2: poppler's pdftoppm. pdf2image is optional; the binary is often installed.
+	rendered = _pdftoppm_images(file_path, max_pages=max_pages)
+	if rendered:
+		return rendered
+
+	# Strategy 3: pypdf page extraction → re-render via PaddleOCR directly
 	# PaddleOCR can accept a PDF path and process pages itself. We split
 	# the PDF into single-page PDFs so we can preprocess each individually.
 	try:
@@ -761,16 +779,10 @@ def _language_from_unicode(text: str) -> str:
 
 
 def extract_text_isolated(file_path: str, lang: str = "en") -> list[dict]:
-	"""Run :func:`extract_text` inside an isolated subprocess (Phase 27 §27.1).
+	"""Run :func:`extract_text` in an isolated subprocess (always)."""
+	from idp.ocr.call_counter import bump as _ocr_bump
 
-	Small files (< 1 MiB) bypass the subprocess overhead and run
-	in-process; larger files are fork-isolated so an OOM / segfault in
-	PaddleOCR cannot bring the Frappe worker down.  Subprocess timeout
-	and the memory pre-flight are read from IDP Settings.
-
-	Returns the same shape as :func:`extract_text` so callers can swap
-	without code changes.
-	"""
+	_ocr_bump(1)
 
 	# Lazy imports: keep the small-file path free of subprocess machinery.
 	from idp.core.config import get_ocr_timeout_seconds
@@ -787,6 +799,46 @@ def extract_text_isolated(file_path: str, lang: str = "en") -> list[dict]:
 	)
 	data = result.data or {}
 	return list(data.get("blocks") or [])
+
+
+def detect_language_isolated(file_path: str) -> str:
+	"""Run :func:`detect_language` inside an isolated subprocess.
+
+	``detect_language`` loads a PaddleOCR model exactly like
+	``extract_text`` does -- on a fresh install / cache miss that means a
+	model download with no timeout of its own -- but unlike
+	``extract_text`` every caller invoked it in-process, with no
+	wall-clock bound. Language detection runs first on every scan, so
+	unlike :func:`extract_text_isolated` we never skip the subprocess for
+	small files: the hang this guards against (a stalled model
+	download/init) is unrelated to file size. ``run_in_subprocess``
+	already enforces ``ocr_timeout_seconds`` and kills the child on
+	expiry; ``subprocess_runner`` has supported the ``"detect_language"``
+	operation since Phase 27 -- this was the missing call site.
+
+	Falls back to ``"en"`` on any subprocess/timeout failure -- language
+	detection is advisory, so a slow/broken detector should degrade to
+	the default rather than surface as a fatal scan error.
+	"""
+
+	from idp.core.config import get_ocr_timeout_seconds
+	from idp.core.exceptions import OCRError
+	from idp.ocr.call_counter import bump as _ocr_bump
+	from idp.ocr.subprocess_runner import run_in_subprocess
+
+	_ocr_bump(1)
+
+	try:
+		result = run_in_subprocess(
+			"detect_language",
+			file_path=file_path,
+			timeout=float(get_ocr_timeout_seconds()),
+		)
+	except OCRError as exc:
+		logger.warning(f"detect_language_isolated: falling back to 'en' ({exc})")
+		return "en"
+	data = result.data or {}
+	return str(data.get("language") or "en")
 
 
 # ---------------------------------------------------------------------------

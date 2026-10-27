@@ -165,11 +165,13 @@ def extract_content(file_url: str, lang: str = "en") -> ExtractionResult:
 	3. Dispatch to the first matching extractor.
 	4. Return a unified :class:`ExtractionResult`.
 
-	Phase 27 §27.2 — the ``IDP Settings.ocr_engine`` field selects between
-	``paddle`` (the default Paddle-backed extractors), ``ollama_vision``
-	(LLaVA / minicpm-v fallback), or ``auto`` which tries Paddle first
-	and retries with Ollama on :class:`OCRError`.
+	``auto`` reads a text layer directly and sends a scanned page to the
+	OpenAI or Anthropic model in IDP Settings. ``paddle`` and
+	``ollama_vision`` run only when selected explicitly.
 	"""
+	from idp.ocr.call_counter import bump as _ocr_bump
+
+	_ocr_bump(1)
 	abs_path, mime_type = resolve_file(file_url)
 
 	# Phase 27: honour the configured OCR engine preference for the
@@ -187,11 +189,18 @@ def extract_content(file_url: str, lang: str = "en") -> ExtractionResult:
 			except Exception as exc:
 				if preference == "auto" and mime_type in _OCR_RELEVANT_MIMES and _is_ocr_failure(exc):
 					logger.warning(
-						"PaddleOCR failed on %s; falling back to Ollama vision: %s",
+						"Local OCR failed on %s; reading the page with the configured model: %s",
 						file_url,
 						exc,
 					)
-					return _run_ollama_vision(abs_path, mime_type, file_url)
+					from idp.extractors.llm_vision import read_pages
+
+					return ExtractionResult(
+						content_type="image",
+						text=read_pages(abs_path),
+						metadata={"file_name": os.path.basename(abs_path), "mime_type": mime_type, "reader": "llm"},
+						confidence=0.85,
+					)
 				raise
 
 	raise UnsupportedFormatError(

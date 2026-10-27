@@ -156,8 +156,10 @@ def get_vision_image_max_dim_px() -> int:
 def get_ocr_engine_preference() -> str:
 	"""Active OCR engine: ``paddle`` | ``ollama_vision`` | ``auto``.
 
-	The default is ``auto`` which means the extractor uses PaddleOCR
-	first and falls back to Ollama vision on :class:`OCRError`.
+	Callers: extract_content and the PDF and image extractors.
+	``auto`` reads a text layer as-is and sends a scanned page to the
+	OpenAI or Anthropic model in IDP Settings. The other two values run
+	only when selected.
 	"""
 
 	settings = get_idp_settings()

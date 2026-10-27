@@ -14,7 +14,7 @@ from typing import ClassVar
 
 from idp.core.exceptions import ExtractionError
 from idp.core.logger import get_logger
-from idp.extractors.base import BaseExtractor, ExtractionResult
+from idp.extractors.base import BaseExtractor, ExtractionResult, _ocr_engine_preference
 
 logger = get_logger("idp.extractors")
 
@@ -101,9 +101,8 @@ class PDFExtractor(BaseExtractor):
 
 	Strategy:
 	1. Attempt text extraction via pypdf.
-	2. If text is empty / sparse (scanned PDF) → fall back to PaddleOCR.
-	3. Extract tables via PaddleOCR PPStructure.
-	4. Combine into ExtractionResult.
+	2. A scanned page is read by the OpenAI or Anthropic model in IDP Settings.
+	3. PaddleOCR runs only when OCR Engine is set to paddle.
 	"""
 
 	_MIME_TYPES: ClassVar[set[str]] = {"application/pdf"}
@@ -126,7 +125,7 @@ class PDFExtractor(BaseExtractor):
 		# a degenerately low alphanumeric ratio (line-noise scans).
 		is_scanned = needs_vision_fallback(text, page_count)
 
-		if is_scanned:
+		if is_scanned and _ocr_engine_preference() == "paddle":
 			logger.info(f"PDF appears scanned, falling back to OCR | file={file_url}")
 			try:
 				from idp.ocr.engine import process_pdf
@@ -156,10 +155,14 @@ class PDFExtractor(BaseExtractor):
 					text = "\n\n".join(text_parts)
 					tables = all_tables
 					confidence = sum(confidences) / len(confidences) if confidences else None
+		elif is_scanned:
+			from idp.extractors.llm_vision import read_pages
+
+			logger.info(f"PDF appears scanned, reading it with the configured model | file={file_url}")
+			text = read_pages(file_path)
+			confidence = 0.85
 		else:
-			# The page already has a text layer. Rendering it and running
-			# Paddle just to look for tables reloads the model and holds the
-			# request past the web timeout. The text layer is the read.
+			# The page already has a text layer. It is not sent to the model.
 			pass
 
 		return ExtractionResult(
@@ -177,14 +180,35 @@ class PDFExtractor(BaseExtractor):
 		)
 
 	def _extract_text_pypdf(self, file_path: str) -> str:
-		"""Extract text from all pages using pypdf."""
+		"""Extract text from all pages using pypdf.
+
+		Invoices built with absolutely-positioned text runs (most PDF
+		generators used for printed invoices) come back from pypdf's
+		default extraction with labels and values scattered across
+		unrelated lines — the content stream order, not the visual
+		order. A quantity can land a dozen lines away from the item row
+		it belongs to. That scrambles both the label/value pass and the
+		line-item regex in ``FieldMapper._extract_items_from_text``,
+		which only matches a row when qty/rate/amount sit on the same
+		line as the item name.
+
+		``extraction_mode="layout"`` reconstructs the page's visual
+		column layout instead, which keeps a table row intact on one
+		line. We prefer it and fall back to the default mode per page —
+		only on error, not just because layout mode returned less text —
+		so a page layout mode can't parse cleanly still gets *some* text.
+		"""
 		try:
 			from pypdf import PdfReader
 
 			reader = PdfReader(file_path)
 			parts: list[str] = []
 			for page in reader.pages:
-				page_text = page.extract_text() or ""
+				try:
+					page_text = page.extract_text(extraction_mode="layout") or ""
+				except Exception as exc:
+					logger.debug(f"pypdf layout-mode extraction failed, using default mode: {exc}")
+					page_text = page.extract_text() or ""
 				parts.append(page_text)
 			return "\n\n".join(parts)
 		except Exception as exc:
@@ -206,12 +230,10 @@ class PDFExtractor(BaseExtractor):
 
 
 class ImageExtractor(BaseExtractor):
-	"""Extract from images (PNG, JPEG, TIFF, WebP) via PaddleOCR.
+	"""Extract from images (PNG, JPEG, TIFF, WebP).
 
-	1. Pre-process image (contrast, grayscale, upscale).
-	2. Run PaddleOCR text extraction.
-	3. Run PaddleOCR table extraction.
-	4. Return text + tables.
+	The configured OpenAI or Anthropic model reads the photo. PaddleOCR
+	runs only when OCR Engine is set to paddle.
 	"""
 
 	_MIME_TYPES: ClassVar[set[str]] = {"image/png", "image/jpeg", "image/webp", "image/tiff"}
@@ -221,8 +243,23 @@ class ImageExtractor(BaseExtractor):
 
 	def extract(self, file_path: str, **kwargs) -> ExtractionResult:
 		lang = kwargs.get("lang", "en")
+		if _ocr_engine_preference() != "paddle":
+			from idp.extractors.llm_vision import read_pages
 
-		from idp.ocr.engine import extract_table, extract_text, preprocess_image
+			text = read_pages(file_path)
+			return ExtractionResult(
+				content_type="image",
+				text=text,
+				metadata={
+					"file_name": os.path.basename(file_path),
+					"mime_type": kwargs.get("mime_type", "image/png"),
+					"page_count": 1,
+					"reader": "llm",
+				},
+				confidence=0.85,
+			)
+
+		from idp.ocr.engine import extract_table, extract_text_isolated, preprocess_image
 
 		preprocessed: str | None = None
 		try:
@@ -230,7 +267,7 @@ class ImageExtractor(BaseExtractor):
 			target = preprocessed
 
 			# Text
-			text_dicts = extract_text(target, lang=lang)
+			text_dicts = extract_text_isolated(target, lang=lang)
 			full_text = "\n".join(d["text"] for d in text_dicts)
 			confidences = [d["confidence"] for d in text_dicts]
 			avg_confidence = sum(confidences) / len(confidences) if confidences else None

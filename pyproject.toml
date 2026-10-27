@@ -13,7 +13,9 @@ dependencies = [
     "openpyxl>=3.1",
     "python-docx>=1.1",
     "Pillow",
-    "paddleocr",
+    # Renders a scanned PDF to an image. The wheel includes PDFium, so the
+    # server does not need poppler, PaddleOCR, or Ollama.
+    "pypdfium2>=4.30",
     # LLM provider SDKs — promoted to core deps so `bench setup
     # requirements` always installs them. Each provider remains
     # opt-in at runtime via IDP Settings; the SDK import is lazy
@@ -32,6 +34,8 @@ dependencies = [
 # Ollama uses httpx (already shipped with Frappe).
 llm-openai = ["openai>=1.40", "tiktoken>=0.7"]
 llm-anthropic = ["anthropic>=0.34"]
+# Optional. The default scan path uses the OpenAI or Anthropic key instead.
+ocr-paddle = ["paddleocr"]
 
 [build-system]
 requires = ["flit_core >=3.4,<4"]
