@@ -201,7 +201,7 @@
   },
   {
    "default": "auto",
-   "description": "OCR engine preference: paddle uses PaddleOCR, ollama_vision uses the local LLaVA / minicpm-v fallback, auto tries paddle and falls back to ollama on OCRError.",
+   "description": "auto reads a text PDF directly and sends a scanned page or photo to the OpenAI or Anthropic model configured above. paddle and ollama_vision are optional local engines and are not installed with the app.",
    "fieldname": "ocr_engine",
    "fieldtype": "Select",
    "label": "OCR Engine",

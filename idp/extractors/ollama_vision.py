@@ -176,15 +176,30 @@ def _resize_for_vision(image_path: str, max_dim: int) -> tuple[str, bool]:
 
 
 def _pdf_to_image_pages(file_path: str) -> list[tuple[int, str]]:
-	"""Rasterise PDF pages into temporary PNGs for vision OCR."""
+	"""Rasterise PDF pages into temporary PNGs for vision OCR.
+
+	Called by OllamaVisionExtractor.extract, the OCR fallback in extract_content.
+	pdftoppm is used so a missing pdf2image module does not block the page.
+	"""
 
 	max_pages = get_max_pdf_pages()
+	from idp.ocr.engine import _pdftoppm_images
+
+	rendered = _pdftoppm_images(file_path, max_pages)
+	if rendered:
+		pages: list[tuple[int, str]] = []
+		for idx, src in enumerate(rendered, start=1):
+			dest = src + ".vision.png"
+			os.rename(src, dest)
+			pages.append((idx, dest))
+		return pages
+
 	try:
 		from pdf2image import convert_from_path
 	except ImportError as exc:
 		raise ExtractionError(
-			"pdf2image (poppler) is required to OCR PDFs via the vision fallback",
-			details={"hint": "install poppler-utils + pdf2image"},
+			"poppler (pdftoppm) is required to OCR PDFs via the vision fallback",
+			details={"hint": "install poppler-utils"},
 		) from exc
 
 	images = convert_from_path(

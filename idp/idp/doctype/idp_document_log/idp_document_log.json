@@ -67,13 +67,15 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "File URL",
+   "length": 500,
    "reqd": 1
   },
   {
    "fieldname": "file_name",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "File Name"
+   "label": "File Name",
+   "length": 255
   },
   {
    "fieldname": "mime_type",

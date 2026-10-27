@@ -183,8 +183,11 @@ class _TextEngine:
 			text=True,
 			timeout=240,
 			check=False,
+			cwd="/tmp",
 			env={
 				**os.environ,
+				"HOME": os.path.expanduser("~") or "/tmp",
+				"LOCAL_FONT_FILE_PATH": "/tmp/.no-font.ttf",
 				"FLAGS_use_mkldnn": "0",
 				"FLAGS_use_onednn": "0",
 				"PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT": "0",
@@ -557,6 +560,33 @@ def process_pdf(
 # ---------------------------------------------------------------------------
 
 
+def _pdftoppm_images(file_path: str, max_pages: int = MAX_PAGES_PER_PDF) -> list[str]:
+	"""Render PDF pages to PNG with poppler. Returns [] when pdftoppm is not installed."""
+	import glob
+	import shutil
+	import subprocess
+
+	binary = shutil.which("pdftoppm")
+	if not binary:
+		return []
+	out_dir = tempfile.mkdtemp(prefix="idp-pdf-")
+	prefix = os.path.join(out_dir, "page")
+	try:
+		subprocess.run(
+			[binary, "-png", "-r", "200", "-f", "1", "-l", str(max_pages), file_path, prefix],
+			check=True,
+			capture_output=True,
+		)
+	except (OSError, subprocess.CalledProcessError) as exc:
+		logger.warning(f"pdftoppm failed: {exc}")
+		shutil.rmtree(out_dir, ignore_errors=True)
+		return []
+	paths = sorted(glob.glob(prefix + "*.png"))
+	if not paths:
+		shutil.rmtree(out_dir, ignore_errors=True)
+	return paths
+
+
 def _pdf_to_images(file_path: str, max_pages: int = MAX_PAGES_PER_PDF) -> list[str]:
 	"""Convert PDF pages to temporary PNG images.
 
@@ -588,9 +618,14 @@ def _pdf_to_images(file_path: str, max_pages: int = MAX_PAGES_PER_PDF) -> list[s
 	except ImportError:
 		pass
 	except Exception as exc:
-		logger.warning(f"pdf2image failed, falling back to pypdf: {exc}")
+		logger.warning(f"pdf2image failed, falling back to pdftoppm: {exc}")
 
-	# Strategy 2: pypdf page extraction → re-render via PaddleOCR directly
+	# Strategy 2: poppler's pdftoppm. pdf2image is optional; the binary is often installed.
+	rendered = _pdftoppm_images(file_path, max_pages=max_pages)
+	if rendered:
+		return rendered
+
+	# Strategy 3: pypdf page extraction → re-render via PaddleOCR directly
 	# PaddleOCR can accept a PDF path and process pages itself. We split
 	# the PDF into single-page PDFs so we can preprocess each individually.
 	try:
